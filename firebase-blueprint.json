@@ -1,0 +1,101 @@
+{
+  "entities": {
+    "users": {
+      "title": "Portal Users",
+      "description": "User profiles and credentials for DNO, operators, and staff",
+      "fields": {
+        "username": { "type": "string", "description": "Login username" },
+        "password": { "type": "string", "description": "Login password" },
+        "fullName": { "type": "string", "description": "Full name of the user" },
+        "designation": { "type": "string", "description": "Official designation" },
+        "role": { "type": "string", "description": "User role: dno, operator, counsellor, custom" },
+        "allowedTabs": { "type": "array", "description": "Accessible navigation tabs" },
+        "allowedFeatures": { "type": "array", "description": "Authorized features" },
+        "isActive": { "type": "boolean", "description": "Account active flag" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" },
+        "lastLogin": { "type": "string", "description": "Last login timestamp" },
+        "phone": { "type": "string", "description": "Phone number" },
+        "email": { "type": "string", "description": "Email address" },
+        "profilePicture": { "type": "string", "description": "Profile picture URL" }
+      }
+    },
+    "students": {
+      "title": "Students Directory",
+      "description": "Candidate registration and scrutiny records",
+      "fields": {
+        "applicationId": { "type": "string", "description": "Application ID" },
+        "candidateName": { "type": "string", "description": "Full candidate name" },
+        "course": { "type": "string", "description": "Course applied for" },
+        "scrutinyStatus": { "type": "string", "description": "Scrutiny status" }
+      }
+    },
+    "visitors": {
+      "title": "Visitors Entry Register",
+      "description": "Visitors entry register and check-in records",
+      "fields": {
+        "visitorName": { "type": "string", "description": "Visitor full name" },
+        "mobileNumber": { "type": "string", "description": "Mobile number" },
+        "purpose": { "type": "string", "description": "Purpose of visit" }
+      }
+    },
+    "notices": {
+      "title": "Center Notices",
+      "description": "Facilitation center circulars and announcements",
+      "fields": {
+        "title": { "type": "string", "description": "Notice title" },
+        "content": { "type": "string", "description": "Notice content" }
+      }
+    },
+    "qr_uploads": {
+      "title": "QR Uploaded Documents",
+      "description": "Candidate documents uploaded via QR code mobile scan or PC import",
+      "fields": {
+        "sessionId": { "type": "string", "description": "Session ID string" },
+        "name": { "type": "string", "description": "File name" },
+        "type": { "type": "string", "description": "MIME type" },
+        "size": { "type": "number", "description": "File size in bytes" },
+        "dataUrl": { "type": "string", "description": "Base64 data URL representation" },
+        "uploadedAt": { "type": "string", "description": "ISO timestamp" },
+        "isDownloadedToSoftware": { "type": "boolean", "description": "Flag for software availability" },
+        "verifiedStamp": { "type": "boolean", "description": "Verification status" },
+        "category": { "type": "string", "description": "Document category" }
+      }
+    },
+    "tickets": {
+      "title": "Counsellor & Admission Tickets",
+      "description": "Candidate grievance notes, inquiry tickets and WhatsApp notice dispatch records created by counsellors",
+      "fields": {
+        "ticketNo": { "type": "string", "description": "Ticket unique reference number" },
+        "ticketType": { "type": "string", "description": "Type: candidate_ticket or whatsapp_ticket" },
+        "candidateName": { "type": "string", "description": "Candidate name" },
+        "mobile": { "type": "string", "description": "Candidate mobile number" },
+        "email": { "type": "string", "description": "Candidate email address" },
+        "cetNo": { "type": "string", "description": "CET Application Registration Number" },
+        "capId": { "type": "string", "description": "CAP Application ID" },
+        "course": { "type": "string", "description": "Applied course name" },
+        "scrutinyMode": { "type": "string", "description": "Scrutiny mode (Physical / E-Scrutiny)" },
+        "query": { "type": "string", "description": "Candidate inquiry or grievance details" },
+        "formattedText": { "type": "string", "description": "Formatted ticket slip or WhatsApp text" },
+        "status": { "type": "string", "description": "Ticket status: Open, In Progress, Resolved, Closed" },
+        "resolutionNotes": { "type": "string", "description": "Officer resolution remarks" },
+        "createdBy": { "type": "string", "description": "Username of the creator counsellor/officer" },
+        "creatorName": { "type": "string", "description": "Full name of the creator" },
+        "creatorRole": { "type": "string", "description": "Role of the creator" },
+        "createdAt": { "type": "string", "description": "ISO creation timestamp" },
+        "updatedAt": { "type": "string", "description": "ISO updated timestamp" }
+      }
+    },
+    "images": {
+      "title": "Uploaded Media & Avatars",
+      "description": "User profile pictures and images stored directly in Firebase",
+      "fields": {
+        "name": { "type": "string", "description": "Image file name" },
+        "dataUrl": { "type": "string", "description": "Base64 data URL" },
+        "mimeType": { "type": "string", "description": "Image MIME type" },
+        "sizeBytes": { "type": "number", "description": "File size in bytes" },
+        "uploadedAt": { "type": "string", "description": "ISO timestamp" },
+        "uploadedBy": { "type": "string", "description": "Uploader identifier" }
+      }
+    }
+  }
+}

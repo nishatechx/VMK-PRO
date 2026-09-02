@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Portal user profiles (operators, dno, counsellors)
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+
+    // Students directory & scrutiny records
+    match /students/{studentId} {
+      allow read, write: if true;
+    }
+
+    // Visitors entry register records
+    match /visitors/{visitorId} {
+      allow read, write: if true;
+    }
+
+    // Facilitation center notices & circulars
+    match /notices/{noticeId} {
+      allow read, write: if true;
+    }
+
+    // Public read and write for admission scrutiny terminal and QR mobile scanner
+    match /qr_uploads/{uploadId} {
+      allow read, write: if true;
+    }
+
+    // Admission & WhatsApp tickets
+    match /tickets/{ticketId} {
+      allow read, write: if true;
+    }
+
+    // Media & profile image uploads stored in Firebase
+    match /images/{imageId} {
+      allow read, write: if true;
+    }
+
+    // Fallback collection match
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
+

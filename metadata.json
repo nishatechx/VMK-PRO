@@ -1,0 +1,6 @@
+{
+  "name": "VMK Washim",
+  "description": "Official portal for VMK Washim.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
