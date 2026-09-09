@@ -70,6 +70,7 @@ export const DNO_USER: UserProfile = {
     'whatsapp_tool',
     'qr_upload_tool',
     'ticket_generator_tool',
+    'img_to_pdf_tool',
     'add_candidate',
     'add_visitor',
     'export_reports',
@@ -96,6 +97,7 @@ export const AVAILABLE_FEATURES: { id: FeaturePermission; label: string; descrip
   { id: 'whatsapp_tool', label: 'WhatsApp Ticket Tool', description: 'Direct WhatsApp notice generator & dispatch' },
   { id: 'qr_upload_tool', label: 'Upload by QR Code', description: 'Instant camera sync for candidate document uploads' },
   { id: 'ticket_generator_tool', label: 'Candidate Ticket Generator', description: 'Official CET/CAP candidate query & grievance ticket generation' },
+  { id: 'img_to_pdf_tool', label: 'Image to PDF Converter', description: 'Convert candidate image documents to multi-page PDF' },
   { id: 'add_candidate', label: 'Add New Candidates', description: 'Ability to register and input candidate details' },
   { id: 'add_visitor', label: 'Add Visitor Entry', description: 'Ability to log new visitor check-in and check-out' },
   { id: 'export_reports', label: 'Export Data & Reports', description: 'Download CSV and print scrutiny logs' },
@@ -166,17 +168,6 @@ export function getAllUsers(): UserProfile[] {
       }
     }
 
-    // Ensure all counsellor accounts automatically have the tickets tab in allowedTabs
-    let counsellorModified = false;
-    parsed.forEach((user) => {
-      if (user.role === 'counsellor' && !user.allowedTabs.includes('tickets')) {
-        user.allowedTabs.push('tickets');
-        counsellorModified = true;
-      }
-    });
-    if (counsellorModified) {
-      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(parsed));
-    }
     return parsed;
   } catch (err) {
     console.error('Error reading users from storage:', err);

@@ -8,6 +8,7 @@ import {
   FileText,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Sparkles,
   Info,
   Printer,
@@ -23,6 +24,8 @@ import { getStudentRecords, getCurrentUser } from '../services/authService';
 import { saveTicketRecord } from '../services/ticketService';
 import { UserProfile, TicketRecord } from '../types/auth';
 import { WhatsappInitialData } from './WhatsappTicketModal';
+import { DEPARTMENT_COURSES, DEFAULT_COURSE } from '../data/courses';
+import { FormValidationErrorModal } from './FormValidationErrorModal';
 
 export interface TicketState {
   cetNo: string;
@@ -47,23 +50,8 @@ interface TicketGeneratorModalProps {
   };
   currentUser?: UserProfile | null;
   onOpenWhatsappWithData?: (data: WhatsappInitialData) => void;
+  onSyncWhatsappData?: (data: WhatsappInitialData) => void;
 }
-
-const COMMON_COURSES = [
-  'B.E. / B.Tech (Engineering & Technology)',
-  'Direct Second Year Engineering (DSE)',
-  'MBA / MMS (Management Studies)',
-  'MCA (Computer Applications)',
-  'B.Pharmacy (Pharmacy)',
-  'Direct Second Year Pharmacy (DSP)',
-  'M.Pharmacy / Pharm.D',
-  'Agriculture & Allied Courses',
-  'LLB (3 Years / 5 Years)',
-  'B.Ed / M.Ed (Teacher Education)',
-  'B.HMCT / M.HMCT (Hotel Management)',
-  'B.Design / Fine Arts',
-  'Other MHT-CET Approved Course',
-];
 
 export const TicketGeneratorModal: React.FC<TicketGeneratorModalProps> = ({
   isOpen,
@@ -71,6 +59,7 @@ export const TicketGeneratorModal: React.FC<TicketGeneratorModalProps> = ({
   initialCandidate,
   currentUser,
   onOpenWhatsappWithData,
+  onSyncWhatsappData,
 }) => {
   // 8 Mandatory Ticket Fields
   const [ticketForm, setTicketForm] = useState<TicketState>({
@@ -80,7 +69,7 @@ export const TicketGeneratorModal: React.FC<TicketGeneratorModalProps> = ({
     dob: '',
     mobile: '',
     email: '',
-    course: 'B.E. / B.Tech (Engineering & Technology)',
+    course: DEFAULT_COURSE,
     query: '',
   });
 
@@ -92,6 +81,14 @@ export const TicketGeneratorModal: React.FC<TicketGeneratorModalProps> = ({
   const [ticketCopied, setTicketCopied] = useState<boolean>(false);
   const [generatedTicketNo, setGeneratedTicketNo] = useState<string>('');
   const [isSavedToDb, setIsSavedToDb] = useState<boolean>(false);
+
+  // Validation Popup Modal State
+  const [validationPopup, setValidationPopup] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    missingFields?: string[];
+  } | null>(null);
 
   // Quick Pick candidates from state
   const [availableStudents, setAvailableStudents] = useState<any[]>([]);
@@ -118,12 +115,16 @@ export const TicketGeneratorModal: React.FC<TicketGeneratorModalProps> = ({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
-        onClose();
+        if (validationPopup?.isOpen) {
+          setValidationPopup(null);
+        } else {
+          onClose();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, validationPopup]);
 
   const handleTicketChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -150,19 +151,59 @@ export const TicketGeneratorModal: React.FC<TicketGeneratorModalProps> = ({
   const generateTicket = () => {
     const { cetNo, capId, candidateName, dob, mobile, email, course, query } = ticketForm;
 
-    // Validate all 8 mandatory fields
-    if (
-      !cetNo.trim() ||
-      !capId.trim() ||
-      !candidateName.trim() ||
-      !dob.trim() ||
-      !mobile.trim() ||
-      !email.trim() ||
-      !course.trim() ||
-      !query.trim()
-    ) {
+    // 1. Check for empty fields (no empty fields allowed)
+    const missing: string[] = [];
+    if (!cetNo.trim()) missing.push('CET Application No');
+    if (!capId.trim()) missing.push('CAP Application ID');
+    if (!candidateName.trim()) missing.push('Candidate Name');
+    if (!dob.trim()) missing.push('DOB (Date of Birth)');
+    if (!mobile.trim()) missing.push('Mobile Number');
+    if (!email.trim()) missing.push('Email ID');
+    if (!course.trim()) missing.push('Course Name');
+    if (!query.trim()) missing.push('Query / Grievance Details');
+
+    if (missing.length > 0) {
+      setValidationPopup({
+        isOpen: true,
+        title: 'Mandatory Fields Missing',
+        message: 'All 8 fields are mandatory. Please fill in the following empty fields before generating the ticket:',
+        missingFields: missing,
+      });
       setTicketStatus({
-        message: 'Please fill in all 8 mandatory fields to generate the ticket.',
+        message: `Validation Error: Please fill all 8 mandatory fields (${missing.length} missing).`,
+        type: 'bad',
+      });
+      return;
+    }
+
+    // 2. Validate Mobile Number (Strict 10 digits)
+    const cleanMobile = mobile.replace(/\D/g, '');
+    if (cleanMobile.length !== 10 || !/^[6-9]\d{9}$/.test(cleanMobile)) {
+      setValidationPopup({
+        isOpen: true,
+        title: 'Invalid Mobile Number',
+        message:
+          'Please enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9 (e.g. 9822123456). Current entry has ' +
+          cleanMobile.length +
+          ' digits.',
+      });
+      setTicketStatus({
+        message: 'Validation Error: Mobile number must be a valid 10-digit number.',
+        type: 'bad',
+      });
+      return;
+    }
+
+    // 3. Validate Email ID
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setValidationPopup({
+        isOpen: true,
+        title: 'Invalid Email Address',
+        message: 'Please enter a valid email address with proper format (e.g. student@gmail.com).',
+      });
+      setTicketStatus({
+        message: 'Validation Error: Invalid email address format.',
         type: 'bad',
       });
       return;
@@ -186,20 +227,11 @@ export const TicketGeneratorModal: React.FC<TicketGeneratorModalProps> = ({
       formattedDob = dob;
     }
 
-    const currentFormattedDate = timestamp.toLocaleString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    });
-
     const outputText = `CET Application No: ${cetNo.trim().toUpperCase()}
 CAP Application ID: ${capId.trim().toUpperCase()}
 Candidate Name: ${candidateName.trim()}
 DOB: ${formattedDob}
-Mobile Number: ${mobile.trim()}
+Mobile Number: ${cleanMobile}
 Email ID: ${email.trim()}
 Course Name: ${course.trim()}
 Query: ${query.trim()}`;
@@ -217,7 +249,7 @@ Query: ${query.trim()}`;
       cetNo: cetNo.trim().toUpperCase(),
       capId: capId.trim().toUpperCase(),
       dob: formattedDob,
-      mobile: mobile.trim(),
+      mobile: cleanMobile,
       email: email.trim(),
       course: course.trim(),
       query: query.trim(),
@@ -230,6 +262,19 @@ Query: ${query.trim()}`;
     };
 
     saveTicketRecord(newRecord);
+
+    // Automatically send data to WhatsApp tool without popping up the modal
+    // Note: Ticket ID is left blank per user requirement ("dont ad prefill ticket no it will be ad by user")
+    onSyncWhatsappData?.({
+      name: candidateName.trim(),
+      mobile: cleanMobile,
+      email: email.trim(),
+      cetRegNo: cetNo.trim().toUpperCase(),
+      capAppNo: capId.trim().toUpperCase(),
+      courseName: course.trim(),
+      ticketNo: '',
+      query: query.trim(),
+    });
 
     setTicketStatus({
       message: `Ticket ${ticketNo} generated & saved to database successfully.`,
@@ -256,7 +301,7 @@ Query: ${query.trim()}`;
       dob: '',
       mobile: '',
       email: '',
-      course: 'B.E. / B.Tech (Engineering & Technology)',
+      course: DEFAULT_COURSE,
       query: '',
     });
     setTicketOutput('');
@@ -471,7 +516,7 @@ Query: ${query.trim()}`;
                         <div className="flex flex-col gap-1.5">
                           <label htmlFor="mobile" className="text-xs font-bold text-slate-800 flex items-center gap-1">
                             <Phone className="w-3.5 h-3.5 text-[#0056A6]" />
-                            <span>Mobile Number</span>
+                            <span>Mobile Number (10 digits)</span>
                             <span className="text-rose-600">*</span>
                           </label>
                           <div className="relative">
@@ -486,7 +531,7 @@ Query: ${query.trim()}`;
                               required
                               value={ticketForm.mobile}
                               onChange={handleTicketChange}
-                              placeholder="9822XXXXXX (10 digits)"
+                              placeholder="9822XXXXXX"
                               className="w-full pl-12 pr-3.5 py-2.5 text-xs sm:text-sm border border-[#D9E1EA] rounded-xl focus:border-[#0056A6] focus:ring-3 focus:ring-[#0056A6]/15 outline-none bg-white font-mono text-slate-900 placeholder:text-slate-400"
                             />
                           </div>
@@ -511,11 +556,11 @@ Query: ${query.trim()}`;
                           />
                         </div>
 
-                        {/* 7. Course Name */}
+                        {/* 7. Course Name - Organized Department-wise */}
                         <div className="flex flex-col gap-1.5">
                           <label htmlFor="course" className="text-xs font-bold text-slate-800 flex items-center gap-1">
                             <GraduationCap className="w-3.5 h-3.5 text-[#0056A6]" />
-                            <span>Course Name</span>
+                            <span>Course Name (Department-wise)</span>
                             <span className="text-rose-600">*</span>
                           </label>
                           <select
@@ -526,10 +571,17 @@ Query: ${query.trim()}`;
                             onChange={handleTicketChange}
                             className="w-full px-3.5 py-2.5 text-xs sm:text-sm border border-[#D9E1EA] rounded-xl focus:border-[#0056A6] focus:ring-3 focus:ring-[#0056A6]/15 outline-none bg-white text-slate-900"
                           >
-                            {COMMON_COURSES.map((c) => (
-                              <option key={c} value={c}>
-                                {c}
-                              </option>
+                            {DEPARTMENT_COURSES.map((group, idx) => (
+                              <optgroup
+                                key={idx}
+                                label={`${group.department}${group.subCategory ? ` — ${group.subCategory}` : ''}`}
+                              >
+                                {group.courses.map((c) => (
+                                  <option key={c} value={c}>
+                                    {c}
+                                  </option>
+                                ))}
+                              </optgroup>
                             ))}
                           </select>
                         </div>
@@ -607,7 +659,7 @@ Query: ${query.trim()}`;
                                 cetRegNo: ticketForm.cetNo.trim().toUpperCase(),
                                 capAppNo: ticketForm.capId.trim().toUpperCase(),
                                 courseName: ticketForm.course.trim(),
-                                ticketNo: generatedTicketNo || undefined,
+                                ticketNo: '', // Don't prefill ticket no: must be added by user
                                 query: ticketForm.query.trim(),
                               });
                             }}
@@ -683,6 +735,15 @@ Query: ${query.trim()}`;
               </div>
             </div>
           </motion.div>
+
+          {/* Validation Alert Popup Modal */}
+          <FormValidationErrorModal
+            isOpen={!!validationPopup?.isOpen}
+            onClose={() => setValidationPopup(null)}
+            title={validationPopup?.title || 'Required Fields Missing'}
+            description={validationPopup?.message || 'Please fill in all mandatory fields before proceeding.'}
+            missingFields={validationPopup?.missingFields}
+          />
         </motion.div>
       )}
     </AnimatePresence>

@@ -9,45 +9,78 @@ import {
   Check,
   UploadCloud,
   FileText,
+  FileImage,
   Trash2,
   ExternalLink,
-  RefreshCw,
   Eye,
-  Minus,
   Plus,
-  FileUp,
   Smartphone,
   CheckCircle2,
   AlertCircle,
-  FolderArchive,
   Search,
-  Printer,
   ShieldCheck,
-  Layers,
-  Sparkles,
+  Link as LinkIcon,
+  LayoutGrid,
+  List,
+  MoreVertical,
+  Printer,
+  Image as ImageIcon,
+  ChevronDown,
 } from 'lucide-react';
-import { QrUploadedFile, formatBytes, fileToDataUrl, printDocumentDirectly, triggerFileDownload } from '../types/qrUpload';
+import {
+  QrUploadedFile,
+  formatBytes,
+  fileToDataUrl,
+  triggerFileDownload,
+  printDocumentDirectly,
+} from '../types/qrUpload';
 import { qrUploadService } from '../services/qrUploadService';
 import { InSoftwareDocumentViewer } from './InSoftwareDocumentViewer';
 
 interface QrUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenImgToPdf?: () => void;
 }
 
-export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose }) => {
+// Format date matching the screenshot: "9 Sep 2026, 09:53 AM"
+function formatDocumentDate(isoString: string): string {
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return 'Recently';
+    const day = d.getDate();
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[d.getMonth()];
+    const year = d.getFullYear();
+    let hours = d.getHours();
+    const minutes = d.getMinutes().toString().padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const strHours = hours.toString().padStart(2, '0');
+    return `${day} ${month} ${year}, ${strHours}:${minutes} ${ampm}`;
+  } catch {
+    return 'Recently';
+  }
+}
+
+export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose, onOpenImgToPdf }) => {
   const [sessionId, setSessionId] = useState<string>(() => {
     return 'VMK-' + Math.floor(100000 + Math.random() * 900000);
   });
 
-  const [activeTab, setActiveTab] = useState<'qr_sync' | 'software_vault'>('qr_sync');
-  const [files, setFiles] = useState<QrUploadedFile[]>([]);
+  // Display mode: 'upload' (default: only upload options) | 'vault' (software vault) | 'dual' (split view)
+  const [activeTab, setActiveTab] = useState<'upload' | 'vault' | 'dual'>('upload');
   const [vaultFiles, setVaultFiles] = useState<QrUploadedFile[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'pdf' | 'image' | 'verified'>('all');
+  const [sortBy, setSortBy] = useState<'latest' | 'oldest' | 'name' | 'size'>('latest');
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
+  const [copiedSession, setCopiedSession] = useState<boolean>(false);
   const [previewFile, setPreviewFile] = useState<QrUploadedFile | null>(null);
-  const [isLocalUploading, setIsLocalUploading] = useState<boolean>(false);
+  const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ text: string; type: 'success' | 'error' | '' }>({
     text: '',
     type: '',
@@ -55,42 +88,38 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose })
 
   const localFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Derive upload link
+  // Derive mobile upload URL
   const uploadUrl = typeof window !== 'undefined'
     ? `${window.location.origin}${window.location.pathname}?qrSession=${sessionId}`
     : `https://vmkwashim.gov.in/?qrSession=${sessionId}`;
 
-  // Reset or load files when sessionId changes
-  const fetchSessionFiles = async () => {
+  // Fetch session & vault files
+  const fetchFiles = async () => {
     try {
-      const list = await qrUploadService.getFiles(sessionId);
-      setFiles(list);
       const allVault = await qrUploadService.getAllVaultFilesAsync();
       setVaultFiles(allVault);
     } catch {
-      // ignore
+      // fallback to sync cache
+      const cached = qrUploadService.getAllVaultFiles();
+      setVaultFiles(cached);
     }
   };
 
   useEffect(() => {
     if (!isOpen) return;
 
-    fetchSessionFiles();
+    fetchFiles();
 
     // Fast polling every 1.5 seconds for fresh mobile uploads across devices
-    const interval = setInterval(fetchSessionFiles, 1500);
+    const interval = setInterval(fetchFiles, 1500);
 
     const onIncomingFile = (newFile: QrUploadedFile) => {
-      setFiles((prev) => {
-        if (prev.some((f) => f.id === newFile.id)) return prev;
-        return [newFile, ...prev];
-      });
       setVaultFiles((prev) => {
         if (prev.some((f) => f.id === newFile.id)) return prev;
         return [newFile, ...prev];
       });
       setStatusMessage({
-        text: `📥 Real-time Received: "${newFile.name}" (${formatBytes(newFile.size)}) downloaded directly into software storage!`,
+        text: `📥 Real-time Received: "${newFile.name}" (${formatBytes(newFile.size)}) stored in Software Vault!`,
         type: 'success',
       });
     };
@@ -101,7 +130,7 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose })
     // 2. Listen to real-time Server-Sent Events (cross-device: Phone -> PC)
     const unsubServer = qrUploadService.listenServerEvents(sessionId, onIncomingFile);
 
-    // 3. Also listen to cross-tab BroadcastChannel
+    // 3. Listen to cross-tab BroadcastChannel
     const unsubBroadcast = qrUploadService.listenBroadcast(sessionId, onIncomingFile);
 
     return () => {
@@ -127,31 +156,43 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose })
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose, previewFile]);
 
-  const handleGenerateNewSession = () => {
-    const newId = 'VMK-' + Math.floor(100000 + Math.random() * 900000);
-    setSessionId(newId);
-    setFiles([]);
-    setStatusMessage({
-      text: `New QR Session #${newId} active. Any documents scanned will be downloaded directly into software storage.`,
-      type: 'success',
-    });
-  };
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleDocumentClick = () => {
+      if (activeDropdownId) setActiveDropdownId(null);
+    };
+    document.addEventListener('click', handleDocumentClick);
+    return () => document.removeEventListener('click', handleDocumentClick);
+  }, [activeDropdownId]);
 
   const handleCopyLink = async () => {
     try {
       await navigator.clipboard.writeText(uploadUrl);
       setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2500);
+      setTimeout(() => setCopiedLink(false), 2200);
     } catch (err) {
       console.error('Failed to copy', err);
     }
+  };
+
+  const handleCopySessionId = async () => {
+    try {
+      await navigator.clipboard.writeText(sessionId);
+      setCopiedSession(true);
+      setTimeout(() => setCopiedSession(false), 2200);
+    } catch (err) {
+      console.error('Failed to copy session id', err);
+    }
+  };
+
+  const handleOpenOnMobile = () => {
+    window.open(uploadUrl, '_blank');
   };
 
   const handleLocalFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files;
     if (!selectedFiles || selectedFiles.length === 0) return;
 
-    setIsLocalUploading(true);
     try {
       for (let i = 0; i < selectedFiles.length; i++) {
         const file = selectedFiles[i];
@@ -176,9 +217,9 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose })
         });
       }
 
-      await fetchSessionFiles();
+      await fetchFiles();
       setStatusMessage({
-        text: 'Document(s) successfully downloaded and stored in software memory! Click "Open in Software" to inspect.',
+        text: 'Document(s) successfully stored in Software Vault!',
         type: 'success',
       });
     } catch {
@@ -187,32 +228,64 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose })
         type: 'error',
       });
     } finally {
-      setIsLocalUploading(false);
       if (localFileInputRef.current) localFileInputRef.current.value = '';
     }
   };
 
   const handleDeleteFile = async (fileId: string) => {
     await qrUploadService.deleteFile(sessionId, fileId);
-    await fetchSessionFiles();
+    await fetchFiles();
   };
 
-  const handleToggleStamp = (file: QrUploadedFile) => {
-    qrUploadService.toggleVerifyStamp(file.sessionId || sessionId, file.id);
-    fetchSessionFiles();
+  const handleToggleStamp = async (file: QrUploadedFile) => {
+    await qrUploadService.toggleVerifyStamp(file.sessionId || sessionId, file.id);
+    await fetchFiles();
   };
 
-  // Filtered files for software vault tab
-  const displayedVaultFiles = vaultFiles.filter((f) => {
-    const matchesSearch = f.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (f.category && f.category.toLowerCase().includes(searchQuery.toLowerCase()));
-    
-    if (!matchesSearch) return false;
-    if (typeFilter === 'pdf') return f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
-    if (typeFilter === 'image') return f.type.startsWith('image/') || /\.(jpg|jpeg|png)$/i.test(f.name);
-    if (typeFilter === 'verified') return !!f.verifiedStamp;
-    return true;
-  });
+  // Counts for category tabs
+  const totalCount = vaultFiles.length;
+  const pdfCount = vaultFiles.filter(
+    (f) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')
+  ).length;
+  const imageCount = vaultFiles.filter(
+    (f) => f.type.startsWith('image/') || /\.(jpg|jpeg|png)$/i.test(f.name)
+  ).length;
+  const verifiedCount = vaultFiles.filter((f) => !!f.verifiedStamp).length;
+
+  // Filter & Sort
+  const displayedVaultFiles = vaultFiles
+    .filter((f) => {
+      const matchesSearch =
+        f.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (f.category && f.category.toLowerCase().includes(searchQuery.toLowerCase()));
+      if (!matchesSearch) return false;
+
+      if (typeFilter === 'pdf') {
+        return f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
+      }
+      if (typeFilter === 'image') {
+        return f.type.startsWith('image/') || /\.(jpg|jpeg|png)$/i.test(f.name);
+      }
+      if (typeFilter === 'verified') {
+        return !!f.verifiedStamp;
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'latest') {
+        return new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime();
+      }
+      if (sortBy === 'oldest') {
+        return new Date(a.uploadedAt).getTime() - new Date(b.uploadedAt).getTime();
+      }
+      if (sortBy === 'name') {
+        return a.name.localeCompare(b.name);
+      }
+      if (sortBy === 'size') {
+        return b.size - a.size;
+      }
+      return 0;
+    });
 
   return (
     <>
@@ -224,565 +297,825 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose })
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-5 bg-[#001D3D]/70 backdrop-blur-xs overflow-y-auto"
+            className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-900/80 backdrop-blur-xs overflow-y-auto"
             onClick={onClose}
           >
             <motion.div
               id="qr-upload-modal-container"
-              initial={{ opacity: 0, scale: 0.96, y: 10 }}
+              initial={{ opacity: 0, scale: 0.98, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 10 }}
+              exit={{ opacity: 0, scale: 0.98, y: 8 }}
               transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-              className="relative w-full max-w-4xl bg-[#F7F9FC] text-[#1F2937] rounded-2xl shadow-2xl border border-[#D9E1EA] overflow-hidden my-auto max-h-[94vh] flex flex-col"
+              className={`relative w-full ${
+                activeTab === 'dual'
+                  ? 'max-w-[1400px]'
+                  : activeTab === 'vault'
+                  ? 'max-w-4xl'
+                  : 'max-w-2xl'
+              } bg-slate-100 text-slate-800 rounded-3xl shadow-2xl border border-slate-300/80 overflow-hidden my-auto max-h-[96vh] flex flex-col transition-all duration-200`}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Navy Header */}
-              <div className="bg-[#003B73] text-white px-5 sm:px-6 py-4 border-b border-[#002850] flex items-center justify-between shrink-0 select-none">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-[#0056A6] flex items-center justify-center text-white shadow-xs border border-white/20">
-                    <QrCode className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-base sm:text-lg font-bold text-white tracking-wide leading-tight">
-                      Upload by QR Code
-                    </h2>
-                    <p className="text-xs text-blue-100">
-                      Scan documents via mobile to sync directly into software
-                    </p>
+              {/* Header Switcher: Upload Options vs Software Vault (Switcher default: upload) */}
+              <div className="bg-[#002B54] text-white px-4 py-2.5 flex items-center justify-between border-b border-[#003B73] shrink-0 text-xs">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center bg-[#001D3D] p-1 rounded-xl border border-blue-900">
+                    <button
+                      id="upload-switcher-upload-tab"
+                      onClick={() => setActiveTab('upload')}
+                      className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                        activeTab === 'upload'
+                          ? 'bg-[#0056A6] text-white shadow-xs'
+                          : 'text-blue-300 hover:text-white'
+                      }`}
+                    >
+                      <QrCode className="w-3.5 h-3.5" />
+                      <span>Upload Options</span>
+                    </button>
+                    <button
+                      id="upload-switcher-vault-tab"
+                      onClick={() => setActiveTab('vault')}
+                      className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                        activeTab === 'vault'
+                          ? 'bg-[#0056A6] text-white shadow-xs'
+                          : 'text-blue-300 hover:text-white'
+                      }`}
+                    >
+                      <UploadCloud className="w-3.5 h-3.5" />
+                      <span>Software Vault</span>
+                      <span className="px-1.5 py-0.2 rounded text-[10px] font-mono bg-blue-950/80 text-blue-200 border border-blue-800">
+                        {vaultFiles.length}
+                      </span>
+                    </button>
+                    <button
+                      id="upload-switcher-dual-tab"
+                      onClick={() => setActiveTab('dual')}
+                      className={`hidden md:flex px-2.5 py-1.5 rounded-lg font-medium transition-all cursor-pointer items-center gap-1 ${
+                        activeTab === 'dual'
+                          ? 'bg-[#0056A6] text-white shadow-xs font-bold'
+                          : 'text-blue-400 hover:text-white'
+                      }`}
+                      title="Side-by-side split view"
+                    >
+                      Split View
+                    </button>
                   </div>
                 </div>
 
-                {/* Tab Navigation in Header */}
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center bg-[#002850] p-1 rounded-xl border border-[#0056A6]/40">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 text-blue-200 text-xs font-mono">
+                    <span className="hidden sm:inline text-blue-300">Session:</span>
+                    <span className="bg-[#0056A6]/40 px-2 py-0.5 rounded border border-blue-400/30 text-white font-bold">
+                      #{sessionId}
+                    </span>
                     <button
-                      onClick={() => setActiveTab('qr_sync')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                        activeTab === 'qr_sync'
-                          ? 'bg-[#0056A6] text-white shadow-xs'
-                          : 'text-blue-100 hover:text-white hover:bg-white/10'
-                      }`}
+                      onClick={handleCopySessionId}
+                      className="p-1 rounded text-blue-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                      title="Copy Session ID"
                     >
-                      <Smartphone className="w-3.5 h-3.5" />
-                      <span>QR Scanner</span>
-                    </button>
-
-                    <button
-                      onClick={() => setActiveTab('software_vault')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                        activeTab === 'software_vault'
-                          ? 'bg-[#0056A6] text-white shadow-xs'
-                          : 'text-blue-100 hover:text-white hover:bg-white/10'
-                      }`}
-                    >
-                      <FolderArchive className="w-3.5 h-3.5" />
-                      <span>Software Vault ({vaultFiles.length})</span>
+                      {copiedSession ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                     </button>
                   </div>
 
                   <button
-                    id="close-qr-modal-btn"
                     onClick={onClose}
-                    className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                    className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer ml-1"
                     title="Close (Esc)"
                   >
-                    <X className="w-5 h-5" />
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
               </div>
 
-              {/* Scrollable Body */}
-              <div className="p-4 sm:p-6 overflow-y-auto space-y-4 text-[#1F2937] bg-[#F7F9FC]">
-                {/* Notification Banner */}
-                {statusMessage.text && (
-                  <div
-                    className={`p-3 rounded-xl flex items-start gap-2.5 text-xs sm:text-sm font-medium animate-fadeIn ${
-                      statusMessage.type === 'error'
-                        ? 'bg-red-50 text-red-800 border border-red-200'
-                        : 'bg-emerald-50 text-emerald-900 border border-emerald-200'
-                    }`}
-                  >
+              {/* Status Banner */}
+              {statusMessage.text && (
+                <div
+                  className={`px-4 py-2 flex items-center justify-between text-xs font-semibold border-b shrink-0 ${
+                    statusMessage.type === 'error'
+                      ? 'bg-red-50 text-red-800 border-red-200'
+                      : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
                     {statusMessage.type === 'error' ? (
-                      <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                      <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
                     ) : (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                     )}
-                    <span className="flex-1">{statusMessage.text}</span>
-                    <button
-                      onClick={() => setStatusMessage({ text: '', type: '' })}
-                      className="text-xs opacity-60 hover:opacity-100 cursor-pointer"
-                    >
-                      ✕
-                    </button>
+                    <span>{statusMessage.text}</span>
+                    {activeTab !== 'vault' && vaultFiles.length > 0 && (
+                      <button
+                        onClick={() => setActiveTab('vault')}
+                        className="ml-2 px-2 py-0.5 rounded bg-emerald-600 text-white text-[11px] font-bold hover:bg-emerald-700 transition-colors cursor-pointer"
+                      >
+                        View in Vault ({vaultFiles.length})
+                      </button>
+                    )}
                   </div>
-                )}
+                  <button
+                    onClick={() => setStatusMessage({ text: '', type: '' })}
+                    className="text-xs opacity-70 hover:opacity-100 cursor-pointer p-1"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
 
-                {/* TAB 1: QR Scanner & Live Session */}
-                {activeTab === 'qr_sync' && (
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
-                    {/* Left Column: QR Code Card */}
-                    <div className="md:col-span-5 bg-white p-5 rounded-2xl border border-[#D9E1EA] shadow-xs flex flex-col items-center text-center space-y-3.5">
-                      <div className="w-full flex items-center justify-between border-b border-[#D9E1EA] pb-2.5">
-                        <span className="text-xs font-bold text-[#003B73] uppercase tracking-wide flex items-center gap-1.5">
-                          <Smartphone className="w-4 h-4 text-[#0056A6]" />
-                          Mobile Scan & Upload
-                        </span>
-                        <button
-                          type="button"
-                          onClick={handleGenerateNewSession}
-                          className="text-[11px] font-semibold text-[#0056A6] hover:text-[#003B73] flex items-center gap-1 cursor-pointer"
-                          title="Generate new session QR code"
-                        >
-                          <RefreshCw className="w-3 h-3" />
-                          New QR
-                        </button>
-                      </div>
+              {/* Hidden file input for "+ Upload More" or local uploads */}
+              <input
+                ref={localFileInputRef}
+                type="file"
+                multiple
+                accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                className="hidden"
+                onChange={handleLocalFileSelect}
+              />
 
-                      {/* QR Code Frame */}
-                      <div className="p-4 bg-[#F7F9FC] rounded-2xl border border-[#D9E1EA] flex items-center justify-center relative group">
-                        <QRCodeSVG
-                          value={uploadUrl}
-                          size={175}
-                          level="H"
-                          includeMargin={false}
-                          className="w-40 h-40 sm:w-44 sm:h-44"
-                        />
-
-                        {/* Central Logo */}
-                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                          <div className="w-9 h-9 rounded-lg bg-[#003B73] border-2 border-white shadow-md flex items-center justify-center">
-                            <FileUp className="w-5 h-5 text-white" />
+              {/* MAIN CONTENT AREA: DUAL PANES OR SINGLE PANE */}
+              <div className="flex-1 overflow-y-auto p-3 sm:p-4 bg-slate-200/50">
+                <div
+                  className={`grid gap-4 sm:gap-5 ${
+                    activeTab === 'dual'
+                      ? 'grid-cols-1 lg:grid-cols-2'
+                      : 'grid-cols-1 max-w-4xl mx-auto'
+                  }`}
+                >
+                  {/* ========================================================= */}
+                  {/* UPLOAD OPTIONS PANEL                                      */}
+                  {/* ========================================================= */}
+                  {(activeTab === 'upload' || activeTab === 'dual') && (
+                    <div
+                      id="upload-options-panel"
+                      className="bg-white rounded-2xl border border-slate-300 shadow-sm flex flex-col overflow-hidden"
+                    >
+                      {/* Deep Blue Header */}
+                      <div className="bg-gradient-to-r from-[#0056A6] to-[#003B73] px-5 sm:px-6 py-3.5 text-white flex items-center justify-between shrink-0 select-none">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-9 h-9 rounded-xl bg-white/15 backdrop-blur-xs flex items-center justify-center text-white shadow-xs border border-white/20">
+                            <QrCode className="w-5 h-5 text-white" />
+                          </div>
+                          <div>
+                            <h2 className="text-base font-bold text-white tracking-wide leading-tight">
+                              Upload Options
+                            </h2>
                           </div>
                         </div>
+
+                        {activeTab !== 'dual' && (
+                          <button
+                            type="button"
+                            onClick={onClose}
+                            className="w-7 h-7 rounded-lg bg-white/15 hover:bg-white/25 border border-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
+                            title="Close (Esc)"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
 
-                      <div className="space-y-1">
-                        <p className="text-xs font-bold text-[#1F2937]">
-                          Scan with Mobile Camera / Scanner
-                        </p>
-                        <p className="text-[11px] text-[#6B7280]">
-                          Session: <span className="font-mono font-bold text-[#0056A6]">#{sessionId}</span>
-                        </p>
-                        <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 text-[10px] font-semibold border border-emerald-200">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                          Auto-downloads into Software Vault
-                        </div>
-                      </div>
+                      {/* Content Body: Pure Options, no unwanted instructions or marketing fluff */}
+                      <div className="p-4 sm:p-5 space-y-4 flex-1 flex flex-col">
+                        {/* Option 1: Mobile Camera QR Code */}
+                        <div className="bg-slate-50/90 rounded-2xl border border-slate-200 p-4 flex flex-col sm:flex-row items-center justify-center gap-5">
+                          {/* QR Code with Camera Focus Corners */}
+                          <div className="relative p-3.5 bg-white rounded-2xl border border-slate-200 shadow-2xs shrink-0">
+                            <span className="absolute -top-2 -left-2 w-5 h-5 border-t-3 border-l-3 border-[#0056A6] rounded-tl-lg pointer-events-none" />
+                            <span className="absolute -top-2 -right-2 w-5 h-5 border-t-3 border-r-3 border-[#0056A6] rounded-tr-lg pointer-events-none" />
+                            <span className="absolute -bottom-2 -left-2 w-5 h-5 border-b-3 border-l-3 border-[#0056A6] rounded-bl-lg pointer-events-none" />
+                            <span className="absolute -bottom-2 -right-2 w-5 h-5 border-b-3 border-r-3 border-[#0056A6] rounded-br-lg pointer-events-none" />
 
-                      {/* Actions under QR */}
-                      <div className="w-full pt-1 flex flex-col gap-2">
-                        <button
-                          type="button"
-                          onClick={handleCopyLink}
-                          className="w-full py-2.5 px-4 rounded-xl bg-[#0056A6] hover:bg-[#003B73] text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-                        >
-                          {copiedLink ? (
-                            <>
-                              <Check className="w-3.5 h-3.5 text-white" />
-                              <span>Upload Link Copied!</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3.5 h-3.5" />
-                              <span>Copy Mobile Upload Link</span>
-                            </>
-                          )}
-                        </button>
+                            <div className="relative w-36 h-36 flex items-center justify-center">
+                              <QRCodeSVG
+                                value={uploadUrl}
+                                size={144}
+                                level="H"
+                                includeMargin={false}
+                                className="w-full h-full"
+                              />
+                              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                <div className="w-9 h-9 bg-[#0056A6] rounded-xl flex items-center justify-center border-2 border-white shadow-md text-white">
+                                  <UploadCloud className="w-5 h-5 text-white" />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
 
-                        <a
-                          href={uploadUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="w-full py-2 px-4 rounded-xl bg-[#EAF4FB] hover:bg-[#d8eaf7] text-[#003B73] text-xs font-bold flex items-center justify-center gap-1.5 border border-[#D9E1EA] transition-colors"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          Open Mobile View in New Tab
-                        </a>
-                      </div>
-                    </div>
-
-                    {/* Right Column: Direct Drop & Session Files */}
-                    <div className="md:col-span-7 space-y-4 flex flex-col">
-                      {/* Direct PC Import Box */}
-                      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-[#D9E1EA] shadow-xs space-y-2.5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-[#003B73] uppercase tracking-wide flex items-center gap-1.5">
-                            <UploadCloud className="w-4 h-4 text-[#0056A6]" />
-                            Direct Import to Software Memory
-                          </span>
-                          <span className="text-[10px] bg-[#EAF4FB] text-[#003B73] px-2 py-0.5 rounded font-mono font-bold">
-                            PDF • JPEG • PNG
-                          </span>
-                        </div>
-
-                        <input
-                          ref={localFileInputRef}
-                          type="file"
-                          multiple
-                          accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
-                          onChange={handleLocalFileSelect}
-                          className="hidden"
-                        />
-
-                        <div
-                          onClick={() => localFileInputRef.current?.click()}
-                          className="border-2 border-dashed border-[#0056A6]/30 hover:border-[#0056A6] rounded-xl p-4 text-center bg-[#EAF4FB]/40 hover:bg-[#EAF4FB]/80 cursor-pointer transition-colors"
-                        >
-                          <FileUp className="w-6 h-6 text-[#0056A6] mx-auto mb-1" />
-                          <p className="text-xs font-bold text-[#1F2937]">
-                            Click to Browse or Drag & Drop Documents
-                          </p>
-                          <p className="text-[10px] text-[#6B7280]">Loads immediately into in-app viewer</p>
-                        </div>
-                      </div>
-
-                      {/* Current Session Files List */}
-                      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-[#D9E1EA] shadow-xs flex-1 flex flex-col space-y-3">
-                        <div className="flex items-center justify-between border-b border-[#D9E1EA] pb-2.5">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-[#003B73] uppercase tracking-wide">
-                              Current Session Documents ({files.length})
-                            </span>
-                            {files.length > 0 && (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                In-Software Ready
+                          <div className="space-y-2 text-center sm:text-left flex-1 min-w-0">
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-100 text-[#0056A6] text-xs font-bold">
+                              <Smartphone className="w-3.5 h-3.5" />
+                              <span>Scan with Mobile Camera</span>
+                            </div>
+                            <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                              Scan this QR code with any phone camera to upload documents directly into the software.
+                            </p>
+                            <div className="flex items-center gap-2 pt-0.5 justify-center sm:justify-start">
+                              <span className="text-[11px] text-slate-400 font-mono">Session ID:</span>
+                              <span className="font-mono font-bold text-xs text-[#003B73] bg-white px-2 py-0.5 rounded border border-slate-200">
+                                #{sessionId}
                               </span>
-                            )}
+                              <button
+                                type="button"
+                                onClick={handleCopySessionId}
+                                className="p-1 rounded text-slate-500 hover:text-slate-800 hover:bg-slate-200 transition-colors cursor-pointer"
+                                title="Copy Session ID"
+                              >
+                                {copiedSession ? (
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </div>
                           </div>
+                        </div>
 
-                          {files.length > 0 && (
+                        {/* Options Buttons Grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {/* Option: Make Images to PDF Tool (USER EXPLICIT REQUEST) */}
+                          <button
+                            type="button"
+                            id="upload-opt-make-pdf-btn"
+                            onClick={() => {
+                              if (onOpenImgToPdf) onOpenImgToPdf();
+                            }}
+                            className="bg-gradient-to-br from-[#0056A6]/10 to-[#003B73]/10 border-2 border-[#0056A6]/40 hover:border-[#0056A6] rounded-2xl p-3.5 flex items-center justify-between transition-all cursor-pointer group shadow-2xs text-left"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-10 h-10 rounded-xl bg-[#0056A6] text-white flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-xs">
+                                <FileImage className="w-5 h-5 text-white" />
+                              </div>
+                              <div className="min-w-0">
+                                <h4 className="font-bold text-slate-900 text-xs sm:text-sm leading-tight truncate">
+                                  Make Images to PDF
+                                </h4>
+                                <p className="text-[11px] text-slate-500 leading-snug mt-0.5 truncate">
+                                  Convert images into a single PDF
+                                </p>
+                              </div>
+                            </div>
+                            <div className="w-8 h-8 rounded-xl border border-blue-300 bg-white text-[#0056A6] flex items-center justify-center shrink-0 shadow-2xs group-hover:bg-blue-50">
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </div>
+                          </button>
+
+                          {/* Option: Upload from Computer */}
+                          <button
+                            type="button"
+                            id="upload-opt-from-pc-btn"
+                            onClick={() => localFileInputRef.current?.click()}
+                            className="bg-slate-50 hover:bg-blue-50/50 border border-slate-200 hover:border-blue-300 rounded-2xl p-3.5 flex items-center justify-between transition-all cursor-pointer group shadow-2xs text-left"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-10 h-10 rounded-xl bg-blue-100 text-[#0056A6] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                                <UploadCloud className="w-5 h-5 text-[#0056A6]" />
+                              </div>
+                              <div className="min-w-0">
+                                <h4 className="font-bold text-slate-900 text-xs sm:text-sm leading-tight truncate">
+                                  Upload from Computer
+                                </h4>
+                                <p className="text-[11px] text-slate-500 leading-snug mt-0.5 truncate">
+                                  Select PDF, JPG, or PNG files
+                                </p>
+                              </div>
+                            </div>
+                            <div className="w-8 h-8 rounded-xl border border-slate-200 bg-white text-slate-600 flex items-center justify-center shrink-0 shadow-2xs group-hover:bg-blue-50">
+                              <Plus className="w-4 h-4" />
+                            </div>
+                          </button>
+
+                          {/* Option: Open on Mobile */}
+                          <button
+                            type="button"
+                            id="upload-opt-open-mobile-btn"
+                            onClick={handleOpenOnMobile}
+                            className="bg-slate-50 hover:bg-blue-50/50 border border-slate-200 hover:border-blue-300 rounded-2xl p-3.5 flex items-center justify-between transition-all cursor-pointer group shadow-2xs text-left"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                                <Smartphone className="w-5 h-5 text-slate-700" />
+                              </div>
+                              <div className="min-w-0">
+                                <h4 className="font-bold text-slate-900 text-xs sm:text-sm leading-tight truncate">
+                                  Open on Mobile
+                                </h4>
+                                <p className="text-[11px] text-slate-500 leading-snug mt-0.5 truncate">
+                                  Open upload page in browser
+                                </p>
+                              </div>
+                            </div>
+                            <div className="w-8 h-8 rounded-xl border border-slate-200 bg-white text-slate-600 flex items-center justify-center shrink-0 shadow-2xs group-hover:bg-blue-50">
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </div>
+                          </button>
+
+                          {/* Option: Copy Upload Link */}
+                          <button
+                            type="button"
+                            id="upload-opt-copy-link-btn"
+                            onClick={handleCopyLink}
+                            className="bg-slate-50 hover:bg-emerald-50/50 border border-slate-200 hover:border-emerald-300 rounded-2xl p-3.5 flex items-center justify-between transition-all cursor-pointer group shadow-2xs text-left"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                                <LinkIcon className="w-5 h-5 text-emerald-700" />
+                              </div>
+                              <div className="min-w-0">
+                                <h4 className="font-bold text-slate-900 text-xs sm:text-sm leading-tight truncate">
+                                  Copy Upload Link
+                                </h4>
+                                <p className="text-[11px] text-slate-500 leading-snug mt-0.5 truncate">
+                                  {copiedLink ? 'Link copied to clipboard!' : 'Share link to mobile or WhatsApp'}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="w-8 h-8 rounded-xl border border-slate-200 bg-white text-slate-600 flex items-center justify-center shrink-0 shadow-2xs group-hover:bg-emerald-50">
+                              {copiedLink ? (
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5" />
+                              )}
+                            </div>
+                          </button>
+                        </div>
+
+                        {/* Switch to Vault Quick Bar */}
+                        {activeTab !== 'dual' && (
+                          <div className="pt-1">
                             <button
                               type="button"
-                              onClick={() => setPreviewFile(files[0])}
-                              className="text-[11px] font-bold text-[#0056A6] hover:text-[#003B73] flex items-center gap-1 cursor-pointer"
+                              id="upload-opt-goto-vault-btn"
+                              onClick={() => setActiveTab('vault')}
+                              className="w-full bg-[#003B73]/5 hover:bg-[#003B73]/10 border border-[#003B73]/20 rounded-2xl p-3 flex items-center justify-between transition-all cursor-pointer text-left"
                             >
-                              <Eye className="w-3 h-3" />
-                              Open First Document
+                              <div className="flex items-center gap-2.5">
+                                <UploadCloud className="w-4 h-4 text-[#0056A6]" />
+                                <span className="text-xs font-bold text-[#003B73]">
+                                  Open Software Vault
+                                </span>
+                              </div>
+                              <span className="text-xs font-bold text-[#0056A6] bg-white px-2.5 py-0.5 rounded-lg border border-[#0056A6]/20">
+                                {vaultFiles.length} files available →
+                              </span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ========================================================= */}
+                  {/* SOFTWARE VAULT PANEL                                      */}
+                  {/* ========================================================= */}
+                  {(activeTab === 'vault' || activeTab === 'dual') && (
+                    <div
+                      id="software-vault-panel"
+                      className="bg-white rounded-2xl border border-slate-300 shadow-sm flex flex-col overflow-hidden"
+                    >
+                      {/* Deep Blue Header */}
+                      <div className="bg-gradient-to-r from-[#0056A6] to-[#003B73] px-5 sm:px-6 py-3.5 text-white flex items-center justify-between shrink-0 select-none">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-9 h-9 rounded-xl bg-white/15 backdrop-blur-xs flex items-center justify-center text-white shadow-xs border border-white/20">
+                            <UploadCloud className="w-5 h-5 text-white" />
+                          </div>
+                          <div>
+                            <h2 className="text-base font-bold text-white tracking-wide leading-tight">
+                              Software Vault
+                            </h2>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {onOpenImgToPdf && (
+                            <button
+                              type="button"
+                              id="vault-header-make-pdf-btn"
+                              onClick={onOpenImgToPdf}
+                              className="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 border border-white/25 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                              title="Make Images to PDF"
+                            >
+                              <FileImage className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Make Images to PDF</span>
+                            </button>
+                          )}
+                          {activeTab !== 'dual' && (
+                            <button
+                              type="button"
+                              onClick={onClose}
+                              className="w-7 h-7 rounded-lg bg-white/15 hover:bg-white/25 border border-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
+                              title="Close (Esc)"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Filter Category Tabs */}
+                      <div className="flex items-center gap-2 border-b border-slate-200 px-4 pt-2.5 pb-0.5 bg-white overflow-x-auto text-xs font-semibold select-none">
+                        <button
+                          onClick={() => setTypeFilter('all')}
+                          className={`px-3 py-2 border-b-2 flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                            typeFilter === 'all'
+                              ? 'border-[#0056A6] text-[#0056A6] font-bold'
+                              : 'border-transparent text-slate-500 hover:text-slate-800'
+                          }`}
+                        >
+                          <FileText className="w-4 h-4 text-[#0056A6]" />
+                          <span>Documents ({totalCount})</span>
+                        </button>
+
+                        <button
+                          onClick={() => setTypeFilter('pdf')}
+                          className={`px-3 py-2 border-b-2 flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                            typeFilter === 'pdf'
+                              ? 'border-[#0056A6] text-[#0056A6] font-bold'
+                              : 'border-transparent text-slate-500 hover:text-slate-800'
+                          }`}
+                        >
+                          <FileText className="w-4 h-4 text-rose-500" />
+                          <span>PDFs ({pdfCount})</span>
+                        </button>
+
+                        <button
+                          onClick={() => setTypeFilter('image')}
+                          className={`px-3 py-2 border-b-2 flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                            typeFilter === 'image'
+                              ? 'border-[#0056A6] text-[#0056A6] font-bold'
+                              : 'border-transparent text-slate-500 hover:text-slate-800'
+                          }`}
+                        >
+                          <ImageIcon className="w-4 h-4 text-emerald-600" />
+                          <span>Images ({imageCount})</span>
+                        </button>
+
+                        <button
+                          onClick={() => setTypeFilter('verified')}
+                          className={`px-3 py-2 border-b-2 flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                            typeFilter === 'verified'
+                              ? 'border-[#0056A6] text-[#0056A6] font-bold'
+                              : 'border-transparent text-slate-500 hover:text-slate-800'
+                          }`}
+                        >
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          <span>Verified ({verifiedCount})</span>
+                        </button>
+                      </div>
+
+                      {/* Search and Sort controls */}
+                      <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 select-none">
+                        {/* Search input */}
+                        <div className="relative flex-1 min-w-[180px] max-w-xs">
+                          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Search documents..."
+                            className="w-full pl-9 pr-7 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-[#0056A6] focus:border-[#0056A6]"
+                          />
+                          {searchQuery && (
+                            <button
+                              onClick={() => setSearchQuery('')}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
+                            >
+                              ✕
                             </button>
                           )}
                         </div>
 
-                        {/* Files Stream */}
-                        <div className="flex-1 min-h-[160px] max-h-64 overflow-y-auto space-y-2 pr-1">
-                          {files.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-center p-6 text-[#6B7280] space-y-1.5">
-                              <div className="w-10 h-10 rounded-full bg-[#F7F9FC] border border-[#D9E1EA] flex items-center justify-center text-[#6B7280]">
-                                <UploadCloud className="w-5 h-5 text-[#0056A6]" />
+                        {/* Sort by dropdown and View mode toggles */}
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-2.5 py-1 text-xs text-slate-600">
+                            <span className="text-[11px] text-slate-400 font-medium">Sort by</span>
+                            <select
+                              value={sortBy}
+                              onChange={(e) => setSortBy(e.target.value as any)}
+                              className="bg-transparent font-semibold text-slate-700 focus:outline-hidden cursor-pointer text-xs"
+                            >
+                              <option value="latest">Latest First</option>
+                              <option value="oldest">Oldest First</option>
+                              <option value="name">Name (A-Z)</option>
+                              <option value="size">File Size</option>
+                            </select>
+                          </div>
+
+                          <div className="flex items-center bg-white border border-slate-200 rounded-xl p-0.5">
+                            <button
+                              onClick={() => setViewMode('grid')}
+                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                viewMode === 'grid'
+                                  ? 'bg-blue-50 text-[#0056A6]'
+                                  : 'text-slate-400 hover:text-slate-600'
+                              }`}
+                              title="Grid View"
+                            >
+                              <LayoutGrid className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => setViewMode('list')}
+                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                viewMode === 'list'
+                                  ? 'bg-blue-50 text-[#0056A6]'
+                                  : 'text-slate-400 hover:text-slate-600'
+                              }`}
+                              title="List View"
+                            >
+                              <List className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Documents List View / Grid View */}
+                      <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2.5 max-h-[520px]">
+                        {displayedVaultFiles.length === 0 ? (
+                          <div className="py-12 text-center text-slate-400 space-y-2">
+                            <UploadCloud className="w-10 h-10 mx-auto text-slate-300" />
+                            <p className="text-sm font-semibold text-slate-600">No documents found</p>
+                            <p className="text-xs text-slate-400">
+                              Scan the QR code to upload from your mobile, or click &quot;Upload More&quot;.
+                            </p>
+                          </div>
+                        ) : viewMode === 'list' ? (
+                          /* LIST VIEW matching user screenshot */
+                          displayedVaultFiles.map((file) => {
+                            const isPdf =
+                              file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+                            const formattedDate = formatDocumentDate(file.uploadedAt);
+
+                            return (
+                              <div
+                                key={file.id}
+                                className="bg-white border border-slate-200/90 hover:border-blue-300 rounded-2xl p-3 sm:p-3.5 flex items-center justify-between gap-3 shadow-2xs hover:shadow-xs transition-all group"
+                              >
+                                {/* Thumbnail + Details */}
+                                <div className="flex items-center gap-3 min-w-0 flex-1">
+                                  {/* Document Thumbnail */}
+                                  <div
+                                    onClick={() => setPreviewFile(file)}
+                                    className="w-13 h-13 sm:w-14 sm:h-14 rounded-xl border border-slate-200 bg-slate-50 overflow-hidden shrink-0 flex items-center justify-center cursor-pointer hover:opacity-90 relative shadow-2xs"
+                                  >
+                                    {isPdf ? (
+                                      <div className="w-full h-full bg-gradient-to-br from-rose-500 to-rose-700 flex flex-col items-center justify-center text-white">
+                                        <FileText className="w-6 h-6 text-white" />
+                                        <span className="text-[9px] font-black tracking-wider uppercase mt-0.5">
+                                          PDF
+                                        </span>
+                                      </div>
+                                    ) : (
+                                      <img
+                                        src={file.dataUrl}
+                                        alt={file.name}
+                                        className="w-full h-full object-cover object-top"
+                                        loading="lazy"
+                                      />
+                                    )}
+                                  </div>
+
+                                  {/* Name, Meta, and Badge */}
+                                  <div className="min-w-0 flex-1">
+                                    <h4
+                                      onClick={() => setPreviewFile(file)}
+                                      className="text-xs sm:text-sm font-bold text-slate-900 truncate hover:text-[#0056A6] cursor-pointer"
+                                      title={file.name}
+                                    >
+                                      {file.name}
+                                    </h4>
+                                    <div className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
+                                      <span>{formatBytes(file.size)}</span>
+                                      <span>•</span>
+                                      <span className="uppercase">{isPdf ? 'PDF' : 'JPG'}</span>
+                                      <span>•</span>
+                                      <span>{formattedDate}</span>
+                                    </div>
+                                    <div className="mt-1">
+                                      <span className="inline-block text-[10px] font-semibold text-[#0056A6] bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-md">
+                                        {file.category || 'Candidate Document'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Right Badges & Actions */}
+                                <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                                  {/* Verified Badge / Toggle */}
+                                  {file.verifiedStamp ? (
+                                    <button
+                                      onClick={() => handleToggleStamp(file)}
+                                      className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold hover:bg-emerald-100 transition-colors cursor-pointer"
+                                      title="Click to toggle verification status"
+                                    >
+                                      <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                      <span>Verified</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleToggleStamp(file)}
+                                      className="p-1.5 rounded-xl border border-slate-200 text-slate-400 hover:text-emerald-600 hover:border-emerald-200 hover:bg-emerald-50 transition-colors cursor-pointer"
+                                      title="Mark as Verified"
+                                    >
+                                      <ShieldCheck className="w-4 h-4" />
+                                    </button>
+                                  )}
+
+                                  {/* View Button */}
+                                  <button
+                                    onClick={() => setPreviewFile(file)}
+                                    className="px-2.5 sm:px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-700 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                                  >
+                                    <Eye className="w-3.5 h-3.5 text-[#0056A6]" />
+                                    <span className="hidden sm:inline">View</span>
+                                  </button>
+
+                                  {/* Download Button */}
+                                  <button
+                                    onClick={() => triggerFileDownload(file.dataUrl, file.name)}
+                                    className="px-2.5 sm:px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-700 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                                  >
+                                    <Download className="w-3.5 h-3.5 text-slate-600" />
+                                    <span className="hidden sm:inline">Download</span>
+                                  </button>
+
+                                  {/* Delete Button */}
+                                  <button
+                                    onClick={() => handleDeleteFile(file.id)}
+                                    className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border border-rose-100 bg-white hover:bg-rose-50 text-rose-600 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                                    title="Delete document"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <span className="hidden sm:inline">Delete</span>
+                                  </button>
+
+                                  {/* 3-dots more menu */}
+                                  <div className="relative">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveDropdownId(activeDropdownId === file.id ? null : file.id);
+                                      }}
+                                      className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                                      title="More Options"
+                                    >
+                                      <MoreVertical className="w-4 h-4" />
+                                    </button>
+
+                                    {activeDropdownId === file.id && (
+                                      <div
+                                        className="absolute right-0 top-full mt-1 w-44 bg-white border border-slate-200 rounded-xl shadow-lg z-20 py-1 text-xs"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <button
+                                          onClick={() => {
+                                            printDocumentDirectly(file.dataUrl, file.name, !isPdf);
+                                            setActiveDropdownId(null);
+                                          }}
+                                          className="w-full text-left px-3 py-1.5 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+                                        >
+                                          <Printer className="w-3.5 h-3.5" />
+                                          <span>Print Document</span>
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            handleToggleStamp(file);
+                                            setActiveDropdownId(null);
+                                          }}
+                                          className="w-full text-left px-3 py-1.5 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+                                        >
+                                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                                          <span>{file.verifiedStamp ? 'Unverify' : 'Mark Verified'}</span>
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            handleDeleteFile(file.id);
+                                            setActiveDropdownId(null);
+                                          }}
+                                          className="w-full text-left px-3 py-1.5 hover:bg-rose-50 flex items-center gap-2 text-rose-600"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                          <span>Delete Permanently</span>
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
-                              <p className="text-xs font-bold text-[#1F2937]">Waiting for mobile scan...</p>
-                              <p className="text-[11px] text-[#6B7280] max-w-xs">
-                                When a candidate scans the QR code and uploads documents, they appear here instantly ready to view & verify inside the software.
-                              </p>
-                            </div>
-                          ) : (
-                            files.map((file) => {
-                              const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+                            );
+                          })
+                        ) : (
+                          /* GRID VIEW */
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            {displayedVaultFiles.map((file) => {
+                              const isPdf =
+                                file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
                               return (
                                 <div
                                   key={file.id}
-                                  className="p-3 rounded-xl border border-[#D9E1EA] bg-[#F7F9FC] hover:bg-[#EAF4FB]/60 flex items-center justify-between gap-3 transition-colors"
+                                  className="bg-white border border-slate-200 rounded-2xl p-2.5 flex flex-col justify-between hover:border-blue-300 hover:shadow-xs transition-all group"
                                 >
                                   <div
-                                    className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer"
                                     onClick={() => setPreviewFile(file)}
-                                    title="Click to Open in Software Viewer"
+                                    className="w-full aspect-4/3 rounded-xl border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center cursor-pointer mb-2"
                                   >
                                     {isPdf ? (
-                                      <div className="w-8 h-8 rounded-lg bg-rose-50 border border-rose-200 flex items-center justify-center shrink-0 text-rose-600">
-                                        <FileText className="w-4 h-4" />
+                                      <div className="w-full h-full bg-gradient-to-br from-rose-500 to-rose-700 flex flex-col items-center justify-center text-white">
+                                        <FileText className="w-8 h-8 text-white" />
+                                        <span className="text-[10px] font-bold uppercase mt-1">PDF</span>
                                       </div>
                                     ) : (
-                                      <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0 overflow-hidden">
-                                        <img src={file.dataUrl} alt={file.name} className="w-full h-full object-cover" />
-                                      </div>
+                                      <img
+                                        src={file.dataUrl}
+                                        alt={file.name}
+                                        className="w-full h-full object-cover object-top"
+                                        loading="lazy"
+                                      />
                                     )}
-
-                                    <div className="min-w-0 flex-1">
-                                      <div className="flex items-center gap-1.5">
-                                        <p className="text-xs font-bold text-[#1F2937] truncate" title={file.name}>
-                                          {file.name}
-                                        </p>
-                                        {file.verifiedStamp && (
-                                          <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-0.5">
-                                            <ShieldCheck className="w-2.5 h-2.5" />
-                                            Verified
-                                          </span>
-                                        )}
-                                      </div>
-                                      <p className="text-[10px] text-[#6B7280] font-mono">
-                                        {formatBytes(file.size)} • {file.category || 'Doc'} • {new Date(file.uploadedAt).toLocaleTimeString()}
-                                      </p>
-                                    </div>
                                   </div>
 
-                                  {/* Actions for each file */}
-                                  <div className="flex items-center gap-1.5 shrink-0">
-                                    {/* Primary Action: Open / View in Software */}
+                                  <h4
+                                    onClick={() => setPreviewFile(file)}
+                                    className="text-xs font-bold text-slate-900 truncate hover:text-[#0056A6] cursor-pointer"
+                                    title={file.name}
+                                  >
+                                    {file.name}
+                                  </h4>
+                                  <p className="text-[10px] text-slate-400 mt-0.5">
+                                    {formatBytes(file.size)}
+                                  </p>
+
+                                  <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between">
                                     <button
-                                      type="button"
                                       onClick={() => setPreviewFile(file)}
-                                      className="px-3 py-1.5 rounded-xl bg-[#0056A6] hover:bg-[#003B73] text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-all cursor-pointer"
-                                      title="Open and Inspect Document in Software Viewer"
+                                      className="text-[11px] font-semibold text-[#0056A6] hover:underline"
                                     >
-                                      <Eye className="w-3.5 h-3.5" />
-                                      <span>Open</span>
+                                      View
                                     </button>
-
-                                    {/* Direct Print Button */}
                                     <button
-                                      type="button"
-                                      onClick={() => printDocumentDirectly(file.dataUrl, file.name, !isPdf)}
-                                      className="p-1.5 rounded-xl bg-white hover:bg-[#F7F9FC] text-[#4B5563] border border-[#D9E1EA] transition-colors cursor-pointer"
-                                      title="Direct Print from Software"
-                                    >
-                                      <Printer className="w-3.5 h-3.5" />
-                                    </button>
-
-                                    {/* Optional Export to PC Device */}
-                                    <button
-                                      type="button"
                                       onClick={() => triggerFileDownload(file.dataUrl, file.name)}
-                                      className="p-1.5 rounded-xl bg-white hover:bg-emerald-50 text-[#4B5563] hover:text-emerald-700 border border-[#D9E1EA] transition-colors cursor-pointer"
-                                      title="Optional: Save Copy to PC Device"
+                                      className="p-1 text-slate-500 hover:text-slate-800"
+                                      title="Download"
                                     >
                                       <Download className="w-3.5 h-3.5" />
-                                    </button>
-
-                                    {/* Delete Button */}
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteFile(file.id)}
-                                      className="p-1.5 rounded-xl bg-white hover:bg-red-50 text-[#4B5563] hover:text-red-700 border border-[#D9E1EA] transition-colors cursor-pointer"
-                                      title="Remove from Software"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
                                     </button>
                                   </div>
                                 </div>
                               );
-                            })
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* TAB 2: Software Vault */}
-                {activeTab === 'software_vault' && (
-                  <div className="bg-white p-5 rounded-2xl border border-[#D9E1EA] shadow-xs space-y-4">
-                    {/* Header + Search Bar + Filters */}
-                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pb-3 border-b border-[#D9E1EA]">
-                      <div className="flex items-center gap-2">
-                        <FolderArchive className="w-5 h-5 text-[#0056A6]" />
-                        <div>
-                          <h3 className="text-xs sm:text-sm font-bold text-[#003B73]">
-                            In-Software Document Vault ({displayedVaultFiles.length} / {vaultFiles.length})
-                          </h3>
-                          <p className="text-[10px] text-[#6B7280]">
-                            Persistent document memory stored inside the software console.
-                          </p>
-                        </div>
+                            })}
+                          </div>
+                        )}
                       </div>
 
-                      {/* Search & Filter Controls */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {/* Search Input */}
-                        <div className="relative">
-                          <Search className="w-3.5 h-3.5 text-[#6B7280] absolute left-2.5 top-1/2 -translate-y-1/2" />
-                          <input
-                            type="text"
-                            placeholder="Search document name..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-8 pr-2.5 py-1.5 text-xs border border-[#D9E1EA] rounded-xl focus:outline-none focus:border-[#0056A6] focus:ring-2 focus:ring-[#0056A6]/20 bg-white"
-                          />
+                      {/* Bottom Footer Bar */}
+                      <div className="px-5 py-3.5 bg-white border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 select-none shrink-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-slate-500">
+                            {displayedVaultFiles.length} {displayedVaultFiles.length === 1 ? 'document' : 'documents'}
+                          </span>
                         </div>
 
-                        {/* Type Filters */}
-                        <div className="flex items-center bg-[#F7F9FC] p-1 rounded-xl border border-[#D9E1EA] text-xs font-bold text-[#4B5563]">
-                          <button
-                            onClick={() => setTypeFilter('all')}
-                            className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                              typeFilter === 'all' ? 'bg-[#0056A6] text-white shadow-xs' : 'hover:text-[#003B73]'
-                            }`}
-                          >
-                            All
-                          </button>
-                          <button
-                            onClick={() => setTypeFilter('pdf')}
-                            className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                              typeFilter === 'pdf' ? 'bg-[#0056A6] text-white shadow-xs' : 'hover:text-[#003B73]'
-                            }`}
-                          >
-                            PDFs
-                          </button>
-                          <button
-                            onClick={() => setTypeFilter('image')}
-                            className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                              typeFilter === 'image' ? 'bg-[#0056A6] text-white shadow-xs' : 'hover:text-[#003B73]'
-                            }`}
-                          >
-                            Images
-                          </button>
-                          <button
-                            onClick={() => setTypeFilter('verified')}
-                            className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                              typeFilter === 'verified' ? 'bg-emerald-600 text-white shadow-xs' : 'hover:text-emerald-700'
-                            }`}
-                          >
-                            Verified
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Vault Documents Grid */}
-                    <div className="min-h-[250px] max-h-[380px] overflow-y-auto space-y-2 pr-1">
-                      {displayedVaultFiles.length === 0 ? (
-                        <div className="py-12 flex flex-col items-center justify-center text-center text-[#6B7280] space-y-2">
-                          <FolderArchive className="w-10 h-10 text-[#6B7280]/50" />
-                          <p className="text-xs font-bold text-[#1F2937]">No documents found in vault</p>
-                          <p className="text-[11px] text-[#6B7280]">
-                            {searchQuery ? 'Try modifying your search filter.' : 'Upload files via the QR Scanner tab or import directly.'}
-                          </p>
-                        </div>
-                      ) : (
-                        displayedVaultFiles.map((file) => {
-                          const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-                          return (
-                            <div
-                              key={file.id}
-                              className="p-3.5 rounded-xl border border-[#D9E1EA] bg-[#F7F9FC] hover:bg-[#EAF4FB]/50 flex items-center justify-between gap-3 transition-colors"
+                        <div className="flex items-center gap-2 sm:gap-3">
+                          {onOpenImgToPdf && (
+                            <button
+                              type="button"
+                              id="vault-footer-make-pdf-btn"
+                              onClick={onOpenImgToPdf}
+                              className="px-3.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#0056A6] font-bold text-xs sm:text-sm flex items-center gap-1.5 border border-blue-200 transition-all cursor-pointer"
+                              title="Convert images to PDF"
                             >
-                              <div
-                                className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
-                                onClick={() => setPreviewFile(file)}
-                              >
-                                {isPdf ? (
-                                  <div className="w-9 h-9 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-center shrink-0 text-rose-600">
-                                    <FileText className="w-5 h-5" />
-                                  </div>
-                                ) : (
-                                  <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0 overflow-hidden">
-                                    <img src={file.dataUrl} alt={file.name} className="w-full h-full object-cover" />
-                                  </div>
-                                )}
-
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-2">
-                                    <h4 className="text-xs font-bold text-[#1F2937] truncate" title={file.name}>
-                                      {file.name}
-                                    </h4>
-                                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[#EAF4FB] text-[#003B73]">
-                                      {file.category || 'Candidate Doc'}
-                                    </span>
-                                    {file.verifiedStamp && (
-                                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-0.5">
-                                        <ShieldCheck className="w-3 h-3" />
-                                        Verified
-                                      </span>
-                                    )}
-                                  </div>
-                                  <p className="text-[10px] text-[#6B7280] font-mono mt-0.5">
-                                    {formatBytes(file.size)} • Session #{file.sessionId || sessionId} • {new Date(file.uploadedAt).toLocaleString()}
-                                  </p>
-                                </div>
-                              </div>
-
-                              {/* Vault Actions */}
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                {/* Verify Stamp Toggle */}
-                                <button
-                                  type="button"
-                                  onClick={() => handleToggleStamp(file)}
-                                  className={`p-2 rounded-xl border text-xs transition-colors cursor-pointer ${
-                                    file.verifiedStamp
-                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                      : 'bg-white text-[#4B5563] border-[#D9E1EA] hover:bg-[#F7F9FC]'
-                                  }`}
-                                  title={file.verifiedStamp ? 'Marked as Verified' : 'Stamp as Verified'}
-                                >
-                                  <ShieldCheck className="w-3.5 h-3.5" />
-                                </button>
-
-                                {/* Primary: Open in Software */}
-                                <button
-                                  type="button"
-                                  onClick={() => setPreviewFile(file)}
-                                  className="px-3.5 py-1.5 rounded-xl bg-[#0056A6] hover:bg-[#003B73] text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-all cursor-pointer"
-                                  title="Open in Software Viewer"
-                                >
-                                  <Eye className="w-3.5 h-3.5" />
-                                  <span>Open</span>
-                                </button>
-
-                                {/* Direct Print */}
-                                <button
-                                  type="button"
-                                  onClick={() => printDocumentDirectly(file.dataUrl, file.name, !isPdf)}
-                                  className="p-2 rounded-xl bg-white border border-[#D9E1EA] hover:bg-[#F7F9FC] text-[#4B5563] transition-colors cursor-pointer"
-                                  title="Direct Print Document"
-                                >
-                                  <Printer className="w-3.5 h-3.5" />
-                                </button>
-
-                                {/* Export to Device */}
-                                <button
-                                  type="button"
-                                  onClick={() => triggerFileDownload(file.dataUrl, file.name)}
-                                  className="p-2 rounded-xl bg-white border border-[#D9E1EA] hover:bg-emerald-50 text-[#4B5563] hover:text-emerald-700 transition-colors cursor-pointer"
-                                  title="Export Copy to PC Device"
-                                >
-                                  <Download className="w-3.5 h-3.5" />
-                                </button>
-
-                                {/* Delete */}
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteFile(file.id)}
-                                  className="p-2 rounded-xl bg-white border border-[#D9E1EA] hover:bg-rose-50 text-[#4B5563] hover:text-rose-700 transition-colors cursor-pointer"
-                                  title="Delete Document"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
+                              <FileImage className="w-4 h-4" />
+                              <span>Make Images to PDF</span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (localFileInputRef.current) {
+                                localFileInputRef.current.click();
+                              }
+                            }}
+                            className="px-4 py-2 rounded-xl bg-[#0056A6] hover:bg-[#003B73] active:scale-95 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-md shadow-blue-600/20 transition-all cursor-pointer"
+                          >
+                            <Plus className="w-4 h-4 stroke-[3]" />
+                            <span>Upload More</span>
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Bottom Footer */}
-              <div className="bg-white px-5 py-3 border-t border-[#D9E1EA] flex items-center justify-between text-xs text-[#6B7280]">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                  <span className="text-[11px]">
-                    All documents are downloaded instantly inside software storage • No local disk storage needed
-                  </span>
+                  )}
                 </div>
-                <button
-                  onClick={onClose}
-                  className="px-3.5 py-1.5 rounded-xl bg-[#F7F9FC] hover:bg-[#EAF4FB] text-[#003B73] border border-[#D9E1EA] text-xs font-bold transition-colors cursor-pointer"
-                >
-                  Close
-                </button>
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Interactive In-Software Document Viewer */}
-      <InSoftwareDocumentViewer
-        file={previewFile}
-        allFiles={activeTab === 'software_vault' ? displayedVaultFiles : files}
-        onClose={() => setPreviewFile(null)}
-        onSelectFile={(f) => setPreviewFile(f)}
-      />
+      {/* Full in-software Document Inspection Viewer */}
+      {previewFile && (
+        <InSoftwareDocumentViewer
+          file={previewFile}
+          allFiles={vaultFiles}
+          onClose={() => setPreviewFile(null)}
+          onSelectFile={(f) => setPreviewFile(f)}
+        />
+      )}
     </>
   );
 };

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Menu, ChevronDown, LogOut, Settings, UserCheck, ShieldCheck, Building2, Phone, Clock, ExternalLink } from 'lucide-react';
+import { Menu, ChevronDown, LogOut, Settings, UserCheck, ShieldCheck, Building2, Phone, Clock, ExternalLink, FileImage } from 'lucide-react';
 import { NavTab } from './Sidebar';
 import { UserProfile } from '../types/auth';
 import { hasTabPermission } from '../services/authService';
@@ -8,6 +8,7 @@ interface TopNavbarProps {
   onToggleSidebar: () => void;
   onNavigateTab: (tab: NavTab) => void;
   onLogout: () => void;
+  onOpenImgToPdf?: () => void;
   unreadCount?: number;
   currentUser?: UserProfile | null;
 }
@@ -16,6 +17,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
   onToggleSidebar,
   onNavigateTab,
   onLogout,
+  onOpenImgToPdf,
   currentUser,
 }) => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -94,7 +96,20 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
       </div>
 
       {/* Right: Live Digital Clock, Helpline & User Profile */}
-      <div className="flex items-center gap-3 sm:gap-4">
+      <div className="flex items-center gap-2.5 sm:gap-3">
+        {/* Image to PDF Quick Tool */}
+        {onOpenImgToPdf && (
+          <button
+            id="navbar-img-to-pdf-btn"
+            onClick={onOpenImgToPdf}
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#D9E1EA] bg-white hover:bg-[#EAF4FB] text-xs font-semibold text-[#003B73] hover:text-[#0056A6] hover:border-[#0056A6] transition-colors cursor-pointer shadow-2xs"
+            title="Image to PDF"
+          >
+            <FileImage className="w-3.5 h-3.5 text-[#0056A6]" />
+            <span>Image to PDF</span>
+          </button>
+        )}
+
         {/* Live Clock Strip */}
         <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#F7F9FC] border border-[#D9E1EA] text-xs text-[#003B73]">
           <Clock className="w-3.5 h-3.5 text-[#0056A6]" />

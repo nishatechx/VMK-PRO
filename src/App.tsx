@@ -14,6 +14,7 @@ import { TicketsView } from './components/views/TicketsView';
 import { TicketGeneratorModal } from './components/TicketGeneratorModal';
 import { WhatsappTicketModal, WhatsappInitialData } from './components/WhatsappTicketModal';
 import { QrUploadModal } from './components/QrUploadModal';
+import { ImgToPdfModal } from './components/ImgToPdfModal';
 import { MobileQrUploadView } from './components/MobileQrUploadView';
 import { LoginScreen } from './components/LoginScreen';
 import {
@@ -35,20 +36,50 @@ export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
 
-  // Modals for the 3 Core Functional Tools
+  // Modals for Core Functional Tools
   const [isTicketGeneratorOpen, setIsTicketGeneratorOpen] = useState<boolean>(false);
   const [isWhatsappTicketOpen, setIsWhatsappTicketOpen] = useState<boolean>(false);
   const [whatsappInitialData, setWhatsappInitialData] = useState<WhatsappInitialData | null>(null);
   const [isQrUploadModalOpen, setIsQrUploadModalOpen] = useState<boolean>(false);
+  const [isImgToPdfOpen, setIsImgToPdfOpen] = useState<boolean>(false);
 
   const handleOpenWhatsappWithData = (data: WhatsappInitialData) => {
-    setWhatsappInitialData(data);
-    setIsWhatsappTicketOpen(true);
+    if (hasFeaturePermission(currentUser, 'whatsapp_tool')) {
+      // Per instruction: Ticket ID is not prefilled; must be added by user
+      setWhatsappInitialData({ ...data, ticketNo: '' });
+      setIsWhatsappTicketOpen(true);
+    }
+  };
+
+  const handleSyncWhatsappData = (data: WhatsappInitialData) => {
+    // Automatically syncs ticket data to the WhatsApp tool in the background without popping it up
+    // Per instruction: Ticket ID is not prefilled; must be added by user
+    setWhatsappInitialData({ ...data, ticketNo: '' });
   };
 
   const handleOpenWhatsappGeneral = () => {
-    setWhatsappInitialData(null);
-    setIsWhatsappTicketOpen(true);
+    if (hasFeaturePermission(currentUser, 'whatsapp_tool')) {
+      // Opens WhatsApp tool with any pre-synced data available
+      setIsWhatsappTicketOpen(true);
+    }
+  };
+
+  const handleOpenTicketGenerator = () => {
+    if (hasFeaturePermission(currentUser, 'ticket_generator_tool')) {
+      setIsTicketGeneratorOpen(true);
+    }
+  };
+
+  const handleOpenQrUpload = () => {
+    if (hasFeaturePermission(currentUser, 'qr_upload_tool')) {
+      setIsQrUploadModalOpen(true);
+    }
+  };
+
+  const handleOpenImgToPdf = () => {
+    if (hasFeaturePermission(currentUser, 'img_to_pdf_tool')) {
+      setIsImgToPdfOpen(true);
+    }
   };
 
   const [qrSessionParam, setQrSessionParam] = useState<string | null>(null);
@@ -76,13 +107,43 @@ export default function App() {
     if (updated) {
       setCurUser(updated);
       if (!hasTabPermission(updated, activeTab)) {
-        const firstAllowed = (['dashboard', 'tickets', 'visitors', 'students', 'google_sheets', 'settings', 'profile', 'user_management'] as NavTab[]).find(
-          (t) => hasTabPermission(updated, t)
-        );
+        const priorityOrder: NavTab[] = [
+          'dashboard',
+          'students',
+          'tickets',
+          'visitors',
+          'profile',
+          'settings',
+          'google_sheets',
+          'user_management',
+        ];
+        const firstAllowed = priorityOrder.find((t) => hasTabPermission(updated, t));
         setActiveTab(firstAllowed || 'profile');
       }
     }
   };
+
+  // Keep active tab strictly within user's authorized permissions
+  useEffect(() => {
+    if (currentUser) {
+      if (!hasTabPermission(currentUser, activeTab)) {
+        const priorityOrder: NavTab[] = [
+          'dashboard',
+          'students',
+          'tickets',
+          'visitors',
+          'profile',
+          'settings',
+          'google_sheets',
+          'user_management',
+        ];
+        const firstAllowed = priorityOrder.find((t) => hasTabPermission(currentUser, t));
+        if (firstAllowed && firstAllowed !== activeTab) {
+          setActiveTab(firstAllowed);
+        }
+      }
+    }
+  }, [currentUser, activeTab]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -129,6 +190,13 @@ export default function App() {
     return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
   }
 
+  const navigateToTab = (tab: NavTab) => {
+    if (hasTabPermission(currentUser, tab)) {
+      setActiveTab(tab);
+      setIsMobileSidebarOpen(false);
+    }
+  };
+
   return (
     <div
       id="vmk-washim-app-root"
@@ -140,10 +208,7 @@ export default function App() {
       >
         <Sidebar
           activeTab={activeTab}
-          onSelectTab={(tab) => {
-            setActiveTab(tab);
-            setIsMobileSidebarOpen(false);
-          }}
+          onSelectTab={navigateToTab}
           onLogout={handleLogout}
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -161,10 +226,7 @@ export default function App() {
           <div className="relative w-72 h-full bg-[#F7F9FC] z-10 shadow-2xl">
             <Sidebar
               activeTab={activeTab}
-              onSelectTab={(tab) => {
-                setActiveTab(tab);
-                setIsMobileSidebarOpen(false);
-              }}
+              onSelectTab={navigateToTab}
               onLogout={handleLogout}
               isCollapsed={false}
               onToggleCollapse={() => setIsMobileSidebarOpen(false)}
@@ -185,8 +247,9 @@ export default function App() {
               setIsSidebarCollapsed(!isSidebarCollapsed);
             }
           }}
-          onNavigateTab={(tab) => setActiveTab(tab)}
+          onNavigateTab={navigateToTab}
           onLogout={handleLogout}
+          onOpenImgToPdf={hasFeaturePermission(currentUser, 'img_to_pdf_tool') ? handleOpenImgToPdf : undefined}
           currentUser={currentUser}
         />
 
@@ -204,9 +267,10 @@ export default function App() {
               {activeTab === 'dashboard' && hasTabPermission(currentUser, 'dashboard') && (
                 <DashboardView
                   onOpenWhatsappTool={handleOpenWhatsappGeneral}
-                  onOpenQrTool={() => setIsQrUploadModalOpen(true)}
-                  onOpenTicketTool={() => setIsTicketGeneratorOpen(true)}
-                  onNavigateTab={(tab) => setActiveTab(tab)}
+                  onOpenQrTool={handleOpenQrUpload}
+                  onOpenTicketTool={handleOpenTicketGenerator}
+                  onOpenImgToPdfTool={handleOpenImgToPdf}
+                  onNavigateTab={navigateToTab}
                   currentUser={currentUser}
                 />
               )}
@@ -214,14 +278,14 @@ export default function App() {
               {activeTab === 'visitors' && hasTabPermission(currentUser, 'visitors') && (
                 <VisitorsView
                   currentUser={currentUser}
-                  onNavigateTab={(tab) => setActiveTab(tab as NavTab)}
+                  onNavigateTab={(tab) => navigateToTab(tab as NavTab)}
                 />
               )}
 
               {activeTab === 'tickets' && hasTabPermission(currentUser, 'tickets') && (
                 <TicketsView
                   currentUser={currentUser}
-                  onOpenTicketTool={() => setIsTicketGeneratorOpen(true)}
+                  onOpenTicketTool={handleOpenTicketGenerator}
                   onOpenWhatsappTool={handleOpenWhatsappGeneral}
                   onOpenWhatsappWithData={handleOpenWhatsappWithData}
                 />
@@ -234,8 +298,8 @@ export default function App() {
               {activeTab === 'students' && hasTabPermission(currentUser, 'students') && (
                 <StudentsView
                   onOpenWhatsappTool={handleOpenWhatsappGeneral}
-                  onOpenTicketTool={() => setIsTicketGeneratorOpen(true)}
-                  onOpenQrTool={() => setIsQrUploadModalOpen(true)}
+                  onOpenTicketTool={handleOpenTicketGenerator}
+                  onOpenQrTool={handleOpenQrUpload}
                   currentUser={currentUser}
                 />
               )}
@@ -261,6 +325,16 @@ export default function App() {
                   onRefreshSession={handleRefreshSession}
                 />
               )}
+
+              {!hasTabPermission(currentUser, activeTab) && (
+                <div className="bg-white border border-[#D9E1EA] rounded-2xl p-8 text-center max-w-md mx-auto my-12 shadow-xs">
+                  <ShieldCheck className="w-10 h-10 text-amber-500 mx-auto mb-3" />
+                  <h3 className="text-base font-bold text-[#003B73] mb-1">Access Restricted</h3>
+                  <p className="text-xs text-[#6B7280] mb-4">
+                    You are not authorized to view this tab. Please select an authorized option from the navigation menu.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Application Footer */}
@@ -283,10 +357,7 @@ export default function App() {
       {/* 3 Core Interactive Modals */}
       <WhatsappTicketModal
         isOpen={isWhatsappTicketOpen}
-        onClose={() => {
-          setIsWhatsappTicketOpen(false);
-          setWhatsappInitialData(null);
-        }}
+        onClose={() => setIsWhatsappTicketOpen(false)}
         currentUser={currentUser}
         initialTicketData={whatsappInitialData}
       />
@@ -294,6 +365,7 @@ export default function App() {
       <QrUploadModal
         isOpen={isQrUploadModalOpen}
         onClose={() => setIsQrUploadModalOpen(false)}
+        onOpenImgToPdf={hasFeaturePermission(currentUser, 'img_to_pdf_tool') ? handleOpenImgToPdf : undefined}
       />
 
       <TicketGeneratorModal
@@ -301,6 +373,13 @@ export default function App() {
         onClose={() => setIsTicketGeneratorOpen(false)}
         currentUser={currentUser}
         onOpenWhatsappWithData={handleOpenWhatsappWithData}
+        onSyncWhatsappData={handleSyncWhatsappData}
+      />
+
+      <ImgToPdfModal
+        isOpen={isImgToPdfOpen}
+        onClose={() => setIsImgToPdfOpen(false)}
+        currentUser={currentUser}
       />
     </div>
   );

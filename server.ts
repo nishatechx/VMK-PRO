@@ -1,6 +1,14 @@
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
+import fs from "fs";
+import { fileURLToPath } from "url";
+
+process.on('uncaughtException', (err) => {
+  console.error('[UNCAUGHT EXCEPTION]', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[UNHANDLED REJECTION]', reason);
+});
 
 interface QrUploadedFile {
   id: string;
@@ -217,23 +225,62 @@ async function startServer() {
     }
   });
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  function getDistPath(): string {
+    const cwdDist = path.join(process.cwd(), 'dist');
+    if (fs.existsSync(path.join(cwdDist, 'index.html'))) {
+      return cwdDist;
+    }
+    try {
+      let dir: string = process.cwd();
+      if (typeof __dirname !== 'undefined') {
+        dir = __dirname;
+      } else if (import.meta && typeof import.meta.url === 'string') {
+        dir = path.dirname(fileURLToPath(import.meta.url));
+      }
+      const siblingDist = path.join(dir, 'dist');
+      if (fs.existsSync(path.join(siblingDist, 'index.html'))) {
+        return siblingDist;
+      }
+      if (fs.existsSync(path.join(dir, 'index.html'))) {
+        return dir;
+      }
+    } catch {
+      // Fallback
+    }
+    return cwdDist;
+  }
+
+  const distPath = getDistPath();
+  const hasBuiltDist = fs.existsSync(path.join(distPath, 'index.html'));
+  const isDev = process.env.NODE_ENV === "development" || process.env.npm_lifecycle_event === "dev";
+  const isProduction = process.env.NODE_ENV === "production" || process.env.npm_lifecycle_event === "start" || (!isDev && hasBuiltDist);
+
+  if (isProduction) {
+    console.log(`[PROD] Serving production build from: ${distPath}`);
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      if (req.path.startsWith('/api/')) {
+        return res.status(404).json({ error: 'Endpoint not found' });
+      }
+      const indexPath = path.join(distPath, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(503).send('Application build not found. Run npm run build.');
+      }
+    });
+  } else {
+    console.log('[DEV] Initializing Vite middleware for development');
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://0.0.0.0:${PORT}`);
+    console.log(`Server listening on port ${PORT} (mode: ${isProduction ? 'production' : 'development'})`);
   });
 }
 

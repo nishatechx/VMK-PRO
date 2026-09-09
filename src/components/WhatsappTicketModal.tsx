@@ -15,6 +15,8 @@ import {
 import { UserProfile, TicketRecord } from '../types/auth';
 import { getCurrentUser } from '../services/authService';
 import { saveTicketRecord } from '../services/ticketService';
+import { ALL_COURSES } from '../data/courses';
+import { FormValidationErrorModal } from './FormValidationErrorModal';
 
 export interface WhatsappInitialData {
   name?: string;
@@ -70,7 +72,23 @@ export const WhatsappTicketModal: React.FC<WhatsappTicketModalProps> = ({
     type: '',
   });
 
+  // Validation Popup Modal State
+  const [validationPopup, setValidationPopup] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    missingFields: string[];
+    extraErrors?: string[];
+  }>({
+    isOpen: false,
+    title: 'Required Fields Missing',
+    description: 'Please fill in all mandatory fields before generating the WhatsApp ticket notice:',
+    missingFields: [],
+    extraErrors: [],
+  });
+
   // Populate data when modal opens or initialTicketData changes
+  // NOTE: Ticket ID is NEVER prefilled; it must be entered manually by the user.
   useEffect(() => {
     if (isOpen) {
       if (initialTicketData) {
@@ -81,14 +99,9 @@ export const WhatsappTicketModal: React.FC<WhatsappTicketModalProps> = ({
           cetRegNo: initialTicketData.cetRegNo || '',
           capAppNo: initialTicketData.capAppNo || '',
           courseName: initialTicketData.courseName || '',
-          ticketNo: initialTicketData.ticketNo || '',
+          ticketNo: '', // Intentionally not prefilled per requirement: user must enter Ticket ID
           query: initialTicketData.query || '',
         });
-      } else if (!form.ticketNo) {
-        // Auto-generate ticket id if brand new
-        const randomNum = Math.floor(100000 + Math.random() * 900000);
-        const newTicket = `WA-CAP-${new Date().getFullYear()}-${randomNum}`;
-        setForm((prev) => ({ ...prev, ticketNo: newTicket }));
       }
     }
   }, [isOpen, initialTicketData]);
@@ -96,19 +109,16 @@ export const WhatsappTicketModal: React.FC<WhatsappTicketModalProps> = ({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
-        onClose();
+        if (validationPopup.isOpen) {
+          setValidationPopup((prev) => ({ ...prev, isOpen: false }));
+        } else {
+          onClose();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
-
-  // Auto-generate ticket number
-  const generateTicketNumber = () => {
-    const randomNum = Math.floor(100000 + Math.random() * 900000);
-    const newTicket = `WA-CAP-${new Date().getFullYear()}-${randomNum}`;
-    setForm((prev) => ({ ...prev, ticketNo: newTicket }));
-  };
+  }, [isOpen, onClose, validationPopup.isOpen]);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -120,34 +130,60 @@ export const WhatsappTicketModal: React.FC<WhatsappTicketModalProps> = ({
     }
   };
 
-  const validate = () => {
-    const newErrors: Record<string, boolean> = {};
-    if (!form.name.trim()) newErrors.name = true;
-    if (!form.mobile.trim()) newErrors.mobile = true;
-    if (!form.courseName.trim()) newErrors.courseName = true;
-    if (!form.query.trim()) newErrors.query = true;
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validate()) {
+
+    const missing: string[] = [];
+    const extra: string[] = [];
+    const newErrors: Record<string, boolean> = {};
+
+    if (!form.name.trim()) {
+      missing.push('Candidate Name');
+      newErrors.name = true;
+    }
+    if (!form.mobile.trim()) {
+      missing.push('Mobile Number');
+      newErrors.mobile = true;
+    }
+    if (!form.courseName.trim()) {
+      missing.push('Course Name');
+      newErrors.courseName = true;
+    }
+    // Per strict user requirement: "dont generet whatsapp ticket if ticket id is not filled"
+    if (!form.ticketNo.trim()) {
+      missing.push('Ticket ID / Ticket Number');
+      newErrors.ticketNo = true;
+    }
+    if (!form.query.trim()) {
+      missing.push('Query / Grievance Details');
+      newErrors.query = true;
+    }
+
+    // Validate mobile number format
+    const cleanMobile = form.mobile.replace(/\D/g, '');
+    if (form.mobile.trim() && (cleanMobile.length !== 10 || !/^[6-9]\d{9}$/.test(cleanMobile))) {
+      extra.push('Mobile number must be a valid 10-digit Indian phone number (e.g. 9822123456).');
+      newErrors.mobile = true;
+    }
+
+    setErrors(newErrors);
+
+    if (missing.length > 0 || extra.length > 0) {
+      setValidationPopup({
+        isOpen: true,
+        title: 'Mandatory Fields Missing',
+        description: 'WhatsApp Ticket Notice cannot be generated because required fields are empty or incomplete:',
+        missingFields: missing,
+        extraErrors: extra,
+      });
       setStatusMessage({
-        text: 'Please fill in the required fields highlighted in red.',
+        text: `Validation failed: ${missing.length > 0 ? `${missing.length} mandatory field(s) empty.` : ''} ${extra.join(' ')}`,
         type: 'error',
       });
       return;
     }
 
-    const assignedTicket = form.ticketNo.trim()
-      ? form.ticketNo.trim()
-      : `WA-CAP-${Math.floor(100000 + Math.random() * 900000)}`;
-
-    if (!form.ticketNo.trim()) {
-      setForm((prev) => ({ ...prev, ticketNo: assignedTicket }));
-    }
+    const assignedTicket = form.ticketNo.trim();
 
     // Bold formatting for WhatsApp (*Heading:*) - Cleaned without scrutiny mode
     const whatsappFormatted = `*Name:* ${form.name.trim()}
@@ -392,41 +428,51 @@ ${form.query.trim()}`;
                       <input
                         type="text"
                         name="courseName"
+                        list="whatsapp-courses-list"
                         value={form.courseName}
                         onChange={handleChange}
-                        placeholder="e.g. First Year Engineering (B.Tech / B.E.)"
+                        placeholder="Select or type course (e.g. B.E. / B.Tech)"
                         className={`w-full px-3 py-2 text-sm rounded-xl border bg-white focus:outline-none transition-all ${
                           errors.courseName
                             ? 'border-red-500 focus:ring-2 focus:ring-red-200'
                             : 'border-[#D9E1EA] focus:border-[#0056A6] focus:ring-2 focus:ring-[#0056A6]/20'
                         }`}
                       />
+                      <datalist id="whatsapp-courses-list">
+                        {ALL_COURSES.map((course, idx) => (
+                          <option key={idx} value={course} />
+                        ))}
+                      </datalist>
                     </div>
                   </div>
 
-                  {/* Ticket No */}
+                  {/* Ticket No - User must manually enter this; not prefilled */}
                   <div className="pt-1">
                     <div className="flex items-center justify-between mb-1">
                       <label className="text-xs font-bold text-[#374151]">
-                        Ticket No - :
+                        Ticket No - : <span className="text-red-500">*</span>
                       </label>
-                      <button
-                        type="button"
-                        onClick={generateTicketNumber}
-                        className="text-[11px] font-semibold text-[#0056A6] hover:text-[#003B73] flex items-center gap-1 cursor-pointer"
-                      >
-                        <Sparkles className="w-3 h-3 text-[#0056A6]" />
-                        Auto-generate Ticket ID
-                      </button>
+                      <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                        Manual entry required
+                      </span>
                     </div>
                     <input
                       type="text"
                       name="ticketNo"
                       value={form.ticketNo}
                       onChange={handleChange}
-                      placeholder="e.g. WA-CAP-2026-894210 (or leave empty to auto-assign)"
-                      className="w-full px-3 py-2 text-sm rounded-xl border border-[#D9E1EA] bg-white focus:border-[#0056A6] focus:ring-2 focus:ring-[#0056A6]/20 focus:outline-none transition-all font-mono"
+                      placeholder="Enter Ticket ID (e.g. TC-FC1102-2026-1029)"
+                      className={`w-full px-3 py-2 text-sm rounded-xl border bg-white focus:outline-none transition-all font-mono ${
+                        errors.ticketNo
+                          ? 'border-red-500 focus:ring-2 focus:ring-red-200'
+                          : 'border-[#D9E1EA] focus:border-[#0056A6] focus:ring-2 focus:ring-[#0056A6]/20'
+                      }`}
                     />
+                    {errors.ticketNo && (
+                      <p className="text-[11px] text-red-600 mt-1 font-medium">
+                        Ticket ID is required to generate the WhatsApp notice.
+                      </p>
+                    )}
                   </div>
 
                   {/* Query */}
@@ -550,6 +596,16 @@ ${form.query.trim()}`;
               </button>
             </div>
           </motion.div>
+
+          {/* Validation Popup Modal for missing/empty fields */}
+          <FormValidationErrorModal
+            isOpen={validationPopup.isOpen}
+            onClose={() => setValidationPopup((prev) => ({ ...prev, isOpen: false }))}
+            title={validationPopup.title}
+            description={validationPopup.description}
+            missingFields={validationPopup.missingFields}
+            extraErrors={validationPopup.extraErrors}
+          />
         </motion.div>
       )}
     </AnimatePresence>

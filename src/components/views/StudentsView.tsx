@@ -18,6 +18,7 @@ import {
   FileSpreadsheet,
 } from 'lucide-react';
 import { StudentRecord, UserProfile } from '../../types/auth';
+import { DEPARTMENT_COURSES, DEFAULT_COURSE } from '../../data/courses';
 import {
   getStudentRecords,
   subscribeToStudents,
@@ -25,6 +26,7 @@ import {
   deleteStudentRecord,
   hasFeaturePermission,
 } from '../../services/authService';
+import { FormValidationErrorModal } from '../FormValidationErrorModal';
 
 interface StudentsViewProps {
   onOpenWhatsappTool: () => void;
@@ -57,10 +59,25 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
   const [newName, setNewName] = useState('');
   const [newMobile, setNewMobile] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [newCourse, setNewCourse] = useState('B.E. / B.Tech');
+  const [newCourse, setNewCourse] = useState(DEFAULT_COURSE);
   const [newMode, setNewMode] = useState<'E-Scrutiny' | 'Physical Scrutiny'>('E-Scrutiny');
   const [newStatus, setNewStatus] = useState<'Verified' | 'Objection Raised' | 'Document Pending'>('Verified');
   const [newRemarks, setNewRemarks] = useState('');
+
+  // Validation Popup Modal State
+  const [validationPopup, setValidationPopup] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    missingFields: string[];
+    extraErrors?: string[];
+  }>({
+    isOpen: false,
+    title: 'Candidate Information Missing',
+    description: 'Please complete all required fields before saving the candidate record:',
+    missingFields: [],
+    extraErrors: [],
+  });
 
   const refreshList = () => {
     setStudents(getStudentRecords());
@@ -68,8 +85,32 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
 
   const handleAddStudent = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newId.trim() || !newName.trim() || !newMobile.trim()) {
-      alert('Please fill in Application No, Name, and Mobile Number.');
+
+    const missing: string[] = [];
+    const extra: string[] = [];
+
+    if (!newId.trim()) missing.push('Application / Registration ID');
+    if (!newName.trim()) missing.push('Candidate Full Name');
+    if (!newMobile.trim()) missing.push('Mobile Number');
+    if (!newCourse.trim()) missing.push('Course Name');
+
+    const cleanMobile = newMobile.replace(/\D/g, '');
+    if (newMobile.trim() && (cleanMobile.length !== 10 || !/^[6-9]\d{9}$/.test(cleanMobile))) {
+      extra.push('Mobile number must be a valid 10-digit Indian phone number (e.g. 9822123456).');
+    }
+
+    if (newEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail.trim())) {
+      extra.push('Email address format is invalid (e.g. student@gmail.com).');
+    }
+
+    if (missing.length > 0 || extra.length > 0) {
+      setValidationPopup({
+        isOpen: true,
+        title: 'Mandatory Candidate Information Missing',
+        description: 'Candidate profile cannot be saved because required fields are empty or invalid:',
+        missingFields: missing,
+        extraErrors: extra,
+      });
       return;
     }
 
@@ -189,12 +230,15 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
             className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none"
           >
             <option value="All">All Courses</option>
-            <option value="B.E. / B.Tech">B.E. / B.Tech</option>
-            <option value="B.Pharmacy">B.Pharmacy</option>
-            <option value="MBA / MMS">MBA / MMS</option>
-            <option value="B.Sc Agriculture">B.Sc Agriculture</option>
-            <option value="LLB 3 Yrs">LLB 3 Yrs</option>
-            <option value="Polytechnic Diploma">Polytechnic Diploma</option>
+            {DEPARTMENT_COURSES.map((dept, i) => (
+              <optgroup key={i} label={`${dept.department}${dept.subCategory ? ` - ${dept.subCategory}` : ''}`}>
+                {dept.courses.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
           </select>
 
           <select
@@ -383,12 +427,15 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                     onChange={(e) => setNewCourse(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-none focus:border-blue-600"
                   >
-                    <option value="B.E. / B.Tech">B.E. / B.Tech</option>
-                    <option value="B.Pharmacy">B.Pharmacy</option>
-                    <option value="MBA / MMS">MBA / MMS</option>
-                    <option value="B.Sc Agriculture">B.Sc Agriculture</option>
-                    <option value="LLB 3 Yrs">LLB 3 Yrs</option>
-                    <option value="Polytechnic Diploma">Polytechnic Diploma</option>
+                    {DEPARTMENT_COURSES.map((dept, i) => (
+                      <optgroup key={i} label={`${dept.department}${dept.subCategory ? ` - ${dept.subCategory}` : ''}`}>
+                        {dept.courses.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
                   </select>
                 </div>
 
@@ -448,6 +495,16 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Mandatory Validation Error Popup Modal */}
+      <FormValidationErrorModal
+        isOpen={validationPopup.isOpen}
+        onClose={() => setValidationPopup((prev) => ({ ...prev, isOpen: false }))}
+        title={validationPopup.title}
+        description={validationPopup.description}
+        missingFields={validationPopup.missingFields}
+        extraErrors={validationPopup.extraErrors}
+      />
     </div>
   );
 };

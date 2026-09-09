@@ -1,20 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
-  UploadCloud,
+  Camera,
+  FileUp,
   FileText,
   Image as ImageIcon,
   CheckCircle2,
   AlertCircle,
-  Download,
   Trash2,
-  Camera,
   RefreshCw,
   ArrowLeft,
-  FileUp,
-  FileCheck,
-  ShieldCheck,
+  X,
+  UploadCloud,
 } from 'lucide-react';
-import { QrUploadedFile, formatBytes, fileToDataUrl, triggerFileDownload } from '../types/qrUpload';
+import { QrUploadedFile, formatBytes, fileToDataUrl } from '../types/qrUpload';
 import { qrUploadService } from '../services/qrUploadService';
 
 interface MobileQrUploadViewProps {
@@ -36,7 +35,6 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
-  // Load existing session files
   const loadFiles = async () => {
     try {
       const list = await qrUploadService.getFiles(sessionId);
@@ -56,14 +54,13 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate type (PDF, JPEG, PNG)
-    const validTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+    const validTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg', 'image/webp'];
     const extension = file.name.split('.').pop()?.toLowerCase();
-    const isAllowedExt = extension && ['pdf', 'jpeg', 'jpg', 'png'].includes(extension);
+    const isAllowedExt = extension && ['pdf', 'jpeg', 'jpg', 'png', 'webp'].includes(extension);
 
     if (!validTypes.includes(file.type) && !isAllowedExt) {
       setStatusMsg({
-        text: 'Invalid file type! Please choose a PDF, JPEG, or PNG file.',
+        text: 'Please select a PDF or image file (JPG, PNG).',
         type: 'error',
       });
       return;
@@ -71,7 +68,7 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
 
     if (file.size > 50 * 1024 * 1024) {
       setStatusMsg({
-        text: 'File size exceeds 50MB limit.',
+        text: 'File size must be under 50MB.',
         type: 'error',
       });
       return;
@@ -88,17 +85,24 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
     }
   };
 
+  const clearSelection = () => {
+    setSelectedFile(null);
+    setFilePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+  };
+
   const handleUpload = async () => {
     if (!selectedFile) return;
 
     setIsUploading(true);
-    setUploadProgress(20);
+    setUploadProgress(25);
 
     try {
       const dataUrl = await fileToDataUrl(selectedFile);
-      setUploadProgress(60);
+      setUploadProgress(70);
 
-      const uploaded = await qrUploadService.uploadFile(sessionId, {
+      await qrUploadService.uploadFile(sessionId, {
         name: selectedFile.name,
         type: selectedFile.type || 'application/octet-stream',
         size: selectedFile.size,
@@ -107,103 +111,129 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
 
       setUploadProgress(100);
       setIsUploading(false);
-      setSelectedFile(null);
-      setFilePreview(null);
-
-      // Reset file input values
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      if (cameraInputRef.current) cameraInputRef.current.value = '';
+      clearSelection();
 
       setStatusMsg({
-        text: `"${uploaded.name}" has been transmitted & downloaded instantly into the software console!`,
+        text: 'File uploaded successfully',
         type: 'success',
       });
 
       await loadFiles();
-    } catch (err) {
+      setTimeout(() => {
+        setStatusMsg((prev) => (prev.type === 'success' ? { text: '', type: '' } : prev));
+      }, 4000);
+    } catch {
       setIsUploading(false);
       setStatusMsg({
-        text: 'Failed to upload file. Please try again.',
+        text: 'Upload failed. Please try again.',
         type: 'error',
       });
     }
   };
 
   const handleDelete = async (fileId: string) => {
-    if (window.confirm('Delete this file from software?')) {
+    try {
       await qrUploadService.deleteFile(sessionId, fileId);
       await loadFiles();
+    } catch {
+      // ignore
     }
   };
 
+  const shortSession = sessionId.length > 8 ? sessionId.slice(-6).toUpperCase() : sessionId.toUpperCase();
+
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans">
-      {/* Mobile Header */}
-      <header className="bg-gradient-to-r from-[#091a30] via-[#0f2747] to-[#1b4b80] border-b border-blue-500/20 px-4 py-3.5 sticky top-0 z-30 shadow-md">
-        <div className="max-w-lg mx-auto flex items-center justify-between">
+    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-900">
+      {/* Minimal Header */}
+      <header className="bg-white border-b border-slate-200/80 px-4 py-3 sticky top-0 z-30 shadow-xs">
+        <div className="max-w-md mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center shadow text-white font-bold">
+            <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center text-white shadow-xs">
               <FileUp className="w-4 h-4" />
             </div>
             <div>
-              <h1 className="text-sm font-bold text-white leading-tight">
-                Document Scanner Desk
-              </h1>
-              <p className="text-[10px] text-blue-200 font-mono">
-                SESSION: <span className="font-bold text-amber-300">#{sessionId}</span>
-              </p>
+              <h1 className="text-sm font-semibold text-slate-900 leading-none">Document Upload</h1>
+              <div className="flex items-center gap-1.5 mt-1">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span className="text-[11px] font-medium text-slate-500">Session #{shortSession}</span>
+              </div>
             </div>
           </div>
 
           {onBackToMain && (
             <button
               onClick={onBackToMain}
-              className="text-xs px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-blue-100 flex items-center gap-1 transition-colors"
+              className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              Main Portal
+              <span>Back</span>
             </button>
           )}
         </div>
       </header>
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-lg w-full mx-auto p-4 space-y-4">
-        {/* Status Message */}
-        {statusMsg.text && (
-          <div
-            className={`p-3.5 rounded-xl flex items-start gap-2.5 text-xs sm:text-sm font-medium ${
-              statusMsg.type === 'error'
-                ? 'bg-red-950/80 text-red-200 border border-red-500/40'
-                : 'bg-emerald-950/80 text-emerald-200 border border-emerald-500/40'
-            }`}
-          >
-            {statusMsg.type === 'error' ? (
-              <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-            ) : (
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-            )}
-            <span className="flex-1">{statusMsg.text}</span>
-          </div>
-        )}
+      {/* Main Content */}
+      <main className="flex-1 max-w-md w-full mx-auto p-4 space-y-4">
+        {/* Status Notification */}
+        <AnimatePresence>
+          {statusMsg.text && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              className={`p-3 rounded-xl flex items-center gap-2.5 text-xs font-medium border ${
+                statusMsg.type === 'error'
+                  ? 'bg-red-50 text-red-800 border-red-200'
+                  : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              }`}
+            >
+              {statusMsg.type === 'error' ? (
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              )}
+              <span className="flex-1">{statusMsg.text}</span>
+              <button
+                onClick={() => setStatusMsg({ text: '', type: '' })}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer p-0.5"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Upload Card */}
-        <div className="bg-[#132d52] border border-blue-400/30 rounded-2xl p-4 sm:p-5 shadow-xl space-y-4">
-          <div className="text-center space-y-1">
-            <h2 className="text-base font-bold text-white flex items-center justify-center gap-2">
-              <UploadCloud className="w-5 h-5 text-emerald-400" />
-              Upload Candidate Document
-            </h2>
-            <p className="text-xs text-blue-200/90">
-              Format: <span className="font-bold text-amber-300">PDF, JPEG, PNG</span> • Downloads directly into software
-            </p>
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs space-y-3">
+          {/* Action Buttons: Camera & File Browse */}
+          <div className="grid grid-cols-2 gap-2.5">
+            <button
+              type="button"
+              onClick={() => cameraInputRef.current?.click()}
+              className="h-12 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-medium text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer active:scale-[0.98]"
+            >
+              <Camera className="w-4 h-4" />
+              <span>Camera</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="h-12 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-medium text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer active:scale-[0.98]"
+            >
+              <FileUp className="w-4 h-4 text-slate-600" />
+              <span>Browse File</span>
+            </button>
           </div>
 
-          {/* Hidden Inputs */}
+          {/* Hidden File Inputs */}
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+            accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
             onChange={handleFileSelect}
             className="hidden"
           />
@@ -216,155 +246,136 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
             className="hidden"
           />
 
-          {/* Action Buttons: Camera & File Browse */}
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => cameraInputRef.current?.click()}
-              className="py-3 px-3 rounded-xl bg-gradient-to-tr from-blue-700 to-indigo-600 hover:from-blue-600 hover:to-indigo-500 text-white font-bold text-xs sm:text-sm flex flex-col items-center justify-center gap-1.5 shadow-md border border-blue-300/30 active:scale-95 transition-all cursor-pointer"
-            >
-              <Camera className="w-5 h-5 text-blue-200" />
-              <span>Take Photo</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="py-3 px-3 rounded-xl bg-gradient-to-tr from-emerald-700 to-teal-600 hover:from-emerald-600 hover:to-teal-500 text-white font-bold text-xs sm:text-sm flex flex-col items-center justify-center gap-1.5 shadow-md border border-emerald-300/30 active:scale-95 transition-all cursor-pointer"
-            >
-              <FileUp className="w-5 h-5 text-emerald-200" />
-              <span>Browse PDF / Image</span>
-            </button>
-          </div>
-
-          {/* Drag or Drop Area / Tap To Browse */}
+          {/* Drop / Tap Target */}
           <div
             onClick={() => fileInputRef.current?.click()}
-            className="border-2 border-dashed border-blue-400/40 hover:border-emerald-400 rounded-xl p-5 text-center bg-[#0a1e38]/60 cursor-pointer transition-colors"
+            className="border border-dashed border-slate-200 hover:border-slate-300 rounded-xl p-4 text-center bg-slate-50/70 hover:bg-slate-50 cursor-pointer transition-colors"
           >
-            <UploadCloud className="w-8 h-8 text-blue-300 mx-auto mb-2 opacity-80" />
-            <p className="text-xs font-semibold text-white">Tap here to select PDF or JPEG/PNG document</p>
-            <p className="text-[10px] text-emerald-300 mt-0.5">Instant transmission to in-software storage</p>
+            <UploadCloud className="w-6 h-6 text-slate-400 mx-auto mb-1.5" />
+            <p className="text-xs font-medium text-slate-700">Tap to choose document</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">PDF, JPG, PNG up to 50MB</p>
           </div>
 
-          {/* Selected File Details */}
-          {selectedFile && (
-            <div className="bg-[#091a30] border border-emerald-500/40 rounded-xl p-3.5 space-y-3">
-              <div className="flex items-center gap-3">
-                {selectedFile.type === 'application/pdf' ? (
-                  <div className="w-10 h-10 rounded-lg bg-red-600/30 border border-red-400/40 flex items-center justify-center shrink-0">
-                    <FileText className="w-5 h-5 text-red-400" />
-                  </div>
-                ) : (
-                  <div className="w-10 h-10 rounded-lg bg-emerald-600/30 border border-emerald-400/40 flex items-center justify-center shrink-0 overflow-hidden">
-                    {filePreview ? (
-                      <img src={filePreview} alt="Preview" className="w-full h-full object-cover" />
-                    ) : (
-                      <ImageIcon className="w-5 h-5 text-emerald-400" />
-                    )}
-                  </div>
-                )}
-
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-white truncate">{selectedFile.name}</p>
-                  <p className="text-[11px] text-emerald-300 font-mono">
-                    {formatBytes(selectedFile.size)} • {selectedFile.type || 'Document'}
-                  </p>
-                </div>
-              </div>
-
-              {/* Upload Action */}
-              <button
-                type="button"
-                onClick={handleUpload}
-                disabled={isUploading}
-                className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-sm shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-98 disabled:opacity-50"
+          {/* Selected File Card */}
+          <AnimatePresence>
+            {selectedFile && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden pt-1"
               >
-                {isUploading ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    Transmitting to Software... ({uploadProgress}%)
-                  </>
-                ) : (
-                  <>
-                    <UploadCloud className="w-4 h-4" />
-                    Send & Download to Software
-                  </>
-                )}
-              </button>
-            </div>
-          )}
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-3">
+                  <div className="flex items-center gap-2.5">
+                    {selectedFile.type === 'application/pdf' ? (
+                      <div className="w-10 h-10 rounded-lg bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+                        <FileText className="w-5 h-5" />
+                      </div>
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg bg-slate-200 flex items-center justify-center shrink-0 overflow-hidden">
+                        {filePreview ? (
+                          <img src={filePreview} alt="Preview" className="w-full h-full object-cover" />
+                        ) : (
+                          <ImageIcon className="w-5 h-5 text-slate-500" />
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-slate-800 truncate">{selectedFile.name}</p>
+                      <p className="text-[11px] text-slate-400">{formatBytes(selectedFile.size)}</p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={clearSelection}
+                      disabled={isUploading}
+                      className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Upload Button */}
+                  <button
+                    type="button"
+                    onClick={handleUpload}
+                    disabled={isUploading}
+                    className="w-full h-10 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs sm:text-sm shadow-xs flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-60"
+                  >
+                    {isUploading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Uploading... {uploadProgress}%</span>
+                      </>
+                    ) : (
+                      <>
+                        <FileUp className="w-4 h-4" />
+                        <span>Upload Document</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
-        {/* Uploaded Files in this Session */}
-        <div className="bg-[#132d52] border border-blue-400/30 rounded-2xl p-4 sm:p-5 shadow-xl space-y-3">
-          <div className="flex items-center justify-between border-b border-blue-400/20 pb-2">
-            <h3 className="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
-              <FileCheck className="w-4 h-4 text-emerald-400" />
-              Transmitted to Software ({files.length})
-            </h3>
+        {/* Uploaded Documents List */}
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-semibold text-slate-900 flex items-center gap-1.5">
+              <span>Uploaded Documents</span>
+              <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-medium">
+                {files.length}
+              </span>
+            </h2>
             <button
               onClick={loadFiles}
-              className="text-[11px] text-blue-200 hover:text-white flex items-center gap-1 font-mono"
+              className="text-[11px] text-slate-400 hover:text-slate-600 flex items-center gap-1 transition-colors cursor-pointer"
             >
               <RefreshCw className="w-3 h-3" />
-              Refresh
+              <span>Refresh</span>
             </button>
           </div>
 
           {files.length === 0 ? (
-            <div className="text-center py-6 text-blue-200/70 text-xs">
-              No files uploaded yet in this session. Select a file above to upload.
-            </div>
+            <div className="py-6 text-center text-slate-400 text-xs">No documents uploaded yet</div>
           ) : (
-            <div className="space-y-2 max-h-72 overflow-y-auto">
+            <div className="space-y-2 max-h-80 overflow-y-auto pr-0.5">
               {files.map((file) => {
                 const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
                 return (
                   <div
                     key={file.id}
-                    className="bg-[#091a30] border border-blue-400/20 rounded-xl p-3 flex items-center justify-between gap-3 hover:border-emerald-400/40 transition-colors"
+                    className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-2.5 flex items-center justify-between gap-2.5 hover:bg-slate-50 transition-colors"
                   >
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       {isPdf ? (
-                        <div className="w-8 h-8 rounded-lg bg-red-600/30 border border-red-400/40 flex items-center justify-center shrink-0">
-                          <FileText className="w-4 h-4 text-red-400" />
+                        <div className="w-9 h-9 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0">
+                          <FileText className="w-4 h-4" />
                         </div>
                       ) : (
-                        <div className="w-8 h-8 rounded-lg bg-emerald-600/30 border border-emerald-400/40 flex items-center justify-center shrink-0 overflow-hidden">
+                        <div className="w-9 h-9 rounded-lg bg-slate-200 flex items-center justify-center shrink-0 overflow-hidden">
                           <img src={file.dataUrl} alt={file.name} className="w-full h-full object-cover" />
                         </div>
                       )}
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1">
-                          <p className="text-xs font-bold text-white truncate">{file.name}</p>
-                          {file.verifiedStamp && (
-                            <span className="text-[8px] bg-emerald-500/30 text-emerald-300 px-1 py-0.2 rounded border border-emerald-400/30 font-mono">
-                              VERIFIED
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[10px] text-blue-300/80 font-mono">
-                          {formatBytes(file.size)} • {new Date(file.uploadedAt).toLocaleTimeString()}
+                        <p className="text-xs font-medium text-slate-800 truncate">{file.name}</p>
+                        <p className="text-[10px] text-slate-400">
+                          {formatBytes(file.size)} • {new Date(file.uploadedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </p>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {/* Optional Download to Phone */}
-                      <button
-                        onClick={() => triggerFileDownload(file.dataUrl, file.name)}
-                        className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow transition-colors cursor-pointer"
-                        title="Download to Phone"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                      </button>
-
-                      {/* Delete Button */}
+                      <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md font-medium border border-emerald-200">
+                        Uploaded
+                      </span>
                       <button
                         onClick={() => handleDelete(file.id)}
-                        className="p-1.5 rounded-lg bg-white/10 hover:bg-red-600/80 text-slate-300 hover:text-white transition-colors cursor-pointer"
-                        title="Delete File"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                        title="Delete"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -376,11 +387,6 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
           )}
         </div>
       </main>
-
-      {/* Footer */}
-      <footer className="py-3 text-center text-[11px] text-blue-300/60 border-t border-blue-500/10">
-        Direct In-Software E-Scrutiny File Transmission
-      </footer>
     </div>
   );
 };

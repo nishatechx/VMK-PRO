@@ -93,8 +93,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {isCollapsed ? (
           /* Collapsed User Avatar */
           <div
-            className="flex flex-col items-center justify-center cursor-pointer group"
-            onClick={() => onSelectTab('profile')}
+            className={`flex flex-col items-center justify-center group ${hasTabPermission(currentUser, 'profile') ? 'cursor-pointer' : 'cursor-default'}`}
+            onClick={() => hasTabPermission(currentUser, 'profile') && onSelectTab('profile')}
             title={`${displayName} (${displayRole})`}
           >
             <div className="relative">
@@ -118,8 +118,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ) : (
           /* Expanded User Info Card */
           <div
-            className="p-3 bg-[#FFFFFF] rounded-2xl border border-[#D9E1EA] shadow-2xs hover:shadow-xs hover:border-[#006BB6] transition-all cursor-pointer group"
-            onClick={() => onSelectTab('profile')}
+            className={`p-3 bg-[#FFFFFF] rounded-2xl border border-[#D9E1EA] shadow-2xs hover:shadow-xs transition-all ${
+              hasTabPermission(currentUser, 'profile')
+                ? 'hover:border-[#006BB6] cursor-pointer group'
+                : 'cursor-default'
+            }`}
+            onClick={() => hasTabPermission(currentUser, 'profile') && onSelectTab('profile')}
           >
             <div className="flex items-center gap-3">
               <div className="relative shrink-0">

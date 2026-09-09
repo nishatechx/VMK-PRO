@@ -31,6 +31,7 @@ import {
   Eye,
 } from 'lucide-react';
 import { TicketRecord, TicketStatus, TicketType, UserProfile } from '../../types/auth';
+import { hasFeaturePermission } from '../../services/authService';
 import {
   getTicketRecords,
   subscribeToTickets,
@@ -329,6 +330,10 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
     }
   };
 
+  const canTicket = hasFeaturePermission(currentUser, 'ticket_generator_tool');
+  const canWhatsapp = hasFeaturePermission(currentUser, 'whatsapp_tool');
+  const canExport = hasFeaturePermission(currentUser, 'export_reports');
+
   return (
     <div id="counsellor-tickets-view" className="space-y-6">
       {/* View Header with Quick Actions */}
@@ -352,36 +357,42 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
           </div>
         </div>
 
-        {/* Action Buttons */}
+        {/* Action Buttons - Strictly only those allotted to user */}
         <div className="flex flex-wrap items-center gap-2.5">
-          <button
-            id="create-candidate-ticket-btn"
-            onClick={onOpenTicketTool}
-            className="px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-[#0056A6] hover:bg-[#003B73] text-white shadow-xs transition-all cursor-pointer flex items-center gap-2 active:scale-95"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Generate Candidate Ticket</span>
-          </button>
+          {canTicket && (
+            <button
+              id="create-candidate-ticket-btn"
+              onClick={onOpenTicketTool}
+              className="px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-[#0056A6] hover:bg-[#003B73] text-white shadow-xs transition-all cursor-pointer flex items-center gap-2 active:scale-95"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Generate Candidate Ticket</span>
+            </button>
+          )}
 
-          <button
-            id="create-whatsapp-ticket-btn"
-            onClick={onOpenWhatsappTool}
-            className="px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-[#198754] hover:bg-[#146c43] text-white shadow-xs transition-all cursor-pointer flex items-center gap-2 active:scale-95"
-          >
-            <MessageCircle className="w-4 h-4" />
-            <span>WhatsApp Ticket Tool</span>
-          </button>
+          {canWhatsapp && (
+            <button
+              id="create-whatsapp-ticket-btn"
+              onClick={onOpenWhatsappTool}
+              className="px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-[#198754] hover:bg-[#146c43] text-white shadow-xs transition-all cursor-pointer flex items-center gap-2 active:scale-95"
+            >
+              <MessageCircle className="w-4 h-4" />
+              <span>WhatsApp Ticket Tool</span>
+            </button>
+          )}
 
-          <button
-            id="export-tickets-csv-btn"
-            onClick={handleExportCsv}
-            disabled={filteredTickets.length === 0}
-            className="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-white hover:bg-slate-50 text-[#003B73] border border-[#D9E1EA] shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Download CSV Spreadsheet"
-          >
-            <FileSpreadsheet className="w-4 h-4 text-[#198754]" />
-            <span className="hidden sm:inline">Export CSV</span>
-          </button>
+          {canExport && (
+            <button
+              id="export-tickets-csv-btn"
+              onClick={handleExportCsv}
+              disabled={filteredTickets.length === 0}
+              className="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-white hover:bg-slate-50 text-[#003B73] border border-[#D9E1EA] shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Download CSV Spreadsheet"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-[#198754]" />
+              <span className="hidden sm:inline">Export CSV</span>
+            </button>
+          )}
         </div>
       </div>
 

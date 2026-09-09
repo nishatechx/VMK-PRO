@@ -12,11 +12,12 @@ export type FeaturePermission =
   | 'whatsapp_tool'
   | 'qr_upload_tool'
   | 'ticket_generator_tool'
+  | 'img_to_pdf_tool'
   | 'add_candidate'
   | 'add_visitor'
   | 'export_reports';
 
-export type UserRole = 'dno' | 'counsellor' | 'supporting_staff' | 'operator';
+export type UserRole = 'dno' | 'counsellor' | 'supporting_staff' | 'operator' | 'student';
 
 export type TicketStatus = 'Open' | 'In Progress' | 'Resolved' | 'Closed';
 export type TicketType = 'candidate_ticket' | 'whatsapp_ticket';

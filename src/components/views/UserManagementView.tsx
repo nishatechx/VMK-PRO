@@ -37,6 +37,7 @@ import {
   DNO_USER,
 } from '../../services/authService';
 import { uploadImageToFirebase } from '../../services/imageStorageService';
+import { FormValidationErrorModal } from '../FormValidationErrorModal';
 
 interface UserManagementViewProps {
   currentUser: UserProfile;
@@ -85,6 +86,21 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   const [feedback, setFeedback] = useState<{ message: string; type: 'success' | 'error' | '' }>({
     message: '',
     type: '',
+  });
+
+  // Validation Popup Modal State
+  const [validationPopup, setValidationPopup] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    missingFields: string[];
+    extraErrors?: string[];
+  }>({
+    isOpen: false,
+    title: 'User Details Incomplete',
+    description: 'Please complete all required fields before saving user profile:',
+    missingFields: [],
+    extraErrors: [],
   });
 
   useEffect(() => {
@@ -209,7 +225,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     setAllowedTabs(['profile']);
   };
 
-  const handleRolePreset = (selectedRole: 'counsellor' | 'supporting_staff') => {
+  const handleRolePreset = (selectedRole: 'counsellor' | 'supporting_staff' | 'student') => {
     setRole(selectedRole);
     if (selectedRole === 'counsellor') {
       setDesignation('Student Guidance Counsellor');
@@ -219,24 +235,46 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
       setDesignation('Supporting Staff');
       setAllowedTabs(['dashboard', 'visitors', 'students', 'profile']);
       setAllowedFeatures(['whatsapp_tool', 'qr_upload_tool', 'ticket_generator_tool', 'add_candidate', 'add_visitor']);
+    } else if (selectedRole === 'student') {
+      setDesignation('Student / Candidate');
+      setAllowedTabs(['dashboard', 'students', 'profile']);
+      setAllowedFeatures([]);
     }
   };
 
   const handleSaveForm = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!username.trim()) {
-      setFeedback({ message: 'Please enter a valid User ID / Username.', type: 'error' });
-      return;
+    const missing: string[] = [];
+    const extra: string[] = [];
+
+    if (!username.trim()) missing.push('User ID / Username');
+    if (!password.trim()) missing.push('Password');
+    if (allowedTabs.length === 0) missing.push('At least 1 Tab Permission');
+
+    if (phone.trim()) {
+      const cleanPhone = phone.replace(/\D/g, '');
+      if (cleanPhone.length !== 10 || !/^[6-9]\d{9}$/.test(cleanPhone)) {
+        extra.push('Phone number must be a valid 10-digit Indian phone number.');
+      }
     }
 
-    if (!password.trim()) {
-      setFeedback({ message: 'Please enter a password for this user.', type: 'error' });
-      return;
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      extra.push('Email address format is invalid.');
     }
 
-    if (allowedTabs.length === 0) {
-      setFeedback({ message: 'Please grant access to at least 1 tab permission.', type: 'error' });
+    if (missing.length > 0 || extra.length > 0) {
+      setValidationPopup({
+        isOpen: true,
+        title: 'User Profile Incomplete',
+        description: 'User profile cannot be saved because required information is missing or invalid:',
+        missingFields: missing,
+        extraErrors: extra,
+      });
+      setFeedback({
+        message: `Validation Error: ${missing.length > 0 ? `${missing.length} required field(s) missing.` : ''} ${extra.join(' ')}`,
+        type: 'error',
+      });
       return;
     }
 
@@ -659,17 +697,22 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                 <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
                   Select Staff Role
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                   {[
                     {
                       id: 'counsellor' as const,
                       label: 'Counsellor',
-                      desc: 'Candidate guidance, ticket creation & candidate register',
+                      desc: 'Candidate guidance & tickets',
                     },
                     {
                       id: 'supporting_staff' as const,
                       label: 'Supporting Staff',
-                      desc: 'Verification, QR upload, visitor register & student directory',
+                      desc: 'Scrutiny, visitors & directory',
+                    },
+                    {
+                      id: 'student' as const,
+                      label: 'Student / Candidate',
+                      desc: 'Candidate status & profile only',
                     },
                   ].map((r) => {
                     const isSelected = role === r.id || (r.id === 'supporting_staff' && role === 'operator');
@@ -925,6 +968,16 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Mandatory Validation Error Popup Modal */}
+      <FormValidationErrorModal
+        isOpen={validationPopup.isOpen}
+        onClose={() => setValidationPopup((prev) => ({ ...prev, isOpen: false }))}
+        title={validationPopup.title}
+        description={validationPopup.description}
+        missingFields={validationPopup.missingFields}
+        extraErrors={validationPopup.extraErrors}
+      />
     </div>
   );
 };

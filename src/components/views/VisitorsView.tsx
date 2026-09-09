@@ -45,6 +45,7 @@ import {
   syncAllVisitorsToGoogleSheet,
   getCachedAccessToken,
 } from '../../services/googleSheetsService';
+import { FormValidationErrorModal } from '../FormValidationErrorModal';
 
 interface VisitorsViewProps {
   currentUser?: UserProfile | null;
@@ -107,6 +108,21 @@ export const VisitorsView: React.FC<VisitorsViewProps> = ({ currentUser, onNavig
   const [feedback, setFeedback] = useState<{ message: string; type: 'success' | 'error' | '' }>({
     message: '',
     type: '',
+  });
+
+  // Validation Popup Modal State
+  const [validationPopup, setValidationPopup] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    missingFields: string[];
+    extraErrors?: string[];
+  }>({
+    isOpen: false,
+    title: 'Visitor Information Incomplete',
+    description: 'Please complete all required fields before recording visitor entry:',
+    missingFields: [],
+    extraErrors: [],
   });
 
   const refreshList = () => {
@@ -176,8 +192,33 @@ export const VisitorsView: React.FC<VisitorsViewProps> = ({ currentUser, onNavig
   const handleFormSubmit = (e: React.FormEvent, isFromModal = false) => {
     e.preventDefault();
 
-    if (!name.trim() || !mobile.trim()) {
-      setFeedback({ message: 'Please provide both Visitor Name and Mobile Number.', type: 'error' });
+    const missing: string[] = [];
+    const extra: string[] = [];
+
+    if (!name.trim()) missing.push('Visitor Full Name');
+    if (!mobile.trim()) missing.push('Mobile Number');
+    if (!address.trim()) missing.push('Address / City / Native Place');
+    if (purpose === 'Other' && !customPurpose.trim()) {
+      missing.push('Custom Purpose Details');
+    }
+
+    const cleanMobile = mobile.replace(/\D/g, '');
+    if (mobile.trim() && (cleanMobile.length !== 10 || !/^[6-9]\d{9}$/.test(cleanMobile))) {
+      extra.push('Mobile number must be a valid 10-digit Indian phone number (e.g. 9822123456).');
+    }
+
+    if (missing.length > 0 || extra.length > 0) {
+      setValidationPopup({
+        isOpen: true,
+        title: 'Visitor Entry Incomplete',
+        description: 'Visitor check-in cannot be registered because required fields are empty or invalid:',
+        missingFields: missing,
+        extraErrors: extra,
+      });
+      setFeedback({
+        message: `Validation Error: ${missing.length > 0 ? `${missing.length} field(s) empty.` : ''} ${extra.join(' ')}`,
+        type: 'error',
+      });
       return;
     }
 
@@ -815,113 +856,115 @@ export const VisitorsView: React.FC<VisitorsViewProps> = ({ currentUser, onNavig
       {activeSubTab === 'directory' && (
         <div className="space-y-4">
           {/* Google Sheets Sync Status Ribbon - Only shown for DNO Admin */}
-          {isDnoAdmin && sheetsConfig?.spreadsheetId ? (
-            <div className="bg-emerald-50/90 border border-emerald-200/90 rounded-2xl p-3 sm:px-4 sm:py-3 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-2xs shrink-0">
-                  <FileSpreadsheet className="w-4 h-4" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-bold text-emerald-950 truncate max-w-[200px] sm:max-w-[320px]">
-                      {sheetsConfig.spreadsheetTitle || 'Visitors Entry Register'}
-                    </span>
-                    {sheetsConfig.autoSync && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-200/80 text-emerald-900 border border-emerald-300">
-                        <Zap className="w-2.5 h-2.5 text-emerald-700" />
-                        Auto-Sync Live
-                      </span>
-                    )}
+          {isDnoAdmin && (
+            sheetsConfig?.spreadsheetId ? (
+              <div className="bg-emerald-50/90 border border-emerald-200/90 rounded-2xl p-3 sm:px-4 sm:py-3 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-2xs shrink-0">
+                    <FileSpreadsheet className="w-4 h-4" />
                   </div>
-                  <p className="text-[11px] text-emerald-800 flex items-center gap-1.5 mt-0.5">
-                    <span>
-                      Last Synced:{' '}
-                      {sheetsConfig.lastSyncedAt
-                        ? new Date(sheetsConfig.lastSyncedAt).toLocaleTimeString('en-US', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            hour12: true,
-                          })
-                        : 'Ready to sync'}
-                    </span>
-                    <span>•</span>
-                    <span className="font-mono">{visitors.length} total entries</span>
-                  </p>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold text-emerald-950 truncate max-w-[200px] sm:max-w-[320px]">
+                        {sheetsConfig.spreadsheetTitle || 'Visitors Entry Register'}
+                      </span>
+                      {sheetsConfig.autoSync && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-200/80 text-emerald-900 border border-emerald-300">
+                          <Zap className="w-2.5 h-2.5 text-emerald-700" />
+                          Auto-Sync Live
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-emerald-800 flex items-center gap-1.5 mt-0.5">
+                      <span>
+                        Last Synced:{' '}
+                        {sheetsConfig.lastSyncedAt
+                          ? new Date(sheetsConfig.lastSyncedAt).toLocaleTimeString('en-US', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              hour12: true,
+                            })
+                          : 'Ready to sync'}
+                      </span>
+                      <span>•</span>
+                      <span className="font-mono">{visitors.length} total entries</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={async () => {
+                      if (!getCachedAccessToken()) {
+                        setIsSheetsModalOpen(true);
+                        return;
+                      }
+                      setIsQuickSyncing(true);
+                      try {
+                        await syncAllVisitorsToGoogleSheet(
+                          sheetsConfig.spreadsheetId,
+                          sheetsConfig.sheetName || 'Visitors_Register',
+                          visitors
+                        );
+                        const updated = { ...sheetsConfig, lastSyncedAt: new Date().toISOString() };
+                        saveSheetsConfig(updated);
+                        setSheetsConfig(updated);
+                        setFeedback({
+                          message: `Synced ${visitors.length} visitor entries to Google Sheets!`,
+                          type: 'success',
+                        });
+                        setTimeout(() => setFeedback({ message: '', type: '' }), 3500);
+                      } catch (err: any) {
+                        setFeedback({ message: err.message || 'Sync failed.', type: 'error' });
+                      } finally {
+                        setIsQuickSyncing(false);
+                      }
+                    }}
+                    disabled={isQuickSyncing}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs disabled:opacity-50"
+                    title="Push all visitor entries to Google Sheet"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isQuickSyncing ? 'animate-spin' : ''}`} />
+                    <span className="hidden sm:inline">{isQuickSyncing ? 'Syncing...' : 'Sync Now'}</span>
+                  </button>
+
+                  {sheetsConfig.spreadsheetUrl && (
+                    <a
+                      href={sheetsConfig.spreadsheetUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1.5 rounded-xl bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-semibold transition-colors flex items-center gap-1 shadow-2xs"
+                      title="Open Spreadsheet in new tab"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+
+                  <button
+                    onClick={() => setIsSheetsModalOpen(true)}
+                    className="text-xs font-bold text-emerald-800 hover:text-emerald-950 underline px-1 cursor-pointer"
+                  >
+                    Manage
+                  </button>
                 </div>
               </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={async () => {
-                    if (!getCachedAccessToken()) {
-                      setIsSheetsModalOpen(true);
-                      return;
-                    }
-                    setIsQuickSyncing(true);
-                    try {
-                      await syncAllVisitorsToGoogleSheet(
-                        sheetsConfig.spreadsheetId,
-                        sheetsConfig.sheetName || 'Visitors_Register',
-                        visitors
-                      );
-                      const updated = { ...sheetsConfig, lastSyncedAt: new Date().toISOString() };
-                      saveSheetsConfig(updated);
-                      setSheetsConfig(updated);
-                      setFeedback({
-                        message: `Synced ${visitors.length} visitor entries to Google Sheets!`,
-                        type: 'success',
-                      });
-                      setTimeout(() => setFeedback({ message: '', type: '' }), 3500);
-                    } catch (err: any) {
-                      setFeedback({ message: err.message || 'Sync failed.', type: 'error' });
-                    } finally {
-                      setIsQuickSyncing(false);
-                    }
-                  }}
-                  disabled={isQuickSyncing}
-                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs disabled:opacity-50"
-                  title="Push all visitor entries to Google Sheet"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isQuickSyncing ? 'animate-spin' : ''}`} />
-                  <span className="hidden sm:inline">{isQuickSyncing ? 'Syncing...' : 'Sync Now'}</span>
-                </button>
-
-                {sheetsConfig.spreadsheetUrl && (
-                  <a
-                    href={sheetsConfig.spreadsheetUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-1.5 rounded-xl bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-semibold transition-colors flex items-center gap-1 shadow-2xs"
-                    title="Open Spreadsheet in new tab"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                )}
-
+            ) : (
+              <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3 sm:px-4 sm:py-2.5 flex flex-wrap items-center justify-between gap-2 shadow-2xs">
+                <div className="flex items-center gap-2 text-xs text-slate-600">
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                  <span>
+                    Backup & store visitor entries directly in <b>Google Sheets</b>
+                  </span>
+                </div>
                 <button
                   onClick={() => setIsSheetsModalOpen(true)}
-                  className="text-xs font-bold text-emerald-800 hover:text-emerald-950 underline px-1 cursor-pointer"
+                  className="px-3 py-1 bg-white hover:bg-slate-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
                 >
-                  Manage
+                  <span>Connect Google Sheets</span>
+                  <span className="text-[10px]">→</span>
                 </button>
               </div>
-            </div>
-          ) : (
-            <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3 sm:px-4 sm:py-2.5 flex flex-wrap items-center justify-between gap-2 shadow-2xs">
-              <div className="flex items-center gap-2 text-xs text-slate-600">
-                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                <span>
-                  Backup & store visitor entries directly in <b>Google Sheets</b>
-                </span>
-              </div>
-              <button
-                onClick={() => setIsSheetsModalOpen(true)}
-                className="px-3 py-1 bg-white hover:bg-slate-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
-              >
-                <span>Connect Google Sheets</span>
-                <span className="text-[10px]">→</span>
-              </button>
-            </div>
+            )
           )}
 
           {/* Filter and Search Bar */}
@@ -1138,21 +1181,25 @@ export const VisitorsView: React.FC<VisitorsViewProps> = ({ currentUser, onNavig
                           {/* Actions */}
                           <td className="py-3.5 px-4 text-right">
                             <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                onClick={() => openEditModal(v)}
-                                title="Edit Visitor Entry"
-                                className="p-1.5 rounded-lg text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 transition-colors cursor-pointer"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
+                              {canAddVisitor && (
+                                <button
+                                  onClick={() => openEditModal(v)}
+                                  title="Edit Visitor Entry"
+                                  className="p-1.5 rounded-lg text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 transition-colors cursor-pointer"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
 
-                              <button
-                                onClick={() => handleDelete(v.id, v.name)}
-                                title="Delete Visitor Entry"
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-200 hover:border-red-200 transition-colors cursor-pointer"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              {isDnoAdmin && (
+                                <button
+                                  onClick={() => handleDelete(v.id, v.name)}
+                                  title="Delete Visitor Entry"
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-200 hover:border-red-200 transition-colors cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -1428,6 +1475,16 @@ export const VisitorsView: React.FC<VisitorsViewProps> = ({ currentUser, onNavig
           setSheetsConfig(getSavedSheetsConfig());
           setTimeout(() => setFeedback({ message: '', type: '' }), 4000);
         }}
+      />
+
+      {/* Mandatory Validation Error Popup Modal */}
+      <FormValidationErrorModal
+        isOpen={validationPopup.isOpen}
+        onClose={() => setValidationPopup((prev) => ({ ...prev, isOpen: false }))}
+        title={validationPopup.title}
+        description={validationPopup.description}
+        missingFields={validationPopup.missingFields}
+        extraErrors={validationPopup.extraErrors}
       />
     </div>
   );

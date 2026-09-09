@@ -1,6 +1,7 @@
 import { QrUploadedFile, QR_BROADCAST_CHANNEL } from '../types/qrUpload';
 import { db } from '../lib/firebase';
 import { sanitizeForFirestore } from './authService';
+import { getDefaultVaultFiles } from '../data/seedVaultDocuments';
 import {
   collection,
   doc,
@@ -186,9 +187,17 @@ export const qrUploadService = {
   getAllVaultFiles(): QrUploadedFile[] {
     try {
       const saved = localStorage.getItem(VAULT_STORAGE_KEY);
-      return saved ? JSON.parse(saved) : [];
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+      const initialSeeds = getDefaultVaultFiles();
+      localStorage.setItem(VAULT_STORAGE_KEY, JSON.stringify(initialSeeds));
+      return initialSeeds;
     } catch {
-      return [];
+      return getDefaultVaultFiles();
     }
   },
 
