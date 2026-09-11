@@ -71,6 +71,7 @@ export const DNO_USER: UserProfile = {
     'qr_upload_tool',
     'ticket_generator_tool',
     'img_to_pdf_tool',
+    'image_to_text_tool',
     'add_candidate',
     'add_visitor',
     'export_reports',
@@ -94,14 +95,35 @@ export const AVAILABLE_TABS: { id: TabPermission; label: string; description: st
 ];
 
 export const AVAILABLE_FEATURES: { id: FeaturePermission; label: string; description: string }[] = [
-  { id: 'whatsapp_tool', label: 'WhatsApp Ticket Tool', description: 'Direct WhatsApp notice generator & dispatch' },
-  { id: 'qr_upload_tool', label: 'Upload by QR Code', description: 'Instant camera sync for candidate document uploads' },
-  { id: 'ticket_generator_tool', label: 'Candidate Ticket Generator', description: 'Official CET/CAP candidate query & grievance ticket generation' },
-  { id: 'img_to_pdf_tool', label: 'Image to PDF Converter', description: 'Convert candidate image documents to multi-page PDF' },
+  { id: 'whatsapp_tool', label: 'WhatApp Ticket', description: 'Direct WhatsApp ticket generator & notice dispatch' },
+  { id: 'qr_upload_tool', label: 'Files by QR', description: 'Instant mobile QR code camera sync for candidate document uploads' },
+  { id: 'ticket_generator_tool', label: 'SAC Ticket Generator', description: 'Official CET/CAP candidate grievance & scrutiny ticket desk' },
+  { id: 'img_to_pdf_tool', label: 'Image to PDF', description: 'Convert candidate image documents to multi-page PDF' },
+  { id: 'image_to_text_tool', label: 'Image to Text (AI)', description: 'Extract Marathi, Hindi & English printed or handwritten text with multimodal AI vision' },
   { id: 'add_candidate', label: 'Add New Candidates', description: 'Ability to register and input candidate details' },
   { id: 'add_visitor', label: 'Add Visitor Entry', description: 'Ability to log new visitor check-in and check-out' },
   { id: 'export_reports', label: 'Export Data & Reports', description: 'Download CSV and print scrutiny logs' },
 ];
+
+/**
+ * Return friendly title for UserRole
+ */
+export function getRoleLabel(role?: string): string {
+  switch (role) {
+    case 'dno':
+      return 'District Nodal Officer (Admin)';
+    case 'counsellor':
+      return 'Admission Counsellor';
+    case 'supporting_staff':
+      return 'Supporting Staff';
+    case 'operator':
+      return 'Scrutiny Operator';
+    case 'student':
+      return 'Candidate User';
+    default:
+      return 'Staff Member';
+  }
+}
 
 /**
  * Check whether a user is authorized to access a given portal tab

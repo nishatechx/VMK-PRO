@@ -13,6 +13,7 @@ export type FeaturePermission =
   | 'qr_upload_tool'
   | 'ticket_generator_tool'
   | 'img_to_pdf_tool'
+  | 'image_to_text_tool'
   | 'add_candidate'
   | 'add_visitor'
   | 'export_reports';

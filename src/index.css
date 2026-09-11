@@ -39,3 +39,66 @@ body {
 h1, h2, h3, h4, h5, h6 {
   color: #1F2937;
 }
+
+@keyframes ticker-blink {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.15;
+    transform: scale(0.96);
+  }
+}
+
+@keyframes flash-red {
+  0%, 100% {
+    background-color: #dc2626;
+    color: #ffffff;
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7);
+  }
+  50% {
+    background-color: #fef08a;
+    color: #854d0e;
+    box-shadow: 0 0 0 6px rgba(220, 38, 38, 0);
+  }
+}
+
+.animate-ticker-blink {
+  animation: ticker-blink 1s ease-in-out infinite;
+}
+
+.animate-flash-badge {
+  animation: flash-red 1.2s ease-in-out infinite;
+}
+
+@keyframes ocr-scanner {
+  0% {
+    top: 0%;
+  }
+  50% {
+    top: calc(100% - 4px);
+  }
+  100% {
+    top: 0%;
+  }
+}
+
+.animate-ocr-scanner {
+  animation: ocr-scanner 2.2s ease-in-out infinite;
+}
+
+@keyframes ocr-pulse {
+  0%, 100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.animate-ocr-pulse {
+  animation: ocr-pulse 2s ease-in-out infinite;
+}
+
+

@@ -36,6 +36,7 @@ import {
 } from '../types/qrUpload';
 import { qrUploadService } from '../services/qrUploadService';
 import { InSoftwareDocumentViewer } from './InSoftwareDocumentViewer';
+import { APP_ASSETS } from '../constants/assets';
 
 interface QrUploadModalProps {
   isOpen: boolean;
@@ -329,7 +330,7 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose, o
                       }`}
                     >
                       <QrCode className="w-3.5 h-3.5" />
-                      <span>Upload Options</span>
+                      <span>Files by QR</span>
                     </button>
                     <button
                       id="upload-switcher-vault-tab"
@@ -450,12 +451,12 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose, o
                       {/* Deep Blue Header */}
                       <div className="bg-gradient-to-r from-[#0056A6] to-[#003B73] px-5 sm:px-6 py-3.5 text-white flex items-center justify-between shrink-0 select-none">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-9 h-9 rounded-xl bg-white/15 backdrop-blur-xs flex items-center justify-center text-white shadow-xs border border-white/20">
-                            <QrCode className="w-5 h-5 text-white" />
+                          <div className="w-9 h-9 rounded-xl bg-white p-1 flex items-center justify-center shrink-0 shadow-md border border-white/40 overflow-hidden">
+                            <img src={APP_ASSETS.FILES_BY_QR} alt="Files by QR" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                           </div>
                           <div>
                             <h2 className="text-base font-bold text-white tracking-wide leading-tight">
-                              Upload Options
+                              Files by QR
                             </h2>
                           </div>
                         </div>

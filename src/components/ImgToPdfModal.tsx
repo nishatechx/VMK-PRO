@@ -20,10 +20,14 @@ import {
   Square,
   Filter,
   ShieldCheck,
+  GripVertical,
+  ExternalLink,
+  Sparkles,
 } from 'lucide-react';
 import { qrUploadService } from '../services/qrUploadService';
 import { QrUploadedFile } from '../types/qrUpload';
 import { UserProfile } from '../types/auth';
+import { APP_ASSETS } from '../constants/assets';
 
 export interface ImageItem {
   id: string;
@@ -35,6 +39,34 @@ export interface ImageItem {
   height: number;
   rotation: number; // 0, 90, 180, 270
 }
+
+export const STANDARD_CAP_DOCUMENTS = [
+  { id: 'HSC_Marksheet', label: 'HSC (12th) Marksheet' },
+  { id: 'SSC_Marksheet', label: 'SSC (10th) Marksheet' },
+  { id: 'MHT_CET_Scorecard', label: 'MHT-CET Score Card' },
+  { id: 'Leaving_Certificate_LC', label: 'Leaving Certificate (T.C. / L.C.)' },
+  { id: 'Caste_Certificate', label: 'Caste Certificate' },
+  { id: 'Caste_Validity_Certificate', label: 'Caste Validity Certificate' },
+  { id: 'Non_Creamy_Layer_NCL', label: 'Non-Creamy Layer (NCL)' },
+  { id: 'EWS_Eligibility_Certificate', label: 'EWS Eligibility Certificate' },
+  { id: 'Income_Certificate', label: 'Tahsildar Income Certificate' },
+  { id: 'Domicile_Certificate', label: 'Domicile Certificate' },
+  { id: 'Nationality_Certificate', label: 'Nationality Certificate' },
+  { id: 'Aadhaar_Card', label: 'Candidate Aadhaar Card' },
+  { id: 'CAP_Allotment_Letter', label: 'CAP Seat Allotment Letter' },
+  { id: 'Admission_Fee_Receipt', label: 'Admission Fee Receipt' },
+  { id: 'Passport_Photo', label: 'Candidate Passport Photo' },
+  { id: 'Candidate_Signature', label: 'Candidate Signature' },
+  { id: 'CUSTOM', label: 'Other / Custom Document Name...' },
+];
+
+export const formatCombinedFileName = (cet: string, doc: string, custom: string): string => {
+  const cleanCet = cet.trim().replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_') || 'CET2024XXXX';
+  const cleanDoc = doc === 'CUSTOM'
+    ? (custom.trim().replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_') || 'Document')
+    : doc;
+  return `${cleanCet}_${cleanDoc}.pdf`;
+};
 
 interface ImgToPdfModalProps {
   isOpen: boolean;
@@ -53,7 +85,31 @@ export const ImgToPdfModal: React.FC<ImgToPdfModalProps> = ({
   currentUser,
 }) => {
   const [images, setImages] = useState<ImageItem[]>([]);
-  const [pdfFileName, setPdfFileName] = useState('document.pdf');
+  
+  // Official Document Naming state (CET / CAP Format: e.g., CET2024XXXX_HSC_Marksheet.pdf)
+  const [cetNumber, setCetNumber] = useState('');
+  const [docType, setDocType] = useState('HSC_Marksheet');
+  const [customDocName, setCustomDocName] = useState('');
+  const [pdfFileName, setPdfFileName] = useState('');
+
+  // Page reorder drag & drop state
+  const [draggedCardIndex, setDraggedCardIndex] = useState<number | null>(null);
+  const [dragOverCardIndex, setDragOverCardIndex] = useState<number | null>(null);
+
+  // Set Document Name Before Download Modal
+  const [isSetNameModalOpen, setIsSetNameModalOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'download' | 'preview' | null>(null);
+
+  // Full PDF Preview Modal state
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+  const [previewDocData, setPreviewDocData] = useState<{
+    doc: jsPDF;
+    fileName: string;
+    blob: Blob;
+    blobUrl: string;
+    pageCount: number;
+  } | null>(null);
+
   const [orientation, setOrientation] = useState<PageOrientation>('auto');
   const [pageSize, setPageSize] = useState<PageSize>('a4');
   const [margin, setMargin] = useState<MarginSize>('none');
@@ -346,7 +402,9 @@ export const ImgToPdfModal: React.FC<ImgToPdfModalProps> = ({
   };
 
   // Build jsPDF instance
-  const buildPdfDocument = async (): Promise<{ doc: jsPDF; fileName: string; blob: Blob }> => {
+  const buildPdfDocument = async (
+    overrideFileName?: string
+  ): Promise<{ doc: jsPDF; fileName: string; blob: Blob; blobUrl: string }> => {
     if (images.length === 0) {
       throw new Error('No images to convert');
     }
@@ -421,27 +479,49 @@ export const ImgToPdfModal: React.FC<ImgToPdfModalProps> = ({
 
     if (!doc) throw new Error('Failed to create PDF document');
 
-    const cleanName = pdfFileName.trim().toLowerCase().endsWith('.pdf')
-      ? pdfFileName.trim()
-      : `${pdfFileName.trim() || 'document'}.pdf`;
+    const cleanName = overrideFileName?.trim()
+      ? (overrideFileName.trim().toLowerCase().endsWith('.pdf') ? overrideFileName.trim() : `${overrideFileName.trim()}.pdf`)
+      : formatCombinedFileName(cetNumber, docType, customDocName);
 
     const blob = doc.output('blob');
-    return { doc, fileName: cleanName, blob };
+    const blobUrl = URL.createObjectURL(blob);
+    return { doc, fileName: cleanName, blob, blobUrl };
   };
 
-  const handleConvertAndDownload = async () => {
+  // Initiate Download: prompts for CET/CAP number and document name if CET number is blank
+  const handleInitiateDownload = () => {
+    if (images.length === 0) return;
+    if (!cetNumber.trim()) {
+      setPendingAction('download');
+      setIsSetNameModalOpen(true);
+      return;
+    }
+    executeDownload();
+  };
+
+  // Initiate Preview: prompts for CET/CAP number and document name if CET number is blank, or opens preview directly
+  const handleInitiatePreview = () => {
+    if (images.length === 0) return;
+    if (!cetNumber.trim()) {
+      setPendingAction('preview');
+      setIsSetNameModalOpen(true);
+      return;
+    }
+    executePreview();
+  };
+
+  const executeDownload = async (customName?: string) => {
     if (images.length === 0) return;
     setIsProcessing(true);
     setProcessingProgress(0);
     setSuccessMessage(null);
 
     try {
-      const { doc, fileName, blob } = await buildPdfDocument();
+      const { doc, fileName, blob, blobUrl } = await buildPdfDocument(customName);
       doc.save(fileName);
-
-      const url = URL.createObjectURL(blob);
-      setPreviewPdfUrl(url);
+      setPreviewPdfUrl(blobUrl);
       setSuccessMessage(`Downloaded ${fileName} (${formatFileSize(blob.size)})`);
+      setIsSetNameModalOpen(false);
     } catch (err: any) {
       console.error('PDF generation error:', err);
       alert('Failed to generate PDF: ' + (err.message || 'Unknown error'));
@@ -450,14 +530,39 @@ export const ImgToPdfModal: React.FC<ImgToPdfModalProps> = ({
     }
   };
 
-  const handleSaveToVault = async () => {
+  const executePreview = async (customName?: string) => {
     if (images.length === 0) return;
     setIsProcessing(true);
     setProcessingProgress(0);
     setSuccessMessage(null);
 
     try {
-      const { doc, fileName, blob } = await buildPdfDocument();
+      const { doc, fileName, blob, blobUrl } = await buildPdfDocument(customName);
+      setPreviewDocData({
+        doc,
+        fileName,
+        blob,
+        blobUrl,
+        pageCount: images.length,
+      });
+      setIsPreviewModalOpen(true);
+      setIsSetNameModalOpen(false);
+    } catch (err: any) {
+      console.error('PDF preview generation error:', err);
+      alert('Failed to generate PDF preview: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleSaveToVault = async (customName?: string) => {
+    if (images.length === 0) return;
+    setIsProcessing(true);
+    setProcessingProgress(0);
+    setSuccessMessage(null);
+
+    try {
+      const { doc, fileName, blob } = await buildPdfDocument(customName);
       const dataUri = doc.output('datauristring');
 
       qrUploadService.saveToSoftwareVault({
@@ -495,8 +600,8 @@ export const ImgToPdfModal: React.FC<ImgToPdfModalProps> = ({
         {/* Header */}
         <div className="px-5 py-4 bg-[#003B73] text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-white/10 border border-white/20 flex items-center justify-center">
-              <FileImage className="w-4 h-4 text-white" />
+            <div className="w-8 h-8 rounded-lg bg-white border border-white/30 p-0.5 flex items-center justify-center shrink-0 overflow-hidden shadow-xs">
+              <img src={APP_ASSETS.IMAGE_TO_PDF} alt="Image to PDF" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
             </div>
             <div>
               <h2 className="text-base font-bold tracking-tight">Image to PDF</h2>
@@ -619,13 +724,78 @@ export const ImgToPdfModal: React.FC<ImgToPdfModalProps> = ({
                 </div>
               </div>
 
+              {/* Drag & Drop Reorder Tip */}
+              <div className="flex items-center justify-between text-[11px] text-[#4B5563] pb-0.5">
+                <span className="inline-flex items-center gap-1.5 font-medium text-slate-600">
+                  <GripVertical className="w-3.5 h-3.5 text-[#0056A6]" />
+                  Drag cards by handle to reorder pages, or use arrow buttons:
+                </span>
+                <span className="font-mono text-[10px] text-slate-500">
+                  {images.length} {images.length === 1 ? 'Page' : 'Pages'}
+                </span>
+              </div>
+
               {/* Image Items Grid / List */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-60 overflow-y-auto pr-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-64 overflow-y-auto pr-1">
                 {images.map((img, idx) => (
                   <div
                     key={img.id}
-                    className="flex items-center gap-3 p-2.5 rounded-xl border border-[#D9E1EA] bg-white hover:border-[#0056A6] transition-colors shadow-2xs"
+                    draggable={true}
+                    onDragStart={(e) => {
+                      setDraggedCardIndex(idx);
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/plain', String(idx));
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                      if (dragOverCardIndex !== idx) {
+                        setDragOverCardIndex(idx);
+                      }
+                    }}
+                    onDragEnter={(e) => {
+                      e.preventDefault();
+                      setDragOverCardIndex(idx);
+                    }}
+                    onDragLeave={() => {
+                      if (dragOverCardIndex === idx) {
+                        setDragOverCardIndex(null);
+                      }
+                    }}
+                    onDragEnd={() => {
+                      setDraggedCardIndex(null);
+                      setDragOverCardIndex(null);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (draggedCardIndex !== null && draggedCardIndex !== idx) {
+                        setImages((prev) => {
+                          const updated = [...prev];
+                          const [moved] = updated.splice(draggedCardIndex, 1);
+                          updated.splice(idx, 0, moved);
+                          return updated;
+                        });
+                        setPreviewPdfUrl(null);
+                      }
+                      setDraggedCardIndex(null);
+                      setDragOverCardIndex(null);
+                    }}
+                    className={`flex items-center gap-2.5 sm:gap-3 p-2.5 rounded-xl border transition-all select-none ${
+                      draggedCardIndex === idx
+                        ? 'opacity-40 border-dashed border-[#0056A6] bg-blue-50/50'
+                        : dragOverCardIndex === idx
+                        ? 'border-[#0056A6] ring-2 ring-[#0056A6]/30 bg-blue-50/70 scale-[1.01]'
+                        : 'border-[#D9E1EA] bg-white hover:border-[#0056A6] shadow-2xs'
+                    }`}
                   >
+                    {/* Drag Handle */}
+                    <div
+                      className="cursor-grab active:cursor-grabbing p-1 text-slate-400 hover:text-[#0056A6] transition-colors shrink-0"
+                      title="Click and drag to reorder page"
+                    >
+                      <GripVertical className="w-4 h-4" />
+                    </div>
+
                     {/* Thumbnail */}
                     <div className="w-14 h-14 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center relative">
                       <img
@@ -634,8 +804,8 @@ export const ImgToPdfModal: React.FC<ImgToPdfModalProps> = ({
                         className="w-full h-full object-cover transition-transform duration-150"
                         style={{ transform: `rotate(${img.rotation}deg)` }}
                       />
-                      <span className="absolute bottom-0.5 right-0.5 px-1 py-0.2 rounded bg-black/70 text-white text-[9px] font-mono">
-                        #{idx + 1}
+                      <span className="absolute bottom-0.5 right-0.5 px-1 py-0.2 rounded bg-black/75 text-white text-[9px] font-mono font-bold">
+                        P.{idx + 1}
                       </span>
                     </div>
 
@@ -768,19 +938,92 @@ export const ImgToPdfModal: React.FC<ImgToPdfModalProps> = ({
               </div>
             </div>
 
-            {/* Output File Name */}
-            <div>
-              <label className="block text-[11px] font-semibold text-[#4B5563] mb-1">
-                File Name
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={pdfFileName}
-                  onChange={(e) => setPdfFileName(e.target.value)}
-                  placeholder="document.pdf"
-                  className="flex-1 text-xs bg-white border border-[#D9E1EA] rounded-lg px-3 py-1.5 text-[#1F2937] focus:outline-none focus:border-[#0056A6] font-mono"
-                />
+            {/* Official Document Naming Structure (CET/CAP Format) */}
+            <div className="pt-2 border-t border-slate-200">
+              <div className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/50 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-[#0056A6]" />
+                    <h4 className="text-xs font-bold text-[#003B73] uppercase tracking-wide">
+                      Official Document Naming (CET / CAP Format)
+                    </h4>
+                  </div>
+                  <span className="text-[10px] font-semibold text-blue-700 bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-full">
+                    Required for Admission Portal
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* CET / CAP Application ID */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#1F2937] mb-1">
+                      CET / CAP Number <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={cetNumber}
+                      onChange={(e) => setCetNumber(e.target.value)}
+                      placeholder="e.g., CET2024XXXX or EN26102345"
+                      className="w-full text-xs bg-white border border-[#D9E1EA] rounded-lg px-3 py-2 text-[#1F2937] font-mono focus:outline-none focus:border-[#0056A6] focus:ring-1 focus:ring-[#0056A6]"
+                    />
+                  </div>
+
+                  {/* Document Name Selection */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#1F2937] mb-1">
+                      Document Name <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={docType}
+                      onChange={(e) => setDocType(e.target.value)}
+                      className="w-full text-xs bg-white border border-[#D9E1EA] rounded-lg px-3 py-2 text-[#1F2937] focus:outline-none focus:border-[#0056A6]"
+                    >
+                      {STANDARD_CAP_DOCUMENTS.map((doc) => (
+                        <option key={doc.id} value={doc.id}>
+                          {doc.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Custom Document Name if CUSTOM selected */}
+                {docType === 'CUSTOM' && (
+                  <div>
+                    <label className="block text-[11px] font-semibold text-[#4B5563] mb-1">
+                      Specify Custom Document Name
+                    </label>
+                    <input
+                      type="text"
+                      value={customDocName}
+                      onChange={(e) => setCustomDocName(e.target.value)}
+                      placeholder="e.g., Gap_Affidavit or Sports_Certificate"
+                      className="w-full text-xs bg-white border border-[#D9E1EA] rounded-lg px-3 py-1.5 text-[#1F2937] focus:outline-none focus:border-[#0056A6]"
+                    />
+                  </div>
+                )}
+
+                {/* Combined Filename Result Preview */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-blue-200/60 text-xs">
+                  <span className="text-slate-600 font-medium text-[11px]">
+                    Combined File Name:
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono font-bold text-[#003B73] bg-white px-2.5 py-1 rounded-md border border-blue-200 shadow-2xs">
+                      {formatCombinedFileName(cetNumber, docType, customDocName)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPendingAction('download');
+                        setIsSetNameModalOpen(true);
+                      }}
+                      className="text-[10px] text-[#0056A6] hover:underline font-semibold cursor-pointer"
+                    >
+                      Edit Name Dialog
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -793,15 +1036,14 @@ export const ImgToPdfModal: React.FC<ImgToPdfModalProps> = ({
                 <span className="font-medium">{successMessage}</span>
               </div>
               {previewPdfUrl && (
-                <a
-                  href={previewPdfUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-2 py-1 rounded bg-emerald-700 text-white font-semibold text-[11px] inline-flex items-center gap-1 hover:bg-emerald-800 transition-colors"
+                <button
+                  type="button"
+                  onClick={handleInitiatePreview}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-700 text-white font-semibold text-[11px] inline-flex items-center gap-1 hover:bg-emerald-800 transition-colors cursor-pointer"
                 >
                   <Eye className="w-3 h-3" />
-                  View PDF
-                </a>
+                  Preview PDF
+                </button>
               )}
             </div>
           )}
@@ -811,18 +1053,26 @@ export const ImgToPdfModal: React.FC<ImgToPdfModalProps> = ({
         <div className="px-5 py-3.5 bg-white border-t border-[#D9E1EA] flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
           <div className="text-xs text-[#6B7280]">
             {images.length > 0 ? (
-              <span>{images.length} {images.length === 1 ? 'page' : 'pages'} ready</span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>{images.length} {images.length === 1 ? 'page' : 'pages'} ready</span>
+                <span className="text-slate-400 font-mono text-[11px] ml-1">
+                  ({formatCombinedFileName(cetNumber, docType, customDocName)})
+                </span>
+              </span>
             ) : (
               <span>No images selected</span>
             )}
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto">
+            {/* Save to Software Vault */}
             <button
               type="button"
-              onClick={handleSaveToVault}
+              onClick={() => handleSaveToVault()}
               disabled={images.length === 0 || isProcessing}
-              className="flex-1 sm:flex-none px-3.5 py-2 rounded-xl border border-[#D9E1EA] bg-white hover:bg-slate-50 text-xs font-semibold text-[#1F2937] inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-40 cursor-pointer"
+              className="flex-1 sm:flex-none px-3 py-2 rounded-xl border border-[#D9E1EA] bg-white hover:bg-slate-50 text-xs font-semibold text-[#1F2937] inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-40 cursor-pointer"
+              title="Save directly into candidate's secure Software Vault"
             >
               {isProcessing ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-[#0056A6]" />
@@ -831,13 +1081,27 @@ export const ImgToPdfModal: React.FC<ImgToPdfModalProps> = ({
               ) : (
                 <FolderDown className="w-3.5 h-3.5 text-[#0056A6]" />
               )}
-              Save to Vault
+              <span>Vault</span>
             </button>
 
+            {/* Preview PDF Button */}
+            <button
+              id="img-to-pdf-preview-btn"
+              type="button"
+              onClick={handleInitiatePreview}
+              disabled={images.length === 0 || isProcessing}
+              className="flex-1 sm:flex-none px-3.5 py-2 rounded-xl border border-[#0056A6] bg-white hover:bg-blue-50 text-xs font-semibold text-[#0056A6] inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-40 cursor-pointer"
+              title="Preview PDF before downloading"
+            >
+              <Eye className="w-3.5 h-3.5 text-[#0056A6]" />
+              <span>Preview PDF</span>
+            </button>
+
+            {/* Download PDF Button */}
             <button
               id="img-to-pdf-convert-btn"
               type="button"
-              onClick={handleConvertAndDownload}
+              onClick={handleInitiateDownload}
               disabled={images.length === 0 || isProcessing}
               className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-[#0056A6] hover:bg-[#003B73] text-white text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-40 shadow-xs cursor-pointer"
             >
@@ -1090,6 +1354,263 @@ export const ImgToPdfModal: React.FC<ImgToPdfModalProps> = ({
                   <span>
                     Add {selectedVaultFileIds.length > 0 ? `(${selectedVaultFileIds.length})` : ''} to PDF
                   </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Set Official Document Name Modal (Before Download / Preview) */}
+      {isSetNameModalOpen && (
+        <div
+          id="set-name-modal-overlay"
+          className="fixed inset-0 z-80 flex items-center justify-center p-3 sm:p-5 bg-black/65 backdrop-blur-xs"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isProcessing) setIsSetNameModalOpen(false);
+          }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="px-5 py-4 bg-[#003B73] text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-white/10 border border-white/20 flex items-center justify-center">
+                  <FileText className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold tracking-tight">
+                    Set Official Document Name
+                  </h3>
+                  <p className="text-[11px] text-white/75">
+                    CET / CAP combined naming structure for admission upload
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsSetNameModalOpen(false)}
+                disabled={isProcessing}
+                className="w-8 h-8 rounded-lg hover:bg-white/10 flex items-center justify-center transition-colors text-white/80 hover:text-white cursor-pointer disabled:opacity-50"
+                title="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Form Fields */}
+            <div className="p-5 space-y-4">
+              {/* CET / CAP Application ID */}
+              <div>
+                <label className="block text-xs font-bold text-[#1F2937] mb-1.5">
+                  1. CET / CAP Application ID <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  autoFocus
+                  value={cetNumber}
+                  onChange={(e) => setCetNumber(e.target.value)}
+                  placeholder="e.g., CET2024XXXX or EN26123456"
+                  className="w-full text-xs font-mono bg-slate-50 border border-[#D9E1EA] rounded-xl px-3 py-2.5 text-[#1F2937] focus:bg-white focus:outline-none focus:border-[#0056A6] focus:ring-1 focus:ring-[#0056A6]"
+                />
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Enter your official application or candidate ID from Maharashtra CET Cell.
+                </p>
+              </div>
+
+              {/* Document Name */}
+              <div>
+                <label className="block text-xs font-bold text-[#1F2937] mb-1.5">
+                  2. Document Name / Type <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={docType}
+                  onChange={(e) => setDocType(e.target.value)}
+                  className="w-full text-xs bg-slate-50 border border-[#D9E1EA] rounded-xl px-3 py-2.5 text-[#1F2937] focus:bg-white focus:outline-none focus:border-[#0056A6]"
+                >
+                  {STANDARD_CAP_DOCUMENTS.map((doc) => (
+                    <option key={doc.id} value={doc.id}>
+                      {doc.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Custom Document Name if CUSTOM selected */}
+              {docType === 'CUSTOM' && (
+                <div>
+                  <label className="block text-xs font-semibold text-[#1F2937] mb-1">
+                    Custom Document Title
+                  </label>
+                  <input
+                    type="text"
+                    value={customDocName}
+                    onChange={(e) => setCustomDocName(e.target.value)}
+                    placeholder="e.g., Gap_Affidavit or Sports_Certificate"
+                    className="w-full text-xs bg-white border border-[#D9E1EA] rounded-xl px-3 py-2 text-[#1F2937] focus:outline-none focus:border-[#0056A6]"
+                  />
+                </div>
+              )}
+
+              {/* Result Preview Box */}
+              <div className="p-3 rounded-xl bg-blue-50/80 border border-blue-200 space-y-1">
+                <span className="text-[11px] font-semibold text-blue-900 block">
+                  Generated File Name Preview:
+                </span>
+                <div className="font-mono text-xs font-bold text-[#003B73] break-all bg-white px-3 py-1.5 rounded-lg border border-blue-200">
+                  {formatCombinedFileName(cetNumber, docType, customDocName)}
+                </div>
+                <p className="text-[10px] text-blue-700 pt-0.5">
+                  Example: CET2024XXXX_HSC_Marksheet.pdf
+                </p>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="px-5 py-3.5 bg-slate-50 border-t border-[#D9E1EA] flex flex-wrap items-center justify-between gap-2.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsSetNameModalOpen(false)}
+                disabled={isProcessing}
+                className="px-3.5 py-2 rounded-xl border border-[#D9E1EA] bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700 cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+
+              <div className="flex items-center gap-2">
+                {/* Preview PDF Option */}
+                <button
+                  type="button"
+                  onClick={() => executePreview()}
+                  disabled={isProcessing}
+                  className="px-3.5 py-2 rounded-xl border border-[#0056A6] bg-white hover:bg-blue-50 text-xs font-semibold text-[#0056A6] inline-flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <Eye className="w-3.5 h-3.5 text-[#0056A6]" />
+                  <span>Preview PDF</span>
+                </button>
+
+                {/* Confirm & Download PDF */}
+                <button
+                  type="button"
+                  onClick={() => executeDownload()}
+                  disabled={isProcessing}
+                  className="px-4 py-2 rounded-xl bg-[#0056A6] hover:bg-[#003B73] text-white text-xs font-semibold inline-flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  {isProcessing ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5" />
+                  )}
+                  <span>Confirm & Download</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PDF Document Preview Modal */}
+      {isPreviewModalOpen && previewDocData && (
+        <div
+          id="pdf-preview-modal-overlay"
+          className="fixed inset-0 z-80 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/75 backdrop-blur-xs"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isProcessing) setIsPreviewModalOpen(false);
+          }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Preview Header */}
+            <div className="px-4 sm:px-6 py-3.5 bg-[#003B73] text-white flex flex-wrap items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-white/10 border border-white/20 flex items-center justify-center shrink-0">
+                  <FileText className="w-4 h-4 text-white" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-xs sm:text-sm font-bold tracking-tight truncate font-mono" title={previewDocData.fileName}>
+                    {previewDocData.fileName}
+                  </h3>
+                  <div className="flex items-center gap-2 text-[10px] text-white/80">
+                    <span className="bg-white/15 px-1.5 py-0.2 rounded font-medium">
+                      {previewDocData.pageCount} {previewDocData.pageCount === 1 ? 'Page' : 'Pages'}
+                    </span>
+                    <span>•</span>
+                    <span>{formatFileSize(previewDocData.blob.size)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Top Quick Actions */}
+              <div className="flex items-center gap-2">
+                {/* Save to Vault */}
+                <button
+                  type="button"
+                  onClick={() => handleSaveToVault(previewDocData.fileName)}
+                  disabled={isProcessing}
+                  className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Save to Software Vault"
+                >
+                  <FolderDown className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Save to Vault</span>
+                </button>
+
+                {/* Download PDF Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    previewDocData.doc.save(previewDocData.fileName);
+                    setSuccessMessage(`Downloaded ${previewDocData.fileName} (${formatFileSize(previewDocData.blob.size)})`);
+                  }}
+                  className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download PDF</span>
+                </button>
+
+                {/* Close Preview */}
+                <button
+                  type="button"
+                  onClick={() => setIsPreviewModalOpen(false)}
+                  className="w-7 h-7 rounded-lg hover:bg-white/10 flex items-center justify-center transition-colors text-white/80 hover:text-white cursor-pointer ml-1"
+                  title="Close Preview"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Embedded PDF Viewer */}
+            <div className="flex-1 bg-slate-100 p-2 sm:p-3 relative overflow-hidden flex flex-col">
+              <iframe
+                src={`${previewDocData.blobUrl}#toolbar=1&navpanes=1`}
+                className="w-full h-full rounded-xl border border-slate-300 bg-white shadow-inner"
+                title="PDF Document Preview"
+              />
+            </div>
+
+            {/* Preview Footer */}
+            <div className="px-5 py-2.5 bg-slate-50 border-t border-[#D9E1EA] flex items-center justify-between text-xs text-slate-500 shrink-0">
+              <div className="flex items-center gap-2">
+                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                <span>PDF generated and verified. Ready for CET portal upload.</span>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <a
+                  href={previewDocData.blobUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#0056A6] hover:underline inline-flex items-center gap-1 text-[11px] font-semibold"
+                >
+                  <span>Open in New Tab</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+
+                <button
+                  type="button"
+                  onClick={() => setIsPreviewModalOpen(false)}
+                  className="px-3 py-1 rounded-lg border border-[#D9E1EA] bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold cursor-pointer"
+                >
+                  Back to Adjust Pages
                 </button>
               </div>
             </div>

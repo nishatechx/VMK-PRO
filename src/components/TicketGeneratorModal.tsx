@@ -6,6 +6,7 @@ import {
   Check,
   Trash2,
   FileText,
+  Ticket,
   CheckCircle2,
   AlertCircle,
   AlertTriangle,
@@ -26,6 +27,7 @@ import { UserProfile, TicketRecord } from '../types/auth';
 import { WhatsappInitialData } from './WhatsappTicketModal';
 import { DEPARTMENT_COURSES, DEFAULT_COURSE } from '../data/courses';
 import { FormValidationErrorModal } from './FormValidationErrorModal';
+import { APP_ASSETS } from '../constants/assets';
 
 export interface TicketState {
   cetNo: string;
@@ -378,12 +380,12 @@ Query: ${query.trim()}`;
             {/* Navy Header */}
             <div className="bg-[#003B73] text-white px-5 sm:px-8 py-4 border-b border-[#002850] flex items-center justify-between shrink-0 select-none">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#0056A6] flex items-center justify-center text-white shadow-xs border border-white/20">
-                  <FileText className="w-5 h-5 text-white" />
+                <div className="w-10 h-10 rounded-xl bg-white p-1 flex items-center justify-center shrink-0 shadow-md border border-white/40 overflow-hidden">
+                  <img src={APP_ASSETS.SAC_TICKET_GENERATOR} alt="SAC Ticket" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                 </div>
                 <div>
                   <h1 className="text-base sm:text-lg font-bold text-white tracking-wide leading-tight">
-                    Candidate Grievance / Query Ticket Desk
+                    SAC Ticket Generator
                   </h1>
                 </div>
               </div>

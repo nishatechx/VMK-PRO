@@ -9,6 +9,7 @@ import {
   Printer,
   FileSpreadsheet,
   MessageCircle,
+  MessageSquareText,
   FileText,
   User,
   Phone,
@@ -365,8 +366,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               onClick={onOpenTicketTool}
               className="px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-[#0056A6] hover:bg-[#003B73] text-white shadow-xs transition-all cursor-pointer flex items-center gap-2 active:scale-95"
             >
-              <Plus className="w-4 h-4" />
-              <span>Generate Candidate Ticket</span>
+              <Ticket className="w-4 h-4" />
+              <span>SAC Ticket Generator</span>
             </button>
           )}
 
@@ -376,8 +377,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               onClick={onOpenWhatsappTool}
               className="px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-[#198754] hover:bg-[#146c43] text-white shadow-xs transition-all cursor-pointer flex items-center gap-2 active:scale-95"
             >
-              <MessageCircle className="w-4 h-4" />
-              <span>WhatsApp Ticket Tool</span>
+              <MessageSquareText className="w-4 h-4" />
+              <span>WhatApp Ticket</span>
             </button>
           )}
 
@@ -606,15 +607,17 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
           <div className="flex items-center justify-center gap-3 pt-2">
             <button
               onClick={onOpenTicketTool}
-              className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#0056A6] text-white hover:bg-[#003B73] transition-colors"
+              className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#0056A6] text-white hover:bg-[#003B73] transition-colors flex items-center gap-1.5"
             >
-              Create First Candidate Ticket
+              <Ticket className="w-3.5 h-3.5" />
+              <span>SAC Ticket Generator</span>
             </button>
             <button
               onClick={onOpenWhatsappTool}
-              className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#198754] text-white hover:bg-[#146c43] transition-colors"
+              className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#198754] text-white hover:bg-[#146c43] transition-colors flex items-center gap-1.5"
             >
-              Create WhatsApp Ticket
+              <MessageSquareText className="w-3.5 h-3.5" />
+              <span>WhatApp Ticket</span>
             </button>
           </div>
         </div>

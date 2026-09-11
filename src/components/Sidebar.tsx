@@ -12,9 +12,16 @@ import {
   FileSpreadsheet,
   Lock,
   Ticket,
+  X,
+  MessageSquareText,
+  QrCode,
+  FileImage,
+  FileText,
+  Wrench,
 } from 'lucide-react';
 import { TabPermission, UserProfile } from '../types/auth';
-import { hasTabPermission } from '../services/authService';
+import { hasTabPermission, hasFeaturePermission } from '../services/authService';
+import { APP_ASSETS } from '../constants/assets';
 
 export type NavTab = TabPermission;
 
@@ -24,8 +31,14 @@ interface SidebarProps {
   onLogout: () => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  onClose?: () => void;
   unreadCount?: number;
   currentUser?: UserProfile | null;
+  onOpenWhatsappTool?: () => void;
+  onOpenQrTool?: () => void;
+  onOpenTicketTool?: () => void;
+  onOpenImgToPdfTool?: () => void;
+  onOpenImageToTextTool?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -34,8 +47,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onLogout,
   isCollapsed,
   onToggleCollapse,
+  onClose,
   unreadCount = 0,
   currentUser,
+  onOpenWhatsappTool,
+  onOpenQrTool,
+  onOpenTicketTool,
+  onOpenImgToPdfTool,
+  onOpenImageToTextTool,
 }) => {
   const allNavItems: {
     id: NavTab;
@@ -56,6 +75,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // Check if current user is DNO administrator
   const isDnoAdmin = currentUser?.role === 'dno' || currentUser?.username?.toLowerCase() === 'dno';
+
+  // Tool permissions for active facilitation utilities
+  const canWhatsapp = hasFeaturePermission(currentUser, 'whatsapp_tool');
+  const canQr = hasFeaturePermission(currentUser, 'qr_upload_tool');
+  const canTicket = hasFeaturePermission(currentUser, 'ticket_generator_tool');
+  const canImgToPdf = hasFeaturePermission(currentUser, 'img_to_pdf_tool');
+  const canImageToText = hasFeaturePermission(currentUser, 'image_to_text_tool');
+  const hasAnyTools = canWhatsapp || canQr || canTicket || canImgToPdf || canImageToText;
 
   // Filter tabs according to the logged-in user's allowedTabs RBAC rules (Google Sheets exclusively for DNO Admin)
   const allowedNavItems = allNavItems.filter((item) => {
@@ -89,7 +116,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
       }`}
     >
       {/* Top User Profile Section */}
-      <div className="pt-5 pb-4 px-3.5 border-b border-[#D9E1EA] bg-gradient-to-b from-[#FFFFFF]/90 to-transparent">
+      <div className="pt-4 pb-4 px-3.5 border-b border-[#D9E1EA] bg-gradient-to-b from-[#FFFFFF]/90 to-transparent">
+        {onClose && (
+          <div className="flex items-center justify-between pb-2.5 mb-2 border-b border-[#D9E1EA]">
+            {!isCollapsed && (
+              <span className="text-[11px] font-bold text-[#003B73] tracking-wide uppercase">
+                Navigation Menu
+              </span>
+            )}
+            <button
+              type="button"
+              id="sidebar-close-btn"
+              onClick={onClose}
+              className={`p-1.5 rounded-lg text-[#4B5563] hover:text-[#DC3545] hover:bg-[#DC3545]/10 active:scale-95 transition-all cursor-pointer ${
+                isCollapsed ? 'mx-auto' : 'ml-auto'
+              }`}
+              title="Hide / Close Sidebar"
+              aria-label="Hide sidebar"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {isCollapsed ? (
           /* Collapsed User Avatar */
           <div
@@ -216,6 +265,138 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           );
         })}
+
+        {/* Tools & Utilities Section (Shifted to Sidebar) */}
+        {hasAnyTools && (
+          <div className="pt-2 pb-1">
+            <div className="my-2 border-t border-[#D9E1EA]" />
+            {!isCollapsed && (
+              <div className="px-1 pb-1.5 flex items-center justify-between">
+                <span className="text-[10px] font-bold text-[#003B73] uppercase tracking-wider flex items-center gap-1.5">
+                  <Wrench className="w-3 h-3 text-[#0056A6]" />
+                  Facilitation Tools
+                </span>
+                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-[#EAF4FB] text-[#0056A6]">
+                  Utilities
+                </span>
+              </div>
+            )}
+
+            <div className="space-y-1">
+              {canWhatsapp && onOpenWhatsappTool && (
+                <button
+                  type="button"
+                  id="sidebar-tool-whatsapp"
+                  onClick={() => {
+                    onOpenWhatsappTool();
+                    if (onClose && window.innerWidth < 768) onClose();
+                  }}
+                  title={isCollapsed ? 'WhatsApp Ticket Tool' : undefined}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-[#075E54] hover:text-white bg-emerald-50 hover:bg-[#075E54] border border-emerald-200/80 hover:border-[#075E54] transition-all cursor-pointer shadow-2xs group ${
+                    isCollapsed ? 'justify-center px-0 py-2.5' : ''
+                  }`}
+                >
+                  <div className="w-7 h-7 rounded-xl bg-white border border-[#D9E1EA] p-0.5 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
+                    <img src={APP_ASSETS.WHATSAPP_TOOL} alt="WhatsApp" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                  </div>
+                  {!isCollapsed && (
+                    <span className="flex-1 text-left truncate">WhatsApp Ticket</span>
+                  )}
+                </button>
+              )}
+
+              {canQr && onOpenQrTool && (
+                <button
+                  type="button"
+                  id="sidebar-tool-qr"
+                  onClick={() => {
+                    onOpenQrTool();
+                    if (onClose && window.innerWidth < 768) onClose();
+                  }}
+                  title={isCollapsed ? 'Files by QR Code' : undefined}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-amber-800 hover:text-white bg-amber-50 hover:bg-amber-600 border border-amber-200/80 hover:border-amber-600 transition-all cursor-pointer shadow-2xs group ${
+                    isCollapsed ? 'justify-center px-0 py-2.5' : ''
+                  }`}
+                >
+                  <div className="w-7 h-7 rounded-xl bg-white border border-[#D9E1EA] p-0.5 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
+                    <img src={APP_ASSETS.FILES_BY_QR} alt="Files by QR" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                  </div>
+                  {!isCollapsed && (
+                    <span className="flex-1 text-left truncate">Files by QR</span>
+                  )}
+                </button>
+              )}
+
+              {canTicket && onOpenTicketTool && (
+                <button
+                  type="button"
+                  id="sidebar-tool-ticket"
+                  onClick={() => {
+                    onOpenTicketTool();
+                    if (onClose && window.innerWidth < 768) onClose();
+                  }}
+                  title={isCollapsed ? 'SAC Ticket Generator' : undefined}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-[#003B73] hover:text-white bg-[#EAF4FB] hover:bg-[#0056A6] border border-[#D9E1EA] hover:border-[#0056A6] transition-all cursor-pointer shadow-2xs group ${
+                    isCollapsed ? 'justify-center px-0 py-2.5' : ''
+                  }`}
+                >
+                  <div className="w-7 h-7 rounded-xl bg-white border border-[#D9E1EA] p-0.5 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
+                    <img src={APP_ASSETS.SAC_TICKET_GENERATOR} alt="SAC Ticket" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                  </div>
+                  {!isCollapsed && (
+                    <span className="flex-1 text-left truncate">SAC Ticket Generator</span>
+                  )}
+                </button>
+              )}
+
+              {canImgToPdf && onOpenImgToPdfTool && (
+                <button
+                  type="button"
+                  id="sidebar-tool-img-to-pdf"
+                  onClick={() => {
+                    onOpenImgToPdfTool();
+                    if (onClose && window.innerWidth < 768) onClose();
+                  }}
+                  title={isCollapsed ? 'Image to PDF Converter' : undefined}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-indigo-800 hover:text-white bg-indigo-50 hover:bg-indigo-600 border border-indigo-200/80 hover:border-indigo-600 transition-all cursor-pointer shadow-2xs group ${
+                    isCollapsed ? 'justify-center px-0 py-2.5' : ''
+                  }`}
+                >
+                  <div className="w-7 h-7 rounded-xl bg-white border border-[#D9E1EA] p-0.5 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
+                    <img src={APP_ASSETS.IMAGE_TO_PDF} alt="Image to PDF" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                  </div>
+                  {!isCollapsed && (
+                    <span className="flex-1 text-left truncate">Image to PDF</span>
+                  )}
+                </button>
+              )}
+
+              {canImageToText && onOpenImageToTextTool && (
+                <button
+                  type="button"
+                  id="sidebar-tool-img-to-text"
+                  onClick={() => {
+                    onOpenImageToTextTool();
+                    if (onClose && window.innerWidth < 768) onClose();
+                  }}
+                  title={isCollapsed ? 'Image to Text' : undefined}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-violet-800 hover:text-white bg-violet-50 hover:bg-violet-600 border border-violet-200/80 hover:border-violet-600 transition-all cursor-pointer shadow-2xs group ${
+                    isCollapsed ? 'justify-center px-0 py-2.5' : ''
+                  }`}
+                >
+                  <div className="w-7 h-7 rounded-xl bg-white border border-[#D9E1EA] p-0.5 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
+                    <img src={APP_ASSETS.IMAGE_TO_TEXT} alt="Image to Text" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                  </div>
+                  {!isCollapsed && (
+                    <span className="flex-1 text-left truncate">Image to Text</span>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="my-1 border-t border-[#D9E1EA]" />
 
         {/* Logout Menu Item */}
         <button

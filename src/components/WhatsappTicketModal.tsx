@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   AlertCircle,
   MessageCircle,
+  MessageSquareText,
   FileCheck,
 } from 'lucide-react';
 import { UserProfile, TicketRecord } from '../types/auth';
@@ -17,6 +18,7 @@ import { getCurrentUser } from '../services/authService';
 import { saveTicketRecord } from '../services/ticketService';
 import { ALL_COURSES } from '../data/courses';
 import { FormValidationErrorModal } from './FormValidationErrorModal';
+import { APP_ASSETS } from '../constants/assets';
 
 export interface WhatsappInitialData {
   name?: string;
@@ -285,16 +287,13 @@ ${form.query.trim()}`;
             {/* Website-Themed Navy Header */}
             <div className="bg-[#003B73] text-white px-5 sm:px-6 py-4 border-b border-[#002850] flex items-center justify-between shrink-0 select-none">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#0056A6] flex items-center justify-center text-white shadow-xs border border-white/20">
-                  <MessageCircle className="w-5 h-5 text-white" />
+                <div className="w-10 h-10 rounded-xl bg-white p-1 flex items-center justify-center shrink-0 shadow-md border border-white/40 overflow-hidden">
+                  <img src={APP_ASSETS.WHATSAPP_TOOL} alt="WhatsApp" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                 </div>
                 <div>
                   <h2 className="text-base sm:text-lg font-bold text-white tracking-wide leading-tight">
-                    WhatsApp Notice Dispatcher
+                    WhatsApp Ticket
                   </h2>
-                  <p className="text-xs text-blue-100">
-                    Format and send candidate verification notices via WhatsApp
-                  </p>
                 </div>
               </div>
 

@@ -15,8 +15,10 @@ import { TicketGeneratorModal } from './components/TicketGeneratorModal';
 import { WhatsappTicketModal, WhatsappInitialData } from './components/WhatsappTicketModal';
 import { QrUploadModal } from './components/QrUploadModal';
 import { ImgToPdfModal } from './components/ImgToPdfModal';
+import { ImageToTextModal } from './components/ImageToTextModal';
 import { MobileQrUploadView } from './components/MobileQrUploadView';
 import { LoginScreen } from './components/LoginScreen';
+import { WelcomeModal } from './components/WelcomeModal';
 import {
   getCurrentUser,
   setCurrentUser,
@@ -26,15 +28,16 @@ import {
   hasFeaturePermission,
 } from './services/authService';
 import { UserProfile } from './types/auth';
-import { Building2, ShieldCheck, ExternalLink, Phone, Mail, MapPin } from 'lucide-react';
+import { Building2, ShieldCheck, ExternalLink, Phone, Mail, MapPin, MessageCircle } from 'lucide-react';
 
 export default function App() {
   const [currentUser, setCurUser] = useState<UserProfile | null>(() => getCurrentUser());
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => !!getCurrentUser());
 
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
+  // Sidebar hidden by default per user requirement: "keep side bar hide by default"
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
 
   // Modals for Core Functional Tools
   const [isTicketGeneratorOpen, setIsTicketGeneratorOpen] = useState<boolean>(false);
@@ -42,6 +45,7 @@ export default function App() {
   const [whatsappInitialData, setWhatsappInitialData] = useState<WhatsappInitialData | null>(null);
   const [isQrUploadModalOpen, setIsQrUploadModalOpen] = useState<boolean>(false);
   const [isImgToPdfOpen, setIsImgToPdfOpen] = useState<boolean>(false);
+  const [isImageToTextOpen, setIsImageToTextOpen] = useState<boolean>(false);
 
   const handleOpenWhatsappWithData = (data: WhatsappInitialData) => {
     if (hasFeaturePermission(currentUser, 'whatsapp_tool')) {
@@ -82,11 +86,19 @@ export default function App() {
     }
   };
 
+  const handleOpenImageToText = () => {
+    if (hasFeaturePermission(currentUser, 'image_to_text_tool')) {
+      setIsImageToTextOpen(true);
+    }
+  };
+
   const [qrSessionParam, setQrSessionParam] = useState<string | null>(null);
+  const [welcomeUser, setWelcomeUser] = useState<UserProfile | null>(null);
 
   const handleLoginSuccess = (user: UserProfile) => {
     setCurUser(user);
     setIsAuthenticated(true);
+    setWelcomeUser(user);
     // If user's default active tab is not in allowed tabs, switch to first allowed
     if (!hasTabPermission(user, activeTab)) {
       const firstAllowed = (['dashboard', 'tickets', 'visitors', 'students', 'google_sheets', 'settings', 'profile', 'user_management'] as NavTab[]).find(
@@ -100,6 +112,7 @@ export default function App() {
     setCurrentUser(null);
     setCurUser(null);
     setIsAuthenticated(false);
+    setWelcomeUser(null);
   };
 
   const handleRefreshSession = () => {
@@ -193,7 +206,9 @@ export default function App() {
   const navigateToTab = (tab: NavTab) => {
     if (hasTabPermission(currentUser, tab)) {
       setActiveTab(tab);
-      setIsMobileSidebarOpen(false);
+      if (typeof window !== 'undefined' && window.innerWidth < 768) {
+        setIsSidebarOpen(false);
+      }
     }
   };
 
@@ -202,35 +217,52 @@ export default function App() {
       id="vmk-washim-app-root"
       className="flex h-screen w-full bg-[#F7F9FC] text-[#4B5563] font-sans select-none overflow-hidden"
     >
-      {/* Left Sidebar (Desktop & Mobile drawer) */}
-      <div
-        className={`hidden md:flex h-full shrink-0 transition-all duration-300 z-20`}
-      >
-        <Sidebar
-          activeTab={activeTab}
-          onSelectTab={navigateToTab}
-          onLogout={handleLogout}
-          isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-          currentUser={currentUser}
-        />
-      </div>
+      {/* Left Sidebar (Desktop Docked when open - Hidden by default) */}
+      {isSidebarOpen && (
+        <div
+          className={`hidden md:flex h-full shrink-0 transition-all duration-300 z-20`}
+        >
+          <Sidebar
+            activeTab={activeTab}
+            onSelectTab={navigateToTab}
+            onLogout={handleLogout}
+            isCollapsed={isSidebarCollapsed}
+            onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            onClose={() => setIsSidebarOpen(false)}
+            currentUser={currentUser}
+            onOpenWhatsappTool={handleOpenWhatsappGeneral}
+            onOpenQrTool={handleOpenQrUpload}
+            onOpenTicketTool={handleOpenTicketGenerator}
+            onOpenImgToPdfTool={handleOpenImgToPdf}
+            onOpenImageToTextTool={handleOpenImageToText}
+          />
+        </div>
+      )}
 
-      {/* Mobile Drawer Overlay */}
-      {isMobileSidebarOpen && (
+      {/* Mobile Drawer Overlay (Hidden by default) */}
+      {isSidebarOpen && (
         <div className="fixed inset-0 z-50 flex md:hidden">
           <div
             className="fixed inset-0 bg-[#003B73]/60 backdrop-blur-xs"
-            onClick={() => setIsMobileSidebarOpen(false)}
+            onClick={() => setIsSidebarOpen(false)}
           />
           <div className="relative w-72 h-full bg-[#F7F9FC] z-10 shadow-2xl">
             <Sidebar
               activeTab={activeTab}
-              onSelectTab={navigateToTab}
+              onSelectTab={(tab) => {
+                navigateToTab(tab);
+                setIsSidebarOpen(false);
+              }}
               onLogout={handleLogout}
               isCollapsed={false}
-              onToggleCollapse={() => setIsMobileSidebarOpen(false)}
+              onToggleCollapse={() => setIsSidebarOpen(false)}
+              onClose={() => setIsSidebarOpen(false)}
               currentUser={currentUser}
+              onOpenWhatsappTool={handleOpenWhatsappGeneral}
+              onOpenQrTool={handleOpenQrUpload}
+              onOpenTicketTool={handleOpenTicketGenerator}
+              onOpenImgToPdfTool={handleOpenImgToPdf}
+              onOpenImageToTextTool={handleOpenImageToText}
             />
           </div>
         </div>
@@ -240,16 +272,11 @@ export default function App() {
       <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden">
         {/* Top Navbar */}
         <TopNavbar
-          onToggleSidebar={() => {
-            if (window.innerWidth < 768) {
-              setIsMobileSidebarOpen(!isMobileSidebarOpen);
-            } else {
-              setIsSidebarCollapsed(!isSidebarCollapsed);
-            }
-          }}
+          onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
           onNavigateTab={navigateToTab}
           onLogout={handleLogout}
           onOpenImgToPdf={hasFeaturePermission(currentUser, 'img_to_pdf_tool') ? handleOpenImgToPdf : undefined}
+          onOpenImageToText={hasFeaturePermission(currentUser, 'image_to_text_tool') ? handleOpenImageToText : undefined}
           currentUser={currentUser}
         />
 
@@ -270,6 +297,7 @@ export default function App() {
                   onOpenQrTool={handleOpenQrUpload}
                   onOpenTicketTool={handleOpenTicketGenerator}
                   onOpenImgToPdfTool={handleOpenImgToPdf}
+                  onOpenImageToTextTool={handleOpenImageToText}
                   onNavigateTab={navigateToTab}
                   currentUser={currentUser}
                 />
@@ -342,11 +370,11 @@ export default function App() {
               <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-2 text-[11px] text-[#4B5563]">
                   <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span>Secure Verification & Visitor Management Portal</span>
+                  <span>Facilitation & Admission Portal</span>
                 </div>
 
                 <div className="flex items-center gap-2 text-[11px] text-[#6B7280]">
-                  <span>Candidate Scrutiny System</span>
+                  <span>Scrutiny & Verification Desk</span>
                 </div>
               </div>
             </footer>
@@ -381,6 +409,18 @@ export default function App() {
         onClose={() => setIsImgToPdfOpen(false)}
         currentUser={currentUser}
       />
+
+      <ImageToTextModal
+        isOpen={isImageToTextOpen}
+        onClose={() => setIsImageToTextOpen(false)}
+      />
+
+      {welcomeUser && (
+        <WelcomeModal
+          user={welcomeUser}
+          onClose={() => setWelcomeUser(null)}
+        />
+      )}
     </div>
   );
 }

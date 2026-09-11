@@ -4,7 +4,9 @@ import {
   Plus,
   Filter,
   MessageCircle,
+  MessageSquareText,
   FileText,
+  Ticket,
   QrCode,
   CheckCircle2,
   AlertTriangle,
@@ -192,9 +194,10 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
             <button
               onClick={onOpenQrTool}
               className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 text-amber-800 border border-amber-200 rounded-xl text-xs font-semibold hover:bg-amber-100 transition-colors cursor-pointer"
+              title="Files by QR"
             >
               <QrCode className="w-4 h-4 text-amber-600" />
-              <span>QR Upload</span>
+              <span>Files by QR</span>
             </button>
           )}
 
@@ -202,9 +205,10 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
             <button
               onClick={onOpenWhatsappTool}
               className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white rounded-xl text-xs font-semibold hover:bg-emerald-700 transition-colors cursor-pointer shadow-xs"
+              title="WhatApp Ticket"
             >
-              <MessageCircle className="w-4 h-4" />
-              <span>Send Notice</span>
+              <MessageSquareText className="w-4 h-4" />
+              <span>WhatApp Ticket</span>
             </button>
           )}
         </div>
@@ -327,19 +331,19 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                         {canWhatsapp && (
                           <button
                             onClick={onOpenWhatsappTool}
-                            title="Send WhatsApp Notice"
+                            title="WhatApp Ticket"
                             className="p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-50 border border-emerald-200 cursor-pointer"
                           >
-                            <MessageCircle className="w-4 h-4" />
+                            <MessageSquareText className="w-4 h-4" />
                           </button>
                         )}
                         {canTicket && (
                           <button
                             onClick={onOpenTicketTool}
-                            title="Generate Candidate Ticket"
+                            title="SAC Ticket Generator"
                             className="p-1.5 rounded-lg text-blue-700 hover:bg-blue-50 border border-blue-200 cursor-pointer"
                           >
-                            <FileText className="w-4 h-4" />
+                            <Ticket className="w-4 h-4" />
                           </button>
                         )}
                         <button

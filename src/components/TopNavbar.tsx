@@ -1,14 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Menu, ChevronDown, LogOut, Settings, UserCheck, ShieldCheck, Building2, Phone, Clock, ExternalLink, FileImage } from 'lucide-react';
+import { Menu, ChevronDown, LogOut, Settings, UserCheck, ShieldCheck, Building2, Phone, Clock, ExternalLink } from 'lucide-react';
 import { NavTab } from './Sidebar';
 import { UserProfile } from '../types/auth';
 import { hasTabPermission } from '../services/authService';
+import { APP_ASSETS } from '../constants/assets';
 
 interface TopNavbarProps {
   onToggleSidebar: () => void;
   onNavigateTab: (tab: NavTab) => void;
   onLogout: () => void;
   onOpenImgToPdf?: () => void;
+  onOpenImageToText?: () => void;
   unreadCount?: number;
   currentUser?: UserProfile | null;
 }
@@ -18,6 +20,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
   onNavigateTab,
   onLogout,
   onOpenImgToPdf,
+  onOpenImageToText,
   currentUser,
 }) => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -75,43 +78,20 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           <Menu className="w-5 h-5" />
         </button>
 
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="w-8 h-8 rounded-xl bg-[#003B73] flex items-center justify-center text-white font-bold text-xs shadow-xs border border-[#002850]">
-            <Building2 className="w-4 h-4 text-amber-300" />
-          </div>
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2">
-              <span className="text-xs sm:text-sm font-bold text-[#003B73] tracking-tight">
-                Scrutiny & Visitor Portal
-              </span>
-              <span className="hidden md:inline-flex text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                Live
-              </span>
-            </div>
-            <span className="text-[10px] sm:text-[11px] text-[#6B7280] font-medium hidden sm:inline-block">
-              Candidate Verification & Visitor Desk
-            </span>
-          </div>
+        <div className="flex items-center">
+          <img
+            src={APP_ASSETS.LOGO}
+            alt="Logo"
+            className="h-10 sm:h-12 md:h-14 max-w-[260px] sm:max-w-[340px] object-contain py-0.5"
+            referrerPolicy="no-referrer"
+          />
         </div>
       </div>
 
       {/* Right: Live Digital Clock, Helpline & User Profile */}
       <div className="flex items-center gap-2.5 sm:gap-3">
-        {/* Image to PDF Quick Tool */}
-        {onOpenImgToPdf && (
-          <button
-            id="navbar-img-to-pdf-btn"
-            onClick={onOpenImgToPdf}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#D9E1EA] bg-white hover:bg-[#EAF4FB] text-xs font-semibold text-[#003B73] hover:text-[#0056A6] hover:border-[#0056A6] transition-colors cursor-pointer shadow-2xs"
-            title="Image to PDF"
-          >
-            <FileImage className="w-3.5 h-3.5 text-[#0056A6]" />
-            <span>Image to PDF</span>
-          </button>
-        )}
-
         {/* Live Clock Strip */}
-        <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#F7F9FC] border border-[#D9E1EA] text-xs text-[#003B73]">
+        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#F7F9FC] border border-[#D9E1EA] text-xs text-[#003B73]">
           <Clock className="w-3.5 h-3.5 text-[#0056A6]" />
           <span className="font-medium text-[#4B5563]">{formattedDate}</span>
           <span className="font-mono font-bold text-[#003B73]">{formattedTime}</span>
