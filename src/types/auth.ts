@@ -56,6 +56,7 @@ export interface UserProfile {
   role: UserRole;
   allowedTabs: TabPermission[];
   allowedFeatures: FeaturePermission[];
+  canUseApiKey?: boolean; // Granted by DNO to access the master Gemini Vision API key
   isActive: boolean;
   createdAt: string;
   lastLogin?: string;

@@ -25,6 +25,7 @@ import {
   Camera,
   Trash,
   Settings2,
+  X,
 } from 'lucide-react';
 import { UserProfile, TabPermission, FeaturePermission, UserRole } from '../../types/auth';
 import {
@@ -36,6 +37,14 @@ import {
   AVAILABLE_FEATURES,
   DNO_USER,
 } from '../../services/authService';
+import {
+  getMasterApiKey,
+  saveMasterApiKey,
+  deleteMasterApiKey,
+  subscribeToMasterApiKey,
+  toggleUserApiKeyPermission,
+  grantApiKeyToAllUsers,
+} from '../../services/apiConfigService';
 import { uploadImageToFirebase } from '../../services/imageStorageService';
 import { FormValidationErrorModal } from '../FormValidationErrorModal';
 
@@ -82,6 +91,18 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     'add_visitor',
   ]);
   const [isActive, setIsActive] = useState<boolean>(true);
+  const [canUseApiKey, setCanUseApiKey] = useState<boolean>(true);
+
+  // Master Gemini API Key Management State
+  const [masterApiKey, setMasterApiKey] = useState<string>('');
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState<boolean>(false);
+  const [tempMasterKey, setTempMasterKey] = useState<string>('');
+  const [showMasterKeyInput, setShowMasterKeyInput] = useState<boolean>(false);
+  const [isSavingKey, setIsSavingKey] = useState<boolean>(false);
+  const [keyActionFeedback, setKeyActionFeedback] = useState<{ message: string; type: 'success' | 'error' | '' }>({
+    message: '',
+    type: '',
+  });
 
   const [feedback, setFeedback] = useState<{ message: string; type: 'success' | 'error' | '' }>({
     message: '',
@@ -104,14 +125,99 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   });
 
   useEffect(() => {
-    const unsubscribe = subscribeToUsers((updatedUsers) => {
+    const unsubscribeUsers = subscribeToUsers((updatedUsers) => {
       setUsers(updatedUsers);
     });
-    return () => unsubscribe();
+    const unsubscribeKey = subscribeToMasterApiKey((key) => {
+      setMasterApiKey(key);
+    });
+    return () => {
+      unsubscribeUsers();
+      unsubscribeKey();
+    };
   }, []);
 
   const refreshUsersList = () => {
     setUsers(getAllUsers());
+  };
+
+  const handleToggleApiKeyAccess = async (user: UserProfile) => {
+    const newStatus = user.canUseApiKey === false ? true : false;
+    const res = await toggleUserApiKeyPermission(user.id, newStatus);
+    if (res.success) {
+      setFeedback({
+        message: res.message,
+        type: 'success',
+      });
+      setTimeout(() => setFeedback({ message: '', type: '' }), 3000);
+      refreshUsersList();
+    } else {
+      setFeedback({
+        message: res.message,
+        type: 'error',
+      });
+    }
+  };
+
+  const handleGrantAllStaff = async () => {
+    const res = await grantApiKeyToAllUsers();
+    if (res.success) {
+      setFeedback({
+        message: res.message,
+        type: 'success',
+      });
+      setTimeout(() => setFeedback({ message: '', type: '' }), 4000);
+      refreshUsersList();
+    }
+  };
+
+  const handleOpenApiKeyModal = () => {
+    setTempMasterKey(masterApiKey);
+    setShowMasterKeyInput(false);
+    setKeyActionFeedback({ message: '', type: '' });
+    setIsApiKeyModalOpen(true);
+  };
+
+  const handleSaveMasterKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tempMasterKey.trim()) {
+      setKeyActionFeedback({ message: 'Please enter a valid Google Gemini API key.', type: 'error' });
+      return;
+    }
+    setIsSavingKey(true);
+    setKeyActionFeedback({ message: '', type: '' });
+    try {
+      const res = await saveMasterApiKey(tempMasterKey.trim(), currentUser.username || 'dno');
+      if (res.success) {
+        setKeyActionFeedback({ message: res.message, type: 'success' });
+        setTimeout(() => {
+          setIsApiKeyModalOpen(false);
+          setKeyActionFeedback({ message: '', type: '' });
+        }, 1200);
+      } else {
+        setKeyActionFeedback({ message: res.message, type: 'error' });
+      }
+    } finally {
+      setIsSavingKey(false);
+    }
+  };
+
+  const handleDeleteMasterKey = async () => {
+    if (window.confirm('Are you sure you want to remove the center Master Gemini API key? Staff users will no longer be able to run OCR without entering their own key.')) {
+      setIsSavingKey(true);
+      try {
+        const res = await deleteMasterApiKey();
+        setKeyActionFeedback({ message: res.message, type: res.success ? 'success' : 'error' });
+        setTempMasterKey('');
+        if (res.success) {
+          setTimeout(() => {
+            setIsApiKeyModalOpen(false);
+          }, 1200);
+        }
+      } finally {
+        setIsSavingKey(false);
+      }
+    }
   };
 
   const openCreateModal = () => {
@@ -129,6 +235,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     setRole('supporting_staff');
     setAllowedTabs(['dashboard', 'visitors', 'students', 'profile']);
     setAllowedFeatures(['whatsapp_tool', 'qr_upload_tool', 'ticket_generator_tool', 'add_candidate', 'add_visitor']);
+    setCanUseApiKey(true);
     setIsActive(true);
     setFeedback({ message: '', type: '' });
     setIsModalOpen(true);
@@ -149,6 +256,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     setRole(user.role === 'operator' ? 'supporting_staff' : user.role);
     setAllowedTabs([...user.allowedTabs]);
     setAllowedFeatures([...user.allowedFeatures]);
+    setCanUseApiKey(user.canUseApiKey !== false);
     setIsActive(user.isActive);
     setFeedback({ message: '', type: '' });
     setIsModalOpen(true);
@@ -289,6 +397,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
       role: role,
       allowedTabs: allowedTabs,
       allowedFeatures: allowedFeatures,
+      canUseApiKey: canUseApiKey,
       isActive: isActive,
       createdAt: editingUser ? editingUser.createdAt : new Date().toISOString(),
       ...(profilePicture.trim() ? { profilePicture: profilePicture.trim() } : {}),
@@ -363,6 +472,57 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
         </div>
       </div>
 
+      {/* Master Gemini API Key Central Management Banner */}
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-4.5 text-white shadow-md border border-indigo-900/60 space-y-3">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-600/80 border border-indigo-400/40 flex items-center justify-center text-white shrink-0 mt-0.5 shadow-sm">
+              <Key className="w-5 h-5 text-amber-300" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-sm font-bold text-white">Central Gemini Vision API Key (OCR & AI Extraction)</h3>
+                {masterApiKey ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                    Cloud Active (••••{masterApiKey.slice(-4)})
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                    <AlertCircle className="w-3 h-3 text-amber-400" />
+                    No Key Configured
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-indigo-200/80 mt-1 max-w-2xl leading-relaxed">
+                Add your Gemini API key once here. The DNO can grant permission to individual staff members below so they can transcribe Marathi, Hindi & English handwritten documents in the Image-to-Text tool without adding their own key.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              onClick={handleGrantAllStaff}
+              type="button"
+              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl text-xs font-semibold text-white transition-all cursor-pointer flex items-center gap-1.5"
+              title="Grant API Key access to all active staff profiles"
+            >
+              <Check className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Grant Key to All Staff</span>
+            </button>
+
+            <button
+              onClick={handleOpenApiKeyModal}
+              type="button"
+              className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+            >
+              <Key className="w-3.5 h-3.5 text-amber-300" />
+              <span>{masterApiKey ? 'Update Master Key' : 'Configure Master Key'}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* User Profiles Table */}
       <div className="bg-white/90 backdrop-blur-xs border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs">
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -381,6 +541,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                 <th className="py-3 px-4 font-semibold">Password</th>
                 <th className="py-3 px-4 font-semibold">Role</th>
                 <th className="py-3 px-4 font-semibold">Accessible Tabs & Rules</th>
+                <th className="py-3 px-4 font-semibold">Gemini API Access</th>
                 <th className="py-3 px-4 font-semibold">Status</th>
                 <th className="py-3 px-4 font-semibold text-right">Actions</th>
               </tr>
@@ -470,6 +631,45 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                         <div className="mt-1 flex items-center gap-1 text-[10px] text-emerald-700 font-medium">
                           <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                           <span>{u.allowedFeatures.length} Feature Tools Enabled</span>
+                        </div>
+                      )}
+                    </td>
+
+                    {/* Gemini API Access */}
+                    <td className="py-3.5 px-4">
+                      {isMasterDno ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-200 shadow-2xs">
+                          <Key className="w-3 h-3 text-amber-600" />
+                          <span>DNO (Root)</span>
+                        </span>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleApiKeyAccess(u)}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-all cursor-pointer shadow-2xs ${
+                              u.canUseApiKey !== false
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                                : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
+                            }`}
+                            title={
+                              u.canUseApiKey !== false
+                                ? 'Click to revoke Gemini API key access'
+                                : 'Click to grant Gemini API key access'
+                            }
+                          >
+                            {u.canUseApiKey !== false ? (
+                              <>
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                <span>Allowed</span>
+                              </>
+                            ) : (
+                              <>
+                                <Lock className="w-3 h-3 text-slate-400" />
+                                <span>Blocked</span>
+                              </>
+                            )}
+                          </button>
                         </div>
                       )}
                     </td>
@@ -931,6 +1131,33 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                 </div>
               </div>
 
+              {/* Gemini Vision API Key Access Switch */}
+              <div className="p-3.5 bg-indigo-50/60 rounded-xl border border-indigo-200/80 flex items-center justify-between">
+                <div className="flex items-start gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white shrink-0 mt-0.5">
+                    <Key className="w-3.5 h-3.5 text-amber-300" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                      <span>Gemini Vision API Access</span>
+                      <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-100 px-1.5 py-0.2 rounded">OCR / Handwriting</span>
+                    </p>
+                    <p className="text-[11px] text-slate-500 leading-snug">
+                      Allow this staff member to transcribe documents using the central DNO Master API Key
+                    </p>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer ml-3 shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={canUseApiKey}
+                    onChange={(e) => setCanUseApiKey(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                </label>
+              </div>
+
               {/* Account Status Switch */}
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
                 <div>
@@ -963,6 +1190,140 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                 >
                   {editingUser ? 'Save Profile Changes' : 'Create Profile'}
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Master Gemini API Key Modal */}
+      {isApiKeyModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in duration-150">
+            <div className="px-6 py-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-amber-300">
+                  <Key className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Central Gemini Vision API Key</h3>
+                  <p className="text-[11px] text-indigo-200">Shared handwriting recognition & document OCR</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsApiKeyModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveMasterKey} className="p-6 space-y-4">
+              {keyActionFeedback.message && (
+                <div
+                  className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
+                    keyActionFeedback.type === 'success'
+                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                      : 'bg-red-50 text-red-800 border border-red-200'
+                  }`}
+                >
+                  {keyActionFeedback.type === 'success' ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                  )}
+                  <span>{keyActionFeedback.message}</span>
+                </div>
+              )}
+
+              <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-xl text-xs text-blue-900 leading-relaxed">
+                <b>Why use a Central Master API Key?</b>
+                <p className="mt-0.5 text-blue-800/90 text-[11px]">
+                  Setting your key here saves it securely to the cloud database. Staff users granted permission by you can transcribe student documents, certificates, and handwritten applications without needing to provide their own key or configure environment variables.
+                </p>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <span>Google Gemini API Key:</span>
+                    <span className="text-red-500">*</span>
+                  </label>
+                  <a
+                    href="https://aistudio.google.com/app/apikey"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] font-semibold text-blue-600 hover:underline flex items-center gap-1"
+                  >
+                    <span>Get Key from Google AI Studio</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+
+                <div className="relative">
+                  <input
+                    type={showMasterKeyInput ? 'text' : 'password'}
+                    value={tempMasterKey}
+                    onChange={(e) => setTempMasterKey(e.target.value)}
+                    placeholder="AIzaSy..."
+                    required
+                    className="w-full pl-3 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono focus:outline-none focus:border-indigo-600 focus:bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowMasterKeyInput(!showMasterKeyInput)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+                  >
+                    {showMasterKeyInput ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Starts with <code className="bg-slate-100 px-1 py-0.5 rounded text-[10px]">AIzaSy...</code> from Google AI Studio.
+                </p>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                {masterApiKey ? (
+                  <button
+                    type="button"
+                    onClick={handleDeleteMasterKey}
+                    disabled={isSavingKey}
+                    className="px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-xl border border-red-200 transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <Trash className="w-3.5 h-3.5" />
+                    <span>Remove Key</span>
+                  </button>
+                ) : (
+                  <div />
+                )}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsApiKeyModalOpen(false)}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingKey}
+                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-600/20 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    {isSavingKey ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Saving...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Save Master Key</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

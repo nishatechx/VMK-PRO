@@ -11,6 +11,7 @@
         "role": { "type": "string", "description": "User role: dno, operator, counsellor, custom" },
         "allowedTabs": { "type": "array", "description": "Accessible navigation tabs" },
         "allowedFeatures": { "type": "array", "description": "Authorized features" },
+        "canUseApiKey": { "type": "boolean", "description": "Permission granted by DNO to access master Gemini Vision API key" },
         "isActive": { "type": "boolean", "description": "Account active flag" },
         "createdAt": { "type": "string", "description": "Creation timestamp" },
         "lastLogin": { "type": "string", "description": "Last login timestamp" },
@@ -95,6 +96,16 @@
         "sizeBytes": { "type": "number", "description": "File size in bytes" },
         "uploadedAt": { "type": "string", "description": "ISO timestamp" },
         "uploadedBy": { "type": "string", "description": "Uploader identifier" }
+      }
+    },
+    "system_settings": {
+      "title": "System Configurations",
+      "description": "Global center settings including Master Gemini API key managed by DNO",
+      "fields": {
+        "apiKey": { "type": "string", "description": "Master Gemini API Key" },
+        "updatedAt": { "type": "string", "description": "ISO update timestamp" },
+        "updatedBy": { "type": "string", "description": "Identifier of the DNO who updated the key" },
+        "isActive": { "type": "boolean", "description": "Active status of configuration" }
       }
     }
   }

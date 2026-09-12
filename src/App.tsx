@@ -68,8 +68,18 @@ export default function App() {
     }
   };
 
+  const [ticketInitialCandidate, setTicketInitialCandidate] = useState<any | null>(null);
+
   const handleOpenTicketGenerator = () => {
     if (hasFeaturePermission(currentUser, 'ticket_generator_tool')) {
+      setIsTicketGeneratorOpen(true);
+    }
+  };
+
+  const handleOpenTicketWithData = (candidateData: any) => {
+    if (hasFeaturePermission(currentUser, 'ticket_generator_tool')) {
+      setTicketInitialCandidate(candidateData);
+      setIsImageToTextOpen(false);
       setIsTicketGeneratorOpen(true);
     }
   };
@@ -398,7 +408,11 @@ export default function App() {
 
       <TicketGeneratorModal
         isOpen={isTicketGeneratorOpen}
-        onClose={() => setIsTicketGeneratorOpen(false)}
+        onClose={() => {
+          setIsTicketGeneratorOpen(false);
+          setTicketInitialCandidate(null);
+        }}
+        initialCandidate={ticketInitialCandidate}
         currentUser={currentUser}
         onOpenWhatsappWithData={handleOpenWhatsappWithData}
         onSyncWhatsappData={handleSyncWhatsappData}
@@ -413,6 +427,8 @@ export default function App() {
       <ImageToTextModal
         isOpen={isImageToTextOpen}
         onClose={() => setIsImageToTextOpen(false)}
+        currentUser={currentUser}
+        onSendToTicketGenerator={handleOpenTicketWithData}
       />
 
       {welcomeUser && (

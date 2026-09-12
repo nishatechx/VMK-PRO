@@ -8,15 +8,16 @@ const CANDIDATE_VISION_MODELS = [
   "gemini-3.1-flash-lite",
 ];
 
-function getGeminiClient(): GoogleGenAI {
+function getGeminiClient(customApiKey?: string): GoogleGenAI {
   const apiKey =
+    (customApiKey && customApiKey.trim()) ||
     process.env.GEMINI_API_KEY ||
     process.env.VITE_GEMINI_API_KEY ||
     process.env.GOOGLE_API_KEY;
 
   if (!apiKey) {
     throw new Error(
-      "GEMINI_API_KEY is not configured in Vercel. Please add GEMINI_API_KEY in your Vercel Project Settings > Environment Variables, then redeploy."
+      "GEMINI_API_KEY is not configured. The District Nodal Officer (DNO) can set the Master Gemini API Key in User Management, or configure GEMINI_API_KEY in Vercel Project Settings."
     );
   }
 
@@ -88,7 +89,8 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    const ai = getGeminiClient();
+    const customKey = body.apiKey || (req.headers['x-gemini-api-key'] as string);
+    const ai = getGeminiClient(customKey);
     let translatedText = '';
     let lastModelError: any = null;
 

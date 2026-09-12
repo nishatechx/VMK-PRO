@@ -36,6 +36,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Global system settings including master Gemini API key
+    match /system_settings/{settingId} {
+      allow read, write: if true;
+    }
+
     // Fallback collection match
     match /{document=**} {
       allow read, write: if true;

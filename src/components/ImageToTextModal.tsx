@@ -21,9 +21,28 @@ import {
   Languages,
   Key,
   ExternalLink,
+  CheckCircle2,
+  Lock,
+  FolderArchive,
+  Search,
+  CheckSquare,
+  Square,
+  Ticket,
+  Plus,
+  ArrowRight,
+  Sparkles,
 } from 'lucide-react';
 import { APP_ASSETS } from '../constants/assets';
 import { extractTextClientSide, translateTextClientSide } from '../utils/geminiVisionClient';
+import { UserProfile } from '../types/auth';
+import { getCurrentUser, DNO_USER } from '../services/authService';
+import {
+  getMasterApiKey,
+  subscribeToMasterApiKey,
+  hasUserApiKeyPermission,
+} from '../services/apiConfigService';
+import { qrUploadService, QrUploadedFile } from '../services/qrUploadService';
+import { captureTicketDetailsFromText, CapturedTicketDetails } from '../utils/ticketExtractor';
 
 export interface UploadedImagePage {
   id: string;
@@ -41,12 +60,16 @@ interface ImageToTextModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialImage?: string | null;
+  currentUser?: UserProfile | null;
+  onSendToTicketGenerator?: (details: CapturedTicketDetails) => void;
 }
 
 export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
   isOpen,
   onClose,
   initialImage,
+  currentUser,
+  onSendToTicketGenerator,
 }) => {
   const [pages, setPages] = useState<UploadedImagePage[]>([]);
   const [activePageIndex, setActivePageIndex] = useState<number>(0);
@@ -72,12 +95,165 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
       ''
     );
   });
+  const [masterApiKey, setMasterApiKey] = useState<string>(() => getMasterApiKey());
   const [showApiKeyModal, setShowApiKeyModal] = useState<boolean>(false);
   const [tempApiKey, setTempApiKey] = useState<string>('');
   const [keySavedMessage, setKeySavedMessage] = useState<string | null>(null);
 
+  // Software Vault browsing state
+  const [isVaultPickerOpen, setIsVaultPickerOpen] = useState(false);
+  const [vaultFiles, setVaultFiles] = useState<QrUploadedFile[]>([]);
+  const [selectedVaultFileIds, setSelectedVaultFileIds] = useState<string[]>([]);
+  const [vaultSearchQuery, setVaultSearchQuery] = useState('');
+  const [vaultCategoryFilter, setVaultCategoryFilter] = useState('ALL');
+  const [isLoadingVault, setIsLoadingVault] = useState(false);
+
+  // Send to TG feedback
+  const [tgNotification, setTgNotification] = useState<string | null>(null);
+
+  const activeUser = currentUser || getCurrentUser();
+  const isAuthorizedForMasterKey = hasUserApiKeyPermission(activeUser);
+  const isDNO =
+    activeUser?.role === 'dno' ||
+    activeUser?.email?.toLowerCase() === DNO_USER.email.toLowerCase() ||
+    activeUser?.username?.toLowerCase() === 'dno';
+
+  useEffect(() => {
+    const unsub = subscribeToMasterApiKey((key) => {
+      setMasterApiKey(key);
+    });
+    return () => unsub();
+  }, []);
+
+  const getEffectiveApiKey = (): string => {
+    if (isAuthorizedForMasterKey && masterApiKey) {
+      return masterApiKey;
+    }
+    return (
+      apiKey.trim() ||
+      localStorage.getItem('vmk_gemini_api_key')?.trim() ||
+      (import.meta as any).env?.VITE_GEMINI_API_KEY?.trim() ||
+      ''
+    );
+  };
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Software Vault browsing helpers
+  const openVaultPicker = async () => {
+    setIsVaultPickerOpen(true);
+    setSelectedVaultFileIds([]);
+    setVaultSearchQuery('');
+    setVaultCategoryFilter('ALL');
+    setIsLoadingVault(true);
+
+    const cached = qrUploadService.getAllVaultFiles();
+    setVaultFiles(cached);
+
+    try {
+      const fresh = await qrUploadService.getAllVaultFilesAsync();
+      if (Array.isArray(fresh) && fresh.length > 0) {
+        setVaultFiles(fresh);
+      }
+    } catch (e) {
+      console.warn('Could not refresh vault files async:', e);
+    } finally {
+      setIsLoadingVault(false);
+    }
+  };
+
+  const eligibleVaultImages = vaultFiles.filter((f) => {
+    const isImage =
+      (f.type && f.type.startsWith('image/')) ||
+      /\.(jpe?g|png|webp|bmp)$/i.test(f.name) ||
+      (f.dataUrl && f.dataUrl.startsWith('data:image/'));
+    const isNotPdf = !(f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+    return isImage && isNotPdf;
+  });
+
+  const displayedVaultImages = eligibleVaultImages.filter((f) => {
+    const matchSearch =
+      !vaultSearchQuery ||
+      f.name.toLowerCase().includes(vaultSearchQuery.toLowerCase()) ||
+      (f.candidateName && f.candidateName.toLowerCase().includes(vaultSearchQuery.toLowerCase())) ||
+      (f.cetApplicationId && f.cetApplicationId.toLowerCase().includes(vaultSearchQuery.toLowerCase()));
+
+    const matchCategory =
+      vaultCategoryFilter === 'ALL' ||
+      (f.category && f.category.toUpperCase() === vaultCategoryFilter.toUpperCase());
+
+    return matchSearch && matchCategory;
+  });
+
+  const handleToggleVaultSelection = (id: string) => {
+    setSelectedVaultFileIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllVaultImages = () => {
+    if (selectedVaultFileIds.length === displayedVaultImages.length) {
+      setSelectedVaultFileIds([]);
+    } else {
+      setSelectedVaultFileIds(displayedVaultImages.map((f) => f.id));
+    }
+  };
+
+  const handleAddSelectedFromVault = () => {
+    if (selectedVaultFileIds.length === 0) return;
+    const selectedFiles = vaultFiles.filter((f) => selectedVaultFileIds.includes(f.id));
+
+    const newPages: UploadedImagePage[] = selectedFiles.map((vf, idx) => ({
+      id: `vault-${vf.id}-${Date.now()}-${idx}`,
+      name: vf.name,
+      size: vf.size || 0,
+      dataUrl: vf.dataUrl,
+    }));
+
+    setPages((prev) => {
+      const combined = [...prev, ...newPages];
+      if (prev.length === 0 && newPages.length > 0) {
+        setActivePageIndex(0);
+      }
+      return combined;
+    });
+
+    setIsVaultPickerOpen(false);
+    setSelectedVaultFileIds([]);
+  };
+
+  // Send to TG (SAC Ticket Generator) with captured candidate details
+  const handleSendToTicketGenerator = () => {
+    const textToCapture =
+      activeTextTab === 'translated' && translatedText.trim()
+        ? `${extractedText}\n${translatedText}`
+        : currentText;
+
+    if (!textToCapture.trim()) {
+      setErrorMessage(
+        'Please extract text from an image or paste document text first before sending to SAC Ticket Generator.'
+      );
+      return;
+    }
+
+    const captured = captureTicketDetailsFromText(textToCapture);
+
+    // If candidate name was not explicitly parsed from OCR text, check document file title
+    if (!captured.candidateName && activePage?.name) {
+      const cleanName = activePage.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+      if (cleanName.length > 3 && !/^(img|image|scan|doc|page|file|untitled)/i.test(cleanName)) {
+        captured.candidateName = cleanName;
+      }
+    }
+
+    if (onSendToTicketGenerator) {
+      setTgNotification('Extracted details captured! Transferring to SAC Ticket Generator...');
+      setTimeout(() => {
+        onSendToTicketGenerator(captured);
+      }, 250);
+    }
+  };
 
   // Auto-resize textarea to match text length so no inner scrolling is needed
   const adjustTextareaHeight = useCallback(() => {
@@ -344,9 +520,12 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
         setAnalysisStep('Detecting reading order, paragraphs & structured tables...');
       }, 3000);
 
+      const effectiveKey = getEffectiveApiKey();
+
       const payload = {
         images: optimizedImages,
         prompt: promptGuidance.trim() || undefined,
+        apiKey: effectiveKey || undefined,
       };
 
       let extractionSuccess = false;
@@ -359,6 +538,7 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            ...(effectiveKey ? { 'x-gemini-api-key': effectiveKey } : {}),
           },
           body: JSON.stringify(payload),
         });
@@ -387,11 +567,6 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
         console.warn('Server endpoint /api/image-to-text failed or unavailable:', serverErr);
 
         // 2. Resilient Fallback: If server is unavailable (e.g. on static Vercel build), use client-side Gemini Vision
-        const effectiveKey =
-          apiKey.trim() ||
-          localStorage.getItem('vmk_gemini_api_key')?.trim() ||
-          (import.meta as any).env?.VITE_GEMINI_API_KEY?.trim();
-
         if (effectiveKey) {
           setAnalysisStep('Processing with Google Gemini AI...');
           const clientData = await extractTextClientSide(
@@ -404,9 +579,19 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
           resultPages = clientData.pages || [];
         } else {
           // No client key and server failed
-          throw new Error(
-            'The AI vision server is unreachable on your deployment. Please click "Configure API Key" to enter your Google Gemini API Key and extract text directly.'
-          );
+          if (!isAuthorizedForMasterKey) {
+            throw new Error(
+              isDNO
+                ? 'Gemini Vision API access is not granted to your account by the District Nodal Officer (DNO). Please request permission from DNO in User Management, or click "Configure API Key" to enter a personal key.'
+                : 'Gemini Vision API access is not granted to your account by the District Nodal Officer (DNO). Please contact the DNO to enable access.'
+            );
+          } else {
+            throw new Error(
+              isDNO
+                ? 'The central Master Gemini API Key is not configured yet. The District Nodal Officer (DNO) can set it in User Management, or you can click "Configure API Key" to enter a key directly.'
+                : 'The central Master Gemini API Key is not configured yet. Please contact the District Nodal Officer (DNO) to set it up.'
+            );
+          }
         }
       }
 
@@ -477,6 +662,8 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
     setIsTranslating(true);
     setErrorMessage(null);
 
+    const effectiveKey = getEffectiveApiKey();
+
     try {
       let translationSuccess = false;
       let englishTranslation = '';
@@ -487,10 +674,12 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            ...(effectiveKey ? { 'x-gemini-api-key': effectiveKey } : {}),
           },
           body: JSON.stringify({
             text: extractedText,
             targetLanguage: 'English',
+            apiKey: effectiveKey || undefined,
           }),
         });
 
@@ -512,18 +701,23 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
       } catch (serverErr: any) {
         console.warn('Server translation endpoint failed, trying client fallback:', serverErr);
 
-        const effectiveKey =
-          apiKey.trim() ||
-          localStorage.getItem('vmk_gemini_api_key')?.trim() ||
-          (import.meta as any).env?.VITE_GEMINI_API_KEY?.trim();
-
         if (effectiveKey) {
           englishTranslation = await translateTextClientSide(effectiveKey, extractedText);
           translationSuccess = true;
         } else {
-          throw new Error(
-            'Translation service unreachable. Please click "Configure API Key" to provide your Gemini API key.'
-          );
+          if (!isAuthorizedForMasterKey) {
+            throw new Error(
+              isDNO
+                ? 'Gemini Vision API access is not granted to your account by the District Nodal Officer (DNO). Please request permission from DNO in User Management, or click "Configure API Key" to enter a personal key.'
+                : 'Gemini Vision API access is not granted to your account by the District Nodal Officer (DNO). Please contact the DNO to enable access.'
+            );
+          } else {
+            throw new Error(
+              isDNO
+                ? 'Translation service unreachable. Please click "Configure API Key" to provide your Gemini API key or ask the DNO to set the Master Key in User Management.'
+                : 'Translation service is currently unreachable. Please try again or contact the District Nodal Officer (DNO).'
+            );
+          }
         }
       }
 
@@ -682,19 +876,55 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setTempApiKey(apiKey);
-                setShowApiKeyModal(true);
-              }}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-[#D9E1EA] text-[#4B5563] hover:text-[#0056A6] hover:bg-blue-50 transition-colors cursor-pointer"
-              title="Configure Gemini API Key"
-            >
-              <Key className="w-3.5 h-3.5 text-amber-600" />
-              <span className="hidden sm:inline">{apiKey ? 'API Key Active' : 'API Key'}</span>
-              {apiKey && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="Custom Key Loaded" />}
-            </button>
+            {isDNO && (
+              <>
+                {isAuthorizedForMasterKey && masterApiKey ? (
+                  <div
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-800"
+                    title="DNO Central Master Key active. No manual key entry required."
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="hidden sm:inline">DNO Master Key Active</span>
+                  </div>
+                ) : !isAuthorizedForMasterKey ? (
+                  <div
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-800"
+                    title="Access restricted: DNO has not enabled Gemini API Key access for your account."
+                  >
+                    <Lock className="w-3.5 h-3.5 text-amber-600" />
+                    <span className="hidden sm:inline">API Access Restricted</span>
+                  </div>
+                ) : null}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTempApiKey(apiKey);
+                    setShowApiKeyModal(true);
+                  }}
+                  className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-colors cursor-pointer ${
+                    isAuthorizedForMasterKey && masterApiKey
+                      ? 'border-indigo-200 text-indigo-700 bg-indigo-50/60 hover:bg-indigo-100/70'
+                      : apiKey
+                      ? 'border-blue-200 text-blue-700 bg-blue-50/60 hover:bg-blue-100/70'
+                      : 'border-[#D9E1EA] text-[#4B5563] hover:text-[#0056A6] hover:bg-blue-50'
+                  }`}
+                  title="Configure Gemini API Key"
+                >
+                  <Key className="w-3.5 h-3.5 text-amber-600" />
+                  <span className="hidden sm:inline">
+                    {isAuthorizedForMasterKey && masterApiKey
+                      ? 'API Key (DNO)'
+                      : apiKey
+                      ? 'API Key Active'
+                      : 'API Key'}
+                  </span>
+                  {(isAuthorizedForMasterKey && masterApiKey) || apiKey ? (
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="Key Ready" />
+                  ) : null}
+                </button>
+              </>
+            )}
 
             {(pages.length > 0 || extractedText.length > 0) && (
               <button
@@ -707,6 +937,7 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
                 <span className="hidden sm:inline">Reset</span>
               </button>
             )}
+
             <button
               type="button"
               onClick={() => setIsExpanded((exp) => !exp)}
@@ -726,6 +957,14 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
           </div>
         </div>
 
+        {/* TG Transfer Notification Banner */}
+        {tgNotification && (
+          <div className="px-4 sm:px-6 py-2 bg-emerald-50 border-b border-emerald-200 text-emerald-900 flex items-center gap-2 text-xs shrink-0 animate-fade-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span className="font-semibold">{tgNotification}</span>
+          </div>
+        )}
+
         {/* Error Banner if any */}
         {errorMessage && (
           <div className="px-4 sm:px-6 py-2.5 bg-amber-50 border-b border-amber-200 text-amber-900 flex items-center justify-between gap-3 text-xs shrink-0 animate-fade-in">
@@ -736,17 +975,19 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  setTempApiKey(apiKey);
-                  setShowApiKeyModal(true);
-                }}
-                className="px-2.5 py-1 bg-[#0056A6] hover:bg-[#004080] text-white rounded-lg font-bold text-[11px] shadow-xs cursor-pointer flex items-center gap-1 transition-colors"
-              >
-                <Key className="w-3 h-3" />
-                <span>Configure API Key</span>
-              </button>
+              {isDNO && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTempApiKey(apiKey);
+                    setShowApiKeyModal(true);
+                  }}
+                  className="px-2.5 py-1 bg-[#0056A6] hover:bg-[#004080] text-white rounded-lg font-bold text-[11px] shadow-xs cursor-pointer flex items-center gap-1 transition-colors"
+                >
+                  <Key className="w-3 h-3" />
+                  <span>Configure API Key</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => handleExtractText('all')}
@@ -811,13 +1052,32 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
                   JPG, JPEG, PNG, WEBP
                 </p>
 
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#0056A6] hover:bg-[#004080] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
-                >
-                  <FileImage className="w-4 h-4" />
-                  Select Image
-                </button>
+                <div className="flex flex-wrap items-center justify-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fileInputRef.current?.click();
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#0056A6] hover:bg-[#004080] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                  >
+                    <FileImage className="w-4 h-4" />
+                    <span>Select Image</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openVaultPicker();
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                    title="Browse documents from Software Vault"
+                  >
+                    <FolderArchive className="w-4 h-4" />
+                    <span>Browse from Vault</span>
+                  </button>
+                </div>
               </div>
             ) : (
               /* Image Preview & Page Carousel */
@@ -825,7 +1085,7 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
                 {/* Image Toolbar */}
                 <div className="px-3 sm:px-4 py-2 border-b border-[#D9E1EA] bg-white flex items-center justify-between text-xs shrink-0">
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-bold text-[#1F2937] truncate max-w-[180px] sm:max-w-[240px]">
+                    <span className="font-bold text-[#1F2937] truncate max-w-[150px] sm:max-w-[200px]">
                       {activePage?.name || 'Document'}
                     </span>
                     {activePage?.width && (
@@ -833,6 +1093,16 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
                         ({activePage.width} × {activePage.height}px)
                       </span>
                     )}
+
+                    <button
+                      type="button"
+                      onClick={openVaultPicker}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[10px] font-semibold transition-colors cursor-pointer ml-1 shrink-0"
+                      title="Browse documents from Software Vault"
+                    >
+                      <FolderArchive className="w-3 h-3 text-emerald-600" />
+                      <span>Vault</span>
+                    </button>
                   </div>
 
                   <div className="flex items-center gap-1">
@@ -985,15 +1255,26 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
                       </div>
                     ))}
 
-                    {/* Add More Button */}
+                    {/* Add More from Files Button */}
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="w-14 h-14 rounded-lg border-2 border-dashed border-[#CBD5E1] hover:border-[#0056A6] hover:bg-[#EAF4FB] text-[#6B7280] hover:text-[#0056A6] flex flex-col items-center justify-center text-[10px] font-semibold shrink-0 transition-colors"
-                      title="Add more images"
+                      className="w-14 h-14 rounded-lg border-2 border-dashed border-[#CBD5E1] hover:border-[#0056A6] hover:bg-[#EAF4FB] text-[#6B7280] hover:text-[#0056A6] flex flex-col items-center justify-center text-[10px] font-semibold shrink-0 transition-colors cursor-pointer"
+                      title="Add more images from files"
                     >
                       <UploadCloud className="w-4 h-4 mb-0.5" />
-                      <span>Add</span>
+                      <span>Files</span>
+                    </button>
+
+                    {/* Add More from Vault Button */}
+                    <button
+                      type="button"
+                      onClick={openVaultPicker}
+                      className="w-14 h-14 rounded-lg border-2 border-dashed border-emerald-300 hover:border-emerald-600 hover:bg-emerald-50 text-emerald-700 flex flex-col items-center justify-center text-[10px] font-semibold shrink-0 transition-colors cursor-pointer"
+                      title="Add images from Software Vault"
+                    >
+                      <FolderArchive className="w-4 h-4 mb-0.5 text-emerald-600" />
+                      <span>Vault</span>
                     </button>
                   </div>
 
@@ -1056,7 +1337,19 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
               </div>
 
               {/* Action Buttons for Extracted / Translated Text */}
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {/* Send to TG (SAC Ticket Generator) */}
+                <button
+                  type="button"
+                  disabled={!currentText.trim() || isAnalyzing}
+                  onClick={handleSendToTicketGenerator}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#003B73] hover:bg-[#002850] text-white shadow-xs transition-all cursor-pointer active:scale-98 disabled:opacity-40 disabled:pointer-events-none"
+                  title="Capture candidate details from extracted text and send to SAC Ticket Generator (TG)"
+                >
+                  <Ticket className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Send to TG</span>
+                </button>
+
                 <button
                   type="button"
                   disabled={!currentText}
@@ -1338,17 +1631,32 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
                 )}
               </div>
 
-              {extractedText && (
-                <button
-                  type="button"
-                  disabled={isAnalyzing || isTranslating}
-                  onClick={() => handleExtractText('all')}
-                  className="text-[#0056A6] hover:text-[#004080] font-semibold inline-flex items-center gap-1 cursor-pointer"
-                >
-                  <RefreshCw className="w-3 h-3" />
-                  <span>Extract Again</span>
-                </button>
-              )}
+              <div className="flex items-center gap-2.5">
+                {currentText.trim() && (
+                  <button
+                    type="button"
+                    disabled={isAnalyzing || isTranslating}
+                    onClick={handleSendToTicketGenerator}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#003B73] hover:bg-[#002850] text-white rounded-lg font-bold text-xs shadow-xs transition-colors cursor-pointer"
+                    title="Send captured candidate details to SAC Ticket Generator"
+                  >
+                    <Ticket className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Send to TG</span>
+                  </button>
+                )}
+
+                {extractedText && (
+                  <button
+                    type="button"
+                    disabled={isAnalyzing || isTranslating}
+                    onClick={() => handleExtractText('all')}
+                    className="text-[#0056A6] hover:text-[#004080] font-semibold inline-flex items-center gap-1 cursor-pointer text-xs"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Extract Again</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -1379,8 +1687,41 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
               </div>
             </div>
 
+            {/* Status regarding DNO Central Key & Permissions */}
+            {isAuthorizedForMasterKey && masterApiKey ? (
+              <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 leading-relaxed">
+                <div className="flex items-center gap-1.5 font-bold text-emerald-800 mb-1">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>DNO Central Master Key Active</span>
+                </div>
+                <p className="text-[11px] text-emerald-800/90">
+                  The District Nodal Officer (DNO) has configured a central Gemini Vision key and authorized your account. You can use the Image to Text tool without needing to enter your own key.
+                </p>
+              </div>
+            ) : !isAuthorizedForMasterKey ? (
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 leading-relaxed">
+                <div className="flex items-center gap-1.5 font-bold text-amber-800 mb-1">
+                  <Lock className="w-4 h-4 text-amber-600" />
+                  <span>DNO Key Permission Not Granted</span>
+                </div>
+                <p className="text-[11px] text-amber-800/90">
+                  The District Nodal Officer (DNO) can grant your account access in the <b>User Management</b> tab. Alternatively, you can enter your personal Gemini API key below.
+                </p>
+              </div>
+            ) : isAuthorizedForMasterKey && !masterApiKey ? (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 leading-relaxed">
+                <div className="flex items-center gap-1.5 font-bold text-blue-800 mb-1">
+                  <Key className="w-4 h-4 text-blue-600" />
+                  <span>DNO Central Key Not Configured</span>
+                </div>
+                <p className="text-[11px] text-blue-800/90">
+                  You have permission to use the central key, but the DNO has not yet saved a Master Gemini API Key in User Management. You can ask the DNO to add it, or provide a personal key below.
+                </p>
+              </div>
+            ) : null}
+
             <p className="text-xs text-[#4B5563] leading-relaxed mb-3">
-              If your Vercel deployment cannot reach serverless functions, you can enter your Gemini API Key here to run the vision extraction directly in your browser.
+              Optional personal override: You can enter a personal Gemini API Key below if you prefer to use your own quota instead of the shared DNO key.
             </p>
 
             <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-[#0056A6] flex items-center justify-between gap-2">

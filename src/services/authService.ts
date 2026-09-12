@@ -76,6 +76,7 @@ export const DNO_USER: UserProfile = {
     'add_visitor',
     'export_reports',
   ],
+  canUseApiKey: true,
   isActive: true,
   createdAt: '2026-08-22T00:00:00.000Z',
   phone: '+91 98220 00000',

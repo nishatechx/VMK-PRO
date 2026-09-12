@@ -40,16 +40,23 @@ export interface TicketState {
   query: string;
 }
 
+export interface InitialCandidateData {
+  id?: string;
+  name?: string;
+  candidateName?: string;
+  mobile?: string;
+  email?: string;
+  course?: string;
+  cetNo?: string;
+  capId?: string;
+  dob?: string;
+  query?: string;
+}
+
 interface TicketGeneratorModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialCandidate?: {
-    id?: string;
-    name?: string;
-    mobile?: string;
-    email?: string;
-    course?: string;
-  };
+  initialCandidate?: InitialCandidateData | null;
   currentUser?: UserProfile | null;
   onOpenWhatsappWithData?: (data: WhatsappInitialData) => void;
   onSyncWhatsappData?: (data: WhatsappInitialData) => void;
@@ -103,13 +110,30 @@ export const TicketGeneratorModal: React.FC<TicketGeneratorModalProps> = ({
       if (initialCandidate) {
         setTicketForm((prev) => ({
           ...prev,
-          cetNo: initialCandidate.id || prev.cetNo,
-          capId: prev.capId || (initialCandidate.id ? `EN26${initialCandidate.id.replace(/\D/g, '').slice(-6)}` : ''),
-          candidateName: initialCandidate.name || prev.candidateName,
+          cetNo: initialCandidate.cetNo || initialCandidate.id || prev.cetNo,
+          capId:
+            initialCandidate.capId ||
+            prev.capId ||
+            (initialCandidate.id ? `EN26${initialCandidate.id.replace(/\D/g, '').slice(-6)}` : ''),
+          candidateName: initialCandidate.candidateName || initialCandidate.name || prev.candidateName,
+          dob: initialCandidate.dob || prev.dob,
           mobile: initialCandidate.mobile || prev.mobile,
           email: initialCandidate.email || prev.email,
           course: initialCandidate.course || prev.course,
+          query: initialCandidate.query || prev.query,
         }));
+
+        if (
+          initialCandidate.candidateName ||
+          initialCandidate.cetNo ||
+          initialCandidate.capId ||
+          initialCandidate.query
+        ) {
+          setTicketStatus({
+            message: 'Candidate details captured and pre-filled from Image-to-Text tool. Please verify and generate ticket.',
+            type: 'ok',
+          });
+        }
       }
     }
   }, [isOpen, initialCandidate]);

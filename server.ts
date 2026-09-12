@@ -4,23 +4,27 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import { GoogleGenAI } from "@google/genai";
 
-let geminiClient: GoogleGenAI | null = null;
-function getGeminiClient(): GoogleGenAI {
-  if (!geminiClient) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("GEMINI_API_KEY environment variable is not configured. Please set your Gemini API key in Settings > Secrets.");
-    }
-    geminiClient = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
-      },
-    });
+function getGeminiClient(customApiKey?: string): GoogleGenAI {
+  const apiKey =
+    (customApiKey && customApiKey.trim()) ||
+    process.env.GEMINI_API_KEY ||
+    process.env.VITE_GEMINI_API_KEY ||
+    process.env.GOOGLE_API_KEY;
+
+  if (!apiKey) {
+    throw new Error(
+      "GEMINI_API_KEY environment variable is not configured. District Nodal Officer (DNO) can set Master Gemini API Key in User Management, or set GEMINI_API_KEY in environment variables."
+    );
   }
-  return geminiClient;
+
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      },
+    },
+  });
 }
 
 function parseBase64Image(dataUrl: string): { mimeType: string; base64Data: string } {
@@ -498,7 +502,8 @@ async function startServer() {
         });
       }
 
-      const ai = getGeminiClient();
+      const customKey = req.body?.apiKey || (req.headers['x-gemini-api-key'] as string);
+      const ai = getGeminiClient(customKey);
 
       const systemInstruction = `You are a world-class AI vision system specialized in accurate, faithful transcription of both handwritten and printed text from images.
 
@@ -677,7 +682,8 @@ CRITICAL DIRECTIVES:
         });
       }
 
-      const ai = getGeminiClient();
+      const customKey = req.body?.apiKey || (req.headers['x-gemini-api-key'] as string);
+      const ai = getGeminiClient(customKey);
 
       const candidateModels = [
         "gemini-3.6-flash",
