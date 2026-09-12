@@ -1,4 +1,43 @@
-import { getGeminiClient, parseBase64Image, CANDIDATE_VISION_MODELS } from "./_gemini";
+import { GoogleGenAI } from "@google/genai";
+
+const CANDIDATE_VISION_MODELS = [
+  "gemini-3.6-flash",
+  "gemini-3.7-flash",
+  "gemini-3.8-flash",
+  "gemini-3.5-flash",
+  "gemini-3.1-flash-lite",
+];
+
+function getGeminiClient(): GoogleGenAI {
+  const apiKey =
+    process.env.GEMINI_API_KEY ||
+    process.env.VITE_GEMINI_API_KEY ||
+    process.env.GOOGLE_API_KEY;
+
+  if (!apiKey) {
+    throw new Error(
+      "GEMINI_API_KEY is not configured in Vercel Environment Variables. Please open your Vercel Dashboard -> Project Settings -> Environment Variables, add GEMINI_API_KEY, and click Redeploy."
+    );
+  }
+
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      },
+    },
+  });
+}
+
+function parseBase64Image(dataUrl: string): { mimeType: string; base64Data: string } {
+  if (!dataUrl) return { mimeType: 'image/jpeg', base64Data: '' };
+  const matches = dataUrl.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
+  if (matches) {
+    return { mimeType: matches[1], base64Data: matches[2] };
+  }
+  return { mimeType: 'image/jpeg', base64Data: dataUrl };
+}
 
 const systemInstruction = `You are a world-class AI vision system specialized in accurate, faithful transcription of both handwritten and printed text from images.
 
@@ -41,6 +80,31 @@ CRITICAL DIRECTIVES:
 - Do NOT wrap in introductory or concluding remarks (such as "Here is the extracted text:").
 - Preserve line breaks, paragraphs, lists, and numbers as originally presented.`;
 
+async function readRequestBody(req: any): Promise<any> {
+  if (req.body && typeof req.body === 'object') return req.body;
+  if (typeof req.body === 'string') {
+    try {
+      return JSON.parse(req.body);
+    } catch {
+      return {};
+    }
+  }
+  return new Promise((resolve) => {
+    let raw = '';
+    req.on('data', (chunk: any) => {
+      raw += chunk;
+    });
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(raw));
+      } catch {
+        resolve({});
+      }
+    });
+    req.on('error', () => resolve({}));
+  });
+}
+
 export default async function handler(req: any, res: any) {
   // CORS & Security headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -56,17 +120,7 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    let body = req.body;
-    if (typeof body === 'string') {
-      try {
-        body = JSON.parse(body);
-      } catch {
-        body = {};
-      }
-    } else if (!body) {
-      body = {};
-    }
-
+    const body = await readRequestBody(req);
     const { image, images, prompt } = body;
 
     // Normalize images into structured array
@@ -183,7 +237,7 @@ export default async function handler(req: any, res: any) {
     let cleanMessage = "Failed to process image with vision AI.";
 
     if (rawMsg.includes('GEMINI_API_KEY') || rawMsg.includes('API key')) {
-      cleanMessage = "Gemini API key is not configured. Please add GEMINI_API_KEY in your Vercel Project Settings > Environment Variables, then redeploy.";
+      cleanMessage = "Gemini API key is not configured in Vercel. Please add GEMINI_API_KEY in your Vercel Project Settings > Environment Variables, then redeploy.";
     } else if (rawMsg.includes('503') || rawMsg.includes('UNAVAILABLE') || rawMsg.includes('high demand')) {
       cleanMessage = "The AI vision model is currently experiencing temporary high demand on Google servers. Please retry in a few moments.";
     } else if (rawMsg.includes('429') || rawMsg.includes('RESOURCE_EXHAUSTED')) {

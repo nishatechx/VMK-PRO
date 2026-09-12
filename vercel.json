@@ -5,27 +5,7 @@
   "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/api/image-to-text",
-      "destination": "/api/image-to-text"
-    },
-    {
-      "source": "/api/translate-text",
-      "destination": "/api/translate-text"
-    },
-    {
-      "source": "/api/cetcell-notices",
-      "destination": "/api/cetcell-notices"
-    },
-    {
-      "source": "/api/health",
-      "destination": "/api/health"
-    },
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
-    },
-    {
-      "source": "/((?!api/).*)",
+      "source": "/((?!api/.*).*)",
       "destination": "/index.html"
     }
   ]

@@ -19,8 +19,11 @@ import {
   CheckCheck,
   CornerUpLeft,
   Languages,
+  Key,
+  ExternalLink,
 } from 'lucide-react';
 import { APP_ASSETS } from '../constants/assets';
+import { extractTextClientSide, translateTextClientSide } from '../utils/geminiVisionClient';
 
 export interface UploadedImagePage {
   id: string;
@@ -62,6 +65,16 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
   const [rotation, setRotation] = useState<number>(0);
   const [promptGuidance, setPromptGuidance] = useState<string>('');
   const [showGuidanceInput, setShowGuidanceInput] = useState<boolean>(false);
+  const [apiKey, setApiKey] = useState<string>(() => {
+    return (
+      localStorage.getItem('vmk_gemini_api_key') ||
+      (import.meta as any).env?.VITE_GEMINI_API_KEY ||
+      ''
+    );
+  });
+  const [showApiKeyModal, setShowApiKeyModal] = useState<boolean>(false);
+  const [tempApiKey, setTempApiKey] = useState<string>('');
+  const [keySavedMessage, setKeySavedMessage] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -263,6 +276,36 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
     });
   };
 
+  // Save API key locally
+  const handleSaveApiKey = (keyToSave: string) => {
+    const cleanKey = keyToSave.trim();
+    if (!cleanKey) return;
+    localStorage.setItem('vmk_gemini_api_key', cleanKey);
+    setApiKey(cleanKey);
+    setKeySavedMessage('API Key saved successfully!');
+    setTimeout(() => {
+      setKeySavedMessage(null);
+      setShowApiKeyModal(false);
+    }, 1200);
+
+    // If pages are already loaded and no text extracted, automatically extract
+    if (pages.length > 0 && !extractedText) {
+      setTimeout(() => {
+        handleExtractText('all');
+      }, 500);
+    }
+  };
+
+  const handleRemoveApiKey = () => {
+    localStorage.removeItem('vmk_gemini_api_key');
+    setApiKey('');
+    setTempApiKey('');
+    setKeySavedMessage('API Key removed.');
+    setTimeout(() => {
+      setKeySavedMessage(null);
+    }, 1200);
+  };
+
   // Run AI Vision Extraction
   const handleExtractText = async (targetMode: 'current' | 'all' = 'all') => {
     if (pages.length === 0) {
@@ -280,7 +323,7 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
         : pages;
 
     try {
-      // Optimize images to ensure payload comfortably fits within Vercel serverless limit
+      // Optimize images to ensure payload comfortably fits within network limits
       const optimizedImages = await Promise.all(
         imagesToProcess.map(async (p) => {
           const optimizedDataUrl = await optimizeImageForOcr(p.dataUrl);
@@ -306,62 +349,86 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
         prompt: promptGuidance.trim() || undefined,
       };
 
-      const response = await fetch('/api/image-to-text', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
+      let extractionSuccess = false;
+      let resultText = '';
+      let resultPages: any[] = [];
 
-      clearTimeout(stepTimer1);
-      clearTimeout(stepTimer2);
-
-      // Safe response reading to prevent "Unexpected token 'T', The page c... is not valid JSON"
-      const responseText = await response.text();
-      let data: any = null;
-
+      // 1. Try server endpoint first (/api/image-to-text)
       try {
-        data = JSON.parse(responseText);
-      } catch {
-        if (
-          response.status === 404 ||
-          responseText.includes('The page could not be found') ||
-          responseText.includes('The page c') ||
-          responseText.includes('<!DOCTYPE') ||
-          responseText.includes('<html')
-        ) {
-          throw new Error(
-            'The /api/image-to-text endpoint was not found on your deployment. If deployed on Vercel, please make sure the /api serverless functions are deployed and GEMINI_API_KEY is configured in Vercel Project Settings > Environment Variables.'
-          );
-        } else if (response.status === 413 || responseText.includes('Payload Too Large')) {
-          throw new Error(
-            'The uploaded image file size is too large for the server. Please upload a smaller image.'
-          );
+        const response = await fetch('/api/image-to-text', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const responseText = await response.text();
+        let data: any = null;
+
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          data = null;
+        }
+
+        if (response.ok && data?.success) {
+          extractionSuccess = true;
+          resultText = data.text || '';
+          resultPages = Array.isArray(data.pages) ? data.pages : [];
+        } else if (data?.error && !data.error.includes('GEMINI_API_KEY')) {
+          // If server returned a genuine vision error (e.g. rate limit), throw it
+          throw new Error(data.error);
         } else {
+          // Server returned HTML (e.g. 404) or missing key error
+          throw new Error(data?.error || `Server HTTP ${response.status}`);
+        }
+      } catch (serverErr: any) {
+        console.warn('Server endpoint /api/image-to-text failed or unavailable:', serverErr);
+
+        // 2. Resilient Fallback: If server is unavailable (e.g. on static Vercel build), use client-side Gemini Vision
+        const effectiveKey =
+          apiKey.trim() ||
+          localStorage.getItem('vmk_gemini_api_key')?.trim() ||
+          (import.meta as any).env?.VITE_GEMINI_API_KEY?.trim();
+
+        if (effectiveKey) {
+          setAnalysisStep('Processing with Google Gemini AI...');
+          const clientData = await extractTextClientSide(
+            effectiveKey,
+            optimizedImages,
+            promptGuidance.trim() || undefined
+          );
+          extractionSuccess = true;
+          resultText = clientData.text || '';
+          resultPages = clientData.pages || [];
+        } else {
+          // No client key and server failed
           throw new Error(
-            `Server returned HTTP ${response.status}. Please check server logs or network connection.`
+            'The AI vision server is unreachable on your deployment. Please click "Configure API Key" to enter your Google Gemini API Key and extract text directly.'
           );
         }
       }
 
-      if (!response.ok || !data?.success) {
-        throw new Error(data?.error || 'Failed to extract text using vision AI model.');
+      clearTimeout(stepTimer1);
+      clearTimeout(stepTimer2);
+
+      if (!extractionSuccess || !resultText) {
+        throw new Error('Could not extract text from document.');
       }
 
       setAnalysisStep('Finalizing verbatim transcription...');
 
       // Update text in state
-      const resultText = data.text || '';
       setExtractedText(resultText);
       setTranslatedText('');
       setActiveTextTab('original');
 
       // Also attach text back to individual page objects
-      if (Array.isArray(data.pages)) {
+      if (Array.isArray(resultPages) && resultPages.length > 0) {
         setPages((prev) => {
           return prev.map((p) => {
-            const match = data.pages.find((dp: any) => dp.name === p.name);
+            const match = resultPages.find((dp: any) => dp.name === p.name);
             if (match) {
               return {
                 ...p,
@@ -411,43 +478,60 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
     setErrorMessage(null);
 
     try {
-      const response = await fetch('/api/translate-text', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: extractedText,
-          targetLanguage: 'English',
-        }),
-      });
+      let translationSuccess = false;
+      let englishTranslation = '';
 
-      const responseText = await response.text();
-      let data: any = null;
-
+      // 1. Try server endpoint first
       try {
-        data = JSON.parse(responseText);
-      } catch {
-        if (
-          response.status === 404 ||
-          responseText.includes('The page could not be found') ||
-          responseText.includes('The page c') ||
-          responseText.includes('<!DOCTYPE') ||
-          responseText.includes('<html')
-        ) {
-          throw new Error(
-            'The /api/translate-text endpoint was not found on your deployment. Please ensure GEMINI_API_KEY is configured in your Vercel Project Settings > Environment Variables.'
-          );
+        const response = await fetch('/api/translate-text', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            text: extractedText,
+            targetLanguage: 'English',
+          }),
+        });
+
+        const responseText = await response.text();
+        let data: any = null;
+
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          data = null;
+        }
+
+        if (response.ok && data?.success) {
+          translationSuccess = true;
+          englishTranslation = data.translatedText || '';
         } else {
-          throw new Error(`Translation server returned HTTP ${response.status}.`);
+          throw new Error(data?.error || `Server HTTP ${response.status}`);
+        }
+      } catch (serverErr: any) {
+        console.warn('Server translation endpoint failed, trying client fallback:', serverErr);
+
+        const effectiveKey =
+          apiKey.trim() ||
+          localStorage.getItem('vmk_gemini_api_key')?.trim() ||
+          (import.meta as any).env?.VITE_GEMINI_API_KEY?.trim();
+
+        if (effectiveKey) {
+          englishTranslation = await translateTextClientSide(effectiveKey, extractedText);
+          translationSuccess = true;
+        } else {
+          throw new Error(
+            'Translation service unreachable. Please click "Configure API Key" to provide your Gemini API key.'
+          );
         }
       }
 
-      if (!response.ok || !data?.success) {
-        throw new Error(data?.error || 'Failed to translate text into English.');
+      if (!translationSuccess || !englishTranslation) {
+        throw new Error('Failed to translate text into English.');
       }
 
-      setTranslatedText(data.translatedText || '');
+      setTranslatedText(englishTranslation);
       setActiveTextTab('translated');
       setTextLayoutMode('expanded'); // Automatically open translation expanded to full text length!
 
@@ -598,6 +682,20 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setTempApiKey(apiKey);
+                setShowApiKeyModal(true);
+              }}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-[#D9E1EA] text-[#4B5563] hover:text-[#0056A6] hover:bg-blue-50 transition-colors cursor-pointer"
+              title="Configure Gemini API Key"
+            >
+              <Key className="w-3.5 h-3.5 text-amber-600" />
+              <span className="hidden sm:inline">{apiKey ? 'API Key Active' : 'API Key'}</span>
+              {apiKey && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="Custom Key Loaded" />}
+            </button>
+
             {(pages.length > 0 || extractedText.length > 0) && (
               <button
                 type="button"
@@ -638,6 +736,17 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setTempApiKey(apiKey);
+                  setShowApiKeyModal(true);
+                }}
+                className="px-2.5 py-1 bg-[#0056A6] hover:bg-[#004080] text-white rounded-lg font-bold text-[11px] shadow-xs cursor-pointer flex items-center gap-1 transition-colors"
+              >
+                <Key className="w-3 h-3" />
+                <span>Configure API Key</span>
+              </button>
               <button
                 type="button"
                 onClick={() => handleExtractText('all')}
@@ -1244,6 +1353,106 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* API Key Configuration Modal Dialog */}
+      {showApiKeyModal && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-[#D9E1EA] max-w-md w-full p-5 sm:p-6 relative animate-scale-in">
+            <button
+              type="button"
+              onClick={() => {
+                setShowApiKeyModal(false);
+                setKeySavedMessage(null);
+              }}
+              className="absolute top-4 right-4 p-1 rounded-lg text-[#6B7280] hover:text-[#1F2937] hover:bg-[#F3F4F6] transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shrink-0">
+                <Key className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[#1F2937]">Google Gemini API Key</h3>
+                <p className="text-xs text-[#6B7280]">Required for Marathi, Hindi & English handwriting extraction</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-[#4B5563] leading-relaxed mb-3">
+              If your Vercel deployment cannot reach serverless functions, you can enter your Gemini API Key here to run the vision extraction directly in your browser.
+            </p>
+
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-[#0056A6] flex items-center justify-between gap-2">
+              <span>Need a free Gemini API Key?</span>
+              <a
+                href="https://aistudio.google.com/app/apikey"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-bold underline hover:text-[#004080] inline-flex items-center gap-1 shrink-0"
+              >
+                <span>Get Key at AI Studio</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-[#374151] mb-1.5">
+                Gemini API Key
+              </label>
+              <input
+                type="text"
+                value={tempApiKey}
+                onChange={(e) => setTempApiKey(e.target.value)}
+                placeholder="AIzaSy..."
+                className="w-full text-xs font-mono px-3 py-2.5 rounded-xl border border-[#D9E1EA] focus:border-[#0056A6] focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+              />
+            </div>
+
+            {keySavedMessage && (
+              <div className="mb-4 px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium flex items-center gap-1.5">
+                <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{keySavedMessage}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#E5E7EB]">
+              {apiKey ? (
+                <button
+                  type="button"
+                  onClick={handleRemoveApiKey}
+                  className="px-3 py-2 text-xs font-semibold text-red-600 hover:text-red-800 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
+                >
+                  Remove Key
+                </button>
+              ) : (
+                <div />
+              )}
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowApiKeyModal(false);
+                    setKeySavedMessage(null);
+                  }}
+                  className="px-3.5 py-2 text-xs font-semibold text-[#4B5563] hover:bg-[#F3F4F6] rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveApiKey(tempApiKey)}
+                  disabled={!tempApiKey.trim()}
+                  className="px-4 py-2 text-xs font-bold text-white bg-[#0056A6] hover:bg-[#004080] disabled:bg-gray-300 rounded-xl transition-colors cursor-pointer shadow-xs"
+                >
+                  Save & Use Key
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
