@@ -218,6 +218,51 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
     });
   };
 
+  // Helper to ensure image fits within Vercel body limits while keeping crystal clear text resolution (max 2048px)
+  const optimizeImageForOcr = async (dataUrl: string, maxDimension = 2048): Promise<string> => {
+    if (!dataUrl || dataUrl.length < 600000) return dataUrl;
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.naturalWidth || img.width;
+        let height = img.naturalHeight || img.height;
+        if (!width || !height) {
+          resolve(dataUrl);
+          return;
+        }
+        if (width <= maxDimension && height <= maxDimension && dataUrl.length < 1500000) {
+          resolve(dataUrl);
+          return;
+        }
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(dataUrl);
+          return;
+        }
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.88));
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  };
+
   // Run AI Vision Extraction
   const handleExtractText = async (targetMode: 'current' | 'all' = 'all') => {
     if (pages.length === 0) {
@@ -227,7 +272,7 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
 
     setIsAnalyzing(true);
     setErrorMessage(null);
-    setAnalysisStep('Uploading image to AI vision engine...');
+    setAnalysisStep('Optimizing document resolution for vision AI...');
 
     const imagesToProcess =
       targetMode === 'current' && activePage
@@ -235,6 +280,17 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
         : pages;
 
     try {
+      // Optimize images to ensure payload comfortably fits within Vercel serverless limit
+      const optimizedImages = await Promise.all(
+        imagesToProcess.map(async (p) => {
+          const optimizedDataUrl = await optimizeImageForOcr(p.dataUrl);
+          return {
+            dataUrl: optimizedDataUrl,
+            name: p.name,
+          };
+        })
+      );
+
       setAnalysisStep('Analyzing complete visual context & orientation...');
 
       const stepTimer1 = setTimeout(() => {
@@ -246,10 +302,7 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
       }, 3000);
 
       const payload = {
-        images: imagesToProcess.map((p) => ({
-          dataUrl: p.dataUrl,
-          name: p.name,
-        })),
+        images: optimizedImages,
         prompt: promptGuidance.trim() || undefined,
       };
 
@@ -264,10 +317,36 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
       clearTimeout(stepTimer1);
       clearTimeout(stepTimer2);
 
-      const data = await response.json();
+      // Safe response reading to prevent "Unexpected token 'T', The page c... is not valid JSON"
+      const responseText = await response.text();
+      let data: any = null;
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Failed to extract text using vision AI model.');
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        if (
+          response.status === 404 ||
+          responseText.includes('The page could not be found') ||
+          responseText.includes('The page c') ||
+          responseText.includes('<!DOCTYPE') ||
+          responseText.includes('<html')
+        ) {
+          throw new Error(
+            'The /api/image-to-text endpoint was not found on your deployment. If deployed on Vercel, please make sure the /api serverless functions are deployed and GEMINI_API_KEY is configured in Vercel Project Settings > Environment Variables.'
+          );
+        } else if (response.status === 413 || responseText.includes('Payload Too Large')) {
+          throw new Error(
+            'The uploaded image file size is too large for the server. Please upload a smaller image.'
+          );
+        } else {
+          throw new Error(
+            `Server returned HTTP ${response.status}. Please check server logs or network connection.`
+          );
+        }
+      }
+
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to extract text using vision AI model.');
       }
 
       setAnalysisStep('Finalizing verbatim transcription...');
@@ -343,10 +422,29 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
         }),
       });
 
-      const data = await response.json();
+      const responseText = await response.text();
+      let data: any = null;
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Failed to translate text into English.');
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        if (
+          response.status === 404 ||
+          responseText.includes('The page could not be found') ||
+          responseText.includes('The page c') ||
+          responseText.includes('<!DOCTYPE') ||
+          responseText.includes('<html')
+        ) {
+          throw new Error(
+            'The /api/translate-text endpoint was not found on your deployment. Please ensure GEMINI_API_KEY is configured in your Vercel Project Settings > Environment Variables.'
+          );
+        } else {
+          throw new Error(`Translation server returned HTTP ${response.status}.`);
+        }
+      }
+
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to translate text into English.');
       }
 
       setTranslatedText(data.translatedText || '');
