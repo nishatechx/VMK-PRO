@@ -36,7 +36,11 @@ async function fetchLiveCetNotices(): Promise<CetNotice[]> {
 
     const html = await response.text();
     const rowRegex = /<tr[^>]*>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<\/tr>/gi;
-    const matches = [...html.matchAll(rowRegex)];
+    const matches: RegExpExecArray[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = rowRegex.exec(html)) !== null) {
+      matches.push(match);
+    }
     const seen = new Set<string>();
     const list: CetNotice[] = [];
 
@@ -99,6 +103,28 @@ async function fetchLiveCetNotices(): Promise<CetNotice[]> {
   }
 }
 
+function parseDDMMYYYY(str: string): Date {
+  const [d, m, y] = str.split('/').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function formatDDMMYYYY(dt: Date): string {
+  const d = String(dt.getDate()).padStart(2, '0');
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const y = String(dt.getFullYear());
+  return `${d}/${m}/${y}`;
+}
+
+function getPriorDay(str: string): string {
+  try {
+    const dt = parseDDMMYYYY(str);
+    dt.setDate(dt.getDate() - 1);
+    return formatDDMMYYYY(dt);
+  } catch {
+    return '';
+  }
+}
+
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -132,26 +158,6 @@ export default async function handler(req: any, res: any) {
 
     const requestedDate = req.query?.date as string | undefined;
 
-    function parseDDMMYYYY(str: string) {
-      const [d, m, y] = str.split('/').map(Number);
-      return new Date(y, m - 1, d);
-    }
-    function formatDDMMYYYY(dt: Date) {
-      const d = String(dt.getDate()).padStart(2, '0');
-      const m = String(dt.getMonth() + 1).padStart(2, '0');
-      const y = String(dt.getFullYear());
-      return `${d}/${m}/${y}`;
-    }
-    function getPriorDay(str: string) {
-      try {
-        const dt = parseDDMMYYYY(str);
-        dt.setDate(dt.getDate() - 1);
-        return formatDDMMYYYY(dt);
-      } catch {
-        return '';
-      }
-    }
-
     const primaryTodayDate = requestedDate || sysDate;
     const primaryYesterdayDate = getPriorDay(primaryTodayDate);
 
@@ -161,10 +167,10 @@ export default async function handler(req: any, res: any) {
     todayDates.add(sysDate);
 
     const yesterdayDates = new Set<string>();
-    for (const d of todayDates) {
+    todayDates.forEach((d) => {
       const yd = getPriorDay(d);
       if (yd && !todayDates.has(yd)) yesterdayDates.add(yd);
-    }
+    });
 
     const todayNotices: (CetNotice & { period: 'today' })[] = notices
       .filter((n) => todayDates.has(n.date))
