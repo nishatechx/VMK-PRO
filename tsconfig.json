@@ -20,7 +20,13 @@
         "./*"
       ]
     },
-    "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "include": [
+    "src",
+    "api",
+    "types.ts",
+    "server.ts",
+    "vite.config.ts"
+  ]
 }
