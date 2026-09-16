@@ -11,6 +11,7 @@ interface TopNavbarProps {
   onLogout: () => void;
   onOpenImgToPdf?: () => void;
   onOpenImageToText?: () => void;
+  onOpenExternalPortal?: () => void;
   unreadCount?: number;
   currentUser?: UserProfile | null;
 }
@@ -21,6 +22,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
   onLogout,
   onOpenImgToPdf,
   onOpenImageToText,
+  onOpenExternalPortal,
   currentUser,
 }) => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -90,6 +92,24 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
 
       {/* Right: Live Digital Clock, Helpline & User Profile */}
       <div className="flex items-center gap-2.5 sm:gap-3">
+        {/* Open Target Website Quick Action */}
+        <button
+          type="button"
+          id="navbar-open-mhcet-portal-btn"
+          onClick={() => {
+            window.open('https://sac.maharashtracet.org/mhcet/portal/tickets/my-tickets', '_blank', 'noopener,noreferrer');
+            if (onOpenExternalPortal) onOpenExternalPortal();
+          }}
+          className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#003B73] hover:bg-[#002850] text-white text-xs font-semibold shadow-2xs transition-all cursor-pointer border border-[#002850] active:scale-95"
+          title="Open MHCET External Portal in New Tab"
+        >
+          <ExternalLink className="w-3.5 h-3.5 text-amber-300" />
+          <span>Open Website</span>
+          <span className="hidden lg:inline text-[10px] px-1 py-0.2 rounded bg-white/20 text-white font-bold">
+            Vault
+          </span>
+        </button>
+
         {/* Live Clock Strip */}
         <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#F7F9FC] border border-[#D9E1EA] text-xs text-[#003B73]">
           <Clock className="w-3.5 h-3.5 text-[#0056A6]" />

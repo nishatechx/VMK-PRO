@@ -26,6 +26,7 @@ interface DashboardViewProps {
   onOpenTicketTool?: () => void;
   onOpenImgToPdfTool?: () => void;
   onOpenImageToTextTool?: () => void;
+  onOpenExternalPortal?: () => void;
   onNavigateTab: (tab: any) => void;
   currentUser?: UserProfile | null;
 }
@@ -36,6 +37,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenTicketTool,
   onOpenImgToPdfTool,
   onOpenImageToTextTool,
+  onOpenExternalPortal,
   onNavigateTab,
   currentUser,
 }) => {

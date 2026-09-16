@@ -47,6 +47,7 @@ interface TicketsViewProps {
   onOpenTicketTool: () => void;
   onOpenWhatsappTool: () => void;
   onOpenWhatsappWithData?: (data: WhatsappInitialData) => void;
+  onOpenExternalPortal?: () => void;
 }
 
 export const TicketsView: React.FC<TicketsViewProps> = ({
@@ -54,6 +55,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   onOpenTicketTool,
   onOpenWhatsappTool,
   onOpenWhatsappWithData,
+  onOpenExternalPortal,
 }) => {
   const [tickets, setTickets] = useState<TicketRecord[]>(() => getTicketRecords());
   const [searchTerm, setSearchTerm] = useState('');
@@ -360,6 +362,21 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
 
         {/* Action Buttons - Strictly only those allotted to user */}
         <div className="flex flex-wrap items-center gap-2.5">
+          {/* Target Website Action - Opens https://sac.maharashtracet.org/mhcet/portal/tickets/my-tickets in a NEW TAB */}
+          <button
+            type="button"
+            id="open-target-website-btn"
+            onClick={() => {
+              window.open('https://sac.maharashtracet.org/mhcet/portal/tickets/my-tickets', '_blank', 'noopener,noreferrer');
+              if (onOpenExternalPortal) onOpenExternalPortal();
+            }}
+            className="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold bg-[#003B73] hover:bg-[#002850] text-white shadow-xs transition-all cursor-pointer flex items-center gap-2 active:scale-95 border border-[#002850]"
+            title="Open https://sac.maharashtracet.org/mhcet/portal/tickets/my-tickets in New Tab"
+          >
+            <ExternalLink className="w-4 h-4 text-amber-300" />
+            <span>Open Website (MHCET)</span>
+          </button>
+
           {canTicket && (
             <button
               id="create-candidate-ticket-btn"

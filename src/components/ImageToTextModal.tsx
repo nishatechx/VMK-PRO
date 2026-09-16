@@ -788,28 +788,155 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
 
     const captured = captureTicketDetailsFromText(textToCapture);
 
-    // Send strictly the respective 8 fields to TG with clear fallbacks and aliases
+    // 1. Candidate Name resolution with priority fallbacks:
+    // (a) Memoized detectedTicketFields from active text currently shown to user
+    // (b) Current captured text
+    // (c) Original extracted text
+    // (d) Translated text
+    // (e) Text from any loaded document page
+    // (f) Document metadata from vault if loaded from vault
+    let resolvedCandidateName = (detectedTicketFields?.candidateName || captured.candidateName || '').trim();
+
+    if (!resolvedCandidateName && extractedText.trim()) {
+      const extCap = captureTicketDetailsFromText(extractedText);
+      if (extCap.candidateName) resolvedCandidateName = extCap.candidateName.trim();
+    }
+
+    if (!resolvedCandidateName && translatedText.trim()) {
+      const transCap = captureTicketDetailsFromText(translatedText);
+      if (transCap.candidateName) resolvedCandidateName = transCap.candidateName.trim();
+    }
+
+    if (!resolvedCandidateName && pages.length > 0) {
+      for (const p of pages) {
+        if (p.extractedText) {
+          const pCap = captureTicketDetailsFromText(p.extractedText);
+          if (pCap.candidateName) {
+            resolvedCandidateName = pCap.candidateName.trim();
+            break;
+          }
+        }
+      }
+    }
+
+    if (!resolvedCandidateName && selectedVaultFileIds.length > 0) {
+      const matchedVault = vaultFiles.find((f) => selectedVaultFileIds.includes(f.id) && f.candidateName);
+      if (matchedVault?.candidateName) {
+        resolvedCandidateName = matchedVault.candidateName.trim();
+      }
+    }
+
+    // 2. CET Application Number resolution
+    let resolvedCetNo = (detectedTicketFields?.cetNo || captured.cetNo || '').trim();
+    if (!resolvedCetNo && pages.length > 0) {
+      for (const p of pages) {
+        if (p.extractedText) {
+          const pCap = captureTicketDetailsFromText(p.extractedText);
+          if (pCap.cetNo) {
+            resolvedCetNo = pCap.cetNo.trim();
+            break;
+          }
+        }
+      }
+    }
+    if (!resolvedCetNo && selectedVaultFileIds.length > 0) {
+      const matchedVault = vaultFiles.find((f) => selectedVaultFileIds.includes(f.id) && f.cetApplicationId);
+      if (matchedVault?.cetApplicationId) {
+        resolvedCetNo = matchedVault.cetApplicationId.trim();
+      }
+    }
+
+    // 3. CAP Application Number resolution
+    let resolvedCapId = (detectedTicketFields?.capId || captured.capId || '').trim();
+    if (!resolvedCapId && pages.length > 0) {
+      for (const p of pages) {
+        if (p.extractedText) {
+          const pCap = captureTicketDetailsFromText(p.extractedText);
+          if (pCap.capId) {
+            resolvedCapId = pCap.capId.trim();
+            break;
+          }
+        }
+      }
+    }
+
+    // 4. DOB (Date of Birth) resolution
+    let resolvedDob = (detectedTicketFields?.dob || captured.dob || '').trim();
+
+    // 5. Mobile Number resolution
+    let resolvedMobile = (detectedTicketFields?.mobile || captured.mobile || '').trim();
+
+    // 6. Email ID resolution
+    let resolvedEmail = (detectedTicketFields?.email || captured.email || '').trim();
+
+    // 7. Course Name resolution
+    let resolvedCourse = (detectedTicketFields?.course || captured.course || '').trim();
+
+    // 8. Query resolution
+    let resolvedQuery = (detectedTicketFields?.query || captured.query || '').trim();
+
+    // Send strictly the respective 8 fields to TG with comprehensive aliases for seamless transmission
     const ticketPayload = {
-      candidateName: captured.candidateName || '',
-      cetNo: captured.cetNo || '',
-      capId: captured.capId || '',
-      dob: captured.dob || '',
-      mobile: captured.mobile || '',
-      email: captured.email || '',
-      course: captured.course || '',
-      query: captured.query || '',
-      // Respective field aliases for seamless compatibility
-      cetApplicationNumber: captured.cetNo || '',
-      capApplicationNumber: captured.capId || '',
-      cetAppNo: captured.cetNo || '',
-      capAppNo: captured.capId || '',
+      // Candidate Name aliases
+      candidateName: resolvedCandidateName,
+      name: resolvedCandidateName,
+      candidate_name: resolvedCandidateName,
+      candidate: resolvedCandidateName,
+      studentName: resolvedCandidateName,
+      student_name: resolvedCandidateName,
+      applicantName: resolvedCandidateName,
+      applicant_name: resolvedCandidateName,
+      fullName: resolvedCandidateName,
+      full_name: resolvedCandidateName,
+      candidatename: resolvedCandidateName,
+      'Candidate Name': resolvedCandidateName,
+      'Candidate name': resolvedCandidateName,
+      'candidate name': resolvedCandidateName,
+      'Student Name': resolvedCandidateName,
+      'Applicant Name': resolvedCandidateName,
+      'Full Name': resolvedCandidateName,
+      Name: resolvedCandidateName,
+      FullName: resolvedCandidateName,
+      Candidate: resolvedCandidateName,
+      'उमेदवाराचे नाव': resolvedCandidateName,
+      'नाव': resolvedCandidateName,
+
+      // Application IDs
+      cetNo: resolvedCetNo,
+      capId: resolvedCapId,
+      cetApplicationNumber: resolvedCetNo,
+      capApplicationNumber: resolvedCapId,
+      cetAppNo: resolvedCetNo,
+      capAppNo: resolvedCapId,
+      cetApplicationNo: resolvedCetNo,
+      capApplicationNo: resolvedCapId,
+
+      // DOB
+      dob: resolvedDob,
+      birthDate: resolvedDob,
+      dateOfBirth: resolvedDob,
+
+      // Mobile Number
+      mobile: resolvedMobile,
+      phone: resolvedMobile,
+      mobileNumber: resolvedMobile,
+
+      // Email ID
+      email: resolvedEmail,
+      emailId: resolvedEmail,
+
+      // Course Name
+      course: resolvedCourse,
+      courseName: resolvedCourse,
+
+      // Query
+      query: resolvedQuery,
+      grievance: resolvedQuery,
     };
 
     if (onSendToTicketGenerator) {
       setTgNotification('Sending 8 extracted details to respective fields in Ticket Generator...');
-      setTimeout(() => {
-        onSendToTicketGenerator(ticketPayload);
-      }, 200);
+      onSendToTicketGenerator(ticketPayload);
     }
   };
 

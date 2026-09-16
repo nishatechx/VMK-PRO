@@ -261,6 +261,32 @@ export function cleanAppId(val: string): string {
  * 7. Course Name -> details.course
  * 8. Query: -> details.query
  */
+// Helper to cleanly sanitize extracted candidate names
+export function cleanCandidateName(raw: string): string {
+  if (!raw) return '';
+  let clean = raw.trim();
+  // Strip markdown bold/italic/code formatting and table pipes
+  clean = clean.replace(/^[*_`|]+|[*_`|]+$/g, '').trim();
+  // Strip leading list numbers/bullets (e.g., "1. ", "1) ", "- ", "• ")
+  clean = clean.replace(/^[\s\d.)\-*•#[\]|]+/, '').trim();
+  // Strip any leading label prefix
+  clean = clean.replace(
+    /^(?:Candidate(?:\s*['’]s)?(?:\s*Full)?\s*Name|Name\s*of\s*(?:the\s*)?(?:Candidate|Applicant|Student)|Student(?:\s*['’]s)?(?:\s*Full)?\s*Name|Applicant(?:\s*['’]s)?(?:\s*Full)?\s*Name|Full\s*Name(?:\s*of\s*(?:Candidate|Applicant|Student))?|Candidate|Student|Applicant|Name|उमेदवाराचे\s*(?:संपूर्ण\s*)?नाव|अर्जदाराचे\s*(?:संपूर्ण\s*)?नाव|विद्यार्थ्याचे\s*(?:संपूर्ण\s*)?नाव|उमेदवार|विद्यार्थी|अर्जदार)(?:\s*\([^)]*\))?[\s:.\-#\t—=|]+/i,
+    ''
+  ).trim();
+  // Strip leading parenthetical note like '(as per SSC):' or '(in block letters):'
+  clean = clean.replace(/^\([^)]*\)[\s:.\-#\t—=|]*/, '').trim();
+  // Strip inline next-field label if present on same line (e.g. 'DOB: 15/08/2004' or 'Mobile: 9822...')
+  clean = clean.replace(/\s+(?:Mobile(?:\s*No)?|Phone|Email(?:\s*ID)?|DOB|Date\s*of\s*Birth|CET|CAP|Course(?:\s*Name)?|Query)\s*[:.\-].*$/i, '').trim();
+  // Strip leading/trailing quotes, bullets, punctuation, numbers at start, table pipes
+  clean = clean.replace(/^[\s"'“”‘’\-.:,;0-9*#|]+|[\s"'“”‘’\-.:,;*#|]+$/g, '').trim();
+  // Reject placeholder values
+  if (/^(candidate|name|student|applicant|query|course|none|na|n\/a|not\s*found|unclear|null|undefined)$/i.test(clean)) {
+    return '';
+  }
+  return clean || raw.trim();
+}
+
 export function captureTicketDetailsFromText(rawText: string): CapturedTicketDetails {
   if (!rawText || !rawText.trim()) return {};
 
@@ -274,8 +300,11 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
   // ---------------------------------------------------------------------------
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    // Strip any leading numbering or bullet points: e.g. "1. ", "2) ", "* ", "- ", "• ", "[1] "
-    const strippedLine = line.replace(/^[\s\d.)\-*•#[\]]+/, '').trim();
+    // Strip any leading numbering, bullet points, pipes, markdown wrappers
+    const strippedLine = line
+      .replace(/^[\s\d.)\-*•#[\]|]+/, '')
+      .replace(/[*_]/g, '')
+      .trim();
 
     // Helper: extracts value after label on same line or from next line
     const extractLineVal = (labelRegex: RegExp): string => {
@@ -290,10 +319,18 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
         return match[1].trim();
       }
       // 3. If line is just the label without value, look at next line
-      if ((labelRegex.test(strippedLine) || labelRegex.test(line)) && i + 1 < lines.length) {
+      const cleanOnlyLabel = strippedLine.replace(/[\s:.\-#\t—=|]+$/, '');
+      if (
+        (labelRegex.test(strippedLine) || labelRegex.test(line) || labelRegex.test(cleanOnlyLabel + ':')) &&
+        i + 1 < lines.length
+      ) {
         const next = lines[i + 1].trim();
-        // Ensure next line is not another label or number
-        if (!/^(candidate|name|mobile|email|dob|date of birth|cet|cap|course|query|\d+[.)])/i.test(next)) {
+        // Ensure next line is not another label
+        if (
+          !/^(candidate|name|mobile|email|dob|date of birth|cet|cap|course|query|\*{1,2}(candidate|name|mobile|email|dob|cet|cap|course|query))/i.test(
+            next
+          )
+        ) {
           return next;
         }
       }
@@ -303,12 +340,11 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
     // 1. Candidate Name
     if (!details.candidateName) {
       const nameVal = extractLineVal(
-        /^(?:Candidate(?:\s*['’]s)?\s*Name|Name\s*of\s*(?:the\s*)?Candidate|Student(?:\s*['’]s)?\s*Name|Applicant(?:\s*['’]s)?\s*Name|Full\s*Name|Name|उमेदवाराचे\s*नाव|विद्यार्थ्याचे\s*नाव)[\s:.\-#\t—=]+(.*)$/i
+        /^(?:Candidate(?:\s*['’]s)?(?:\s*Full)?\s*Name|Name\s*of\s*(?:the\s*)?(?:Candidate|Applicant|Student)|Student(?:\s*['’]s)?(?:\s*Full)?\s*Name|Applicant(?:\s*['’]s)?(?:\s*Full)?\s*Name|Full\s*Name(?:\s*of\s*(?:Candidate|Applicant|Student))?|Candidate|Student|Applicant|Name|उमेदवाराचे\s*(?:संपूर्ण\s*)?नाव|अर्जदाराचे\s*(?:संपूर्ण\s*)?नाव|विद्यार्थ्याचे\s*(?:संपूर्ण\s*)?नाव|उमेदवार|विद्यार्थी|अर्जदार)(?:\s*\([^)]*\))?[\s:.\-#\t—=|]+(.*)$/i
       );
       if (nameVal) {
-        let clean = nameVal.replace(/\s*(?:Mobile|Phone|Email|DOB|Date|CET|CAP|Course|Query).*$/i, '').trim();
-        clean = clean.replace(/^[\s\-.:,;0-9*#]+|[\s\-.:,;*#]+$/g, '').trim();
-        if (clean.length >= 3 && !/^(candidate|name|student|applicant|query|course)$/i.test(clean)) {
+        const clean = cleanCandidateName(nameVal);
+        if (clean.length >= 2) {
           details.candidateName = clean;
         }
       }
@@ -425,16 +461,16 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
   // 1. Candidate Name (if not resolved)
   if (!details.candidateName) {
     const nameGlobalPatterns = [
-      /(?:Candidate(?:\s*['’]s)?\s*Name|Name\s*of\s*(?:the\s*)?Candidate|Student(?:\s*['’]s)?\s*Name|Applicant(?:\s*['’]s)?\s*Name|Full\s*Name|उमेदवाराचे\s*नाव|विद्यार्थ्याचे\s*नाव)[\s:.\-#\t—=]+([A-Za-z\s.'’]{3,50})/i,
-      /(?:^|\n)\s*(?:Candidate\s*Name|Student\s*Name|Applicant\s*Name)[\s:.\-#\t\n]+([A-Z][A-Za-z\s.'’]{2,50})/i,
+      /(?:Candidate(?:\s*['’]s)?(?:\s*Full)?\s*Name|Name\s*of\s*(?:the\s*)?(?:Candidate|Applicant|Student)|Student(?:\s*['’]s)?(?:\s*Full)?\s*Name|Applicant(?:\s*['’]s)?(?:\s*Full)?\s*Name|Full\s*Name(?:\s*of\s*(?:Candidate|Applicant|Student))?|उमेदवाराचे\s*(?:संपूर्ण\s*)?नाव|अर्जदाराचे\s*(?:संपूर्ण\s*)?नाव|विद्यार्थ्याचे\s*(?:संपूर्ण\s*)?नाव)(?:\s*\([^)]*\))?[\s:.\-#\t—=|]+([^\n\r|]{2,80})/i,
+      /(?:^|\n)\s*(?:Candidate\s*Name|Student\s*Name|Applicant\s*Name)(?:\s*\([^)]*\))?[\s:.\-#\t\n|]+([^\n\r|]{2,80})/i,
+      /\b(?:Mr\.|Mrs\.|Ms\.|Shri|Smt\.|Kumari)\s+([A-Za-z\s.'’]{3,60})\b/i,
     ];
     for (const pat of nameGlobalPatterns) {
       const m = cleanedText.match(pat);
       if (m && m[1]) {
-        let val = m[1].replace(/\s*(?:Mobile|Phone|Email|DOB|Date|CET|CAP|Course|Query).*$/i, '').trim();
-        val = val.replace(/^[\s\-.:,;0-9*#]+|[\s\-.:,;*#]+$/g, '').trim();
-        if (val.length >= 3 && !/^(candidate|name|student|applicant|query|course|application)$/i.test(val)) {
-          details.candidateName = val;
+        const cleaned = cleanCandidateName(m[1]);
+        if (cleaned.length >= 2) {
+          details.candidateName = cleaned;
           break;
         }
       }

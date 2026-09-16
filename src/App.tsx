@@ -17,6 +17,8 @@ import { QrUploadModal } from './components/QrUploadModal';
 import { ImgToPdfModal } from './components/ImgToPdfModal';
 import { ImageToTextModal } from './components/ImageToTextModal';
 import { MobileQrUploadView } from './components/MobileQrUploadView';
+import { ExternalWebsiteAssistantModal } from './components/ExternalWebsiteAssistantModal';
+import { VaultFilePickerModal } from './components/VaultFilePickerModal';
 import { LoginScreen } from './components/LoginScreen';
 import { WelcomeModal } from './components/WelcomeModal';
 import {
@@ -106,6 +108,9 @@ export default function App() {
 
   const [qrSessionParam, setQrSessionParam] = useState<string | null>(null);
   const [welcomeUser, setWelcomeUser] = useState<UserProfile | null>(null);
+  const [isExternalAssistantOpen, setIsExternalAssistantOpen] = useState<boolean>(false);
+  const [vaultPickerParam, setVaultPickerParam] = useState<boolean>(false);
+  const [vaultPickerAccept, setVaultPickerAccept] = useState<string[]>(['.pdf', '.jpg', '.jpeg', '.png']);
 
   const handleLoginSuccess = (user: UserProfile) => {
     setCurUser(user);
@@ -177,6 +182,17 @@ export default function App() {
       if (session) {
         setQrSessionParam(session);
       }
+      const isPicker = params.get('vaultPicker');
+      if (isPicker === 'true' || isPicker === '1') {
+        setVaultPickerParam(true);
+        const accept = params.get('accept');
+        if (accept) {
+          const parts = accept.split(',').map((p) => p.trim().toLowerCase());
+          if (parts.length > 0) {
+            setVaultPickerAccept(parts);
+          }
+        }
+      }
     }
 
     // Subscribe to live user updates to keep avatar & profile synced
@@ -207,6 +223,29 @@ export default function App() {
           }
         }}
       />
+    );
+  }
+
+  // Handle Standalone Vault Picker Window (e.g., opened via target website companion button or popup)
+  if (vaultPickerParam) {
+    return (
+      <div className="fixed inset-0 bg-[#003B73]/20 backdrop-blur-xs flex items-center justify-center p-4">
+        <VaultFilePickerModal
+          isOpen={true}
+          isStandalone={true}
+          onClose={() => {
+            if (typeof window !== 'undefined') {
+              if (window.opener) {
+                window.close();
+              } else {
+                window.history.pushState({}, '', window.location.pathname);
+                setVaultPickerParam(false);
+              }
+            }
+          }}
+          acceptedFormats={vaultPickerAccept}
+        />
+      </div>
     );
   }
 
@@ -247,6 +286,7 @@ export default function App() {
             onOpenTicketTool={handleOpenTicketGenerator}
             onOpenImgToPdfTool={handleOpenImgToPdf}
             onOpenImageToTextTool={handleOpenImageToText}
+            onOpenExternalPortal={() => setIsExternalAssistantOpen(true)}
           />
         </div>
       )}
@@ -275,6 +315,7 @@ export default function App() {
               onOpenTicketTool={handleOpenTicketGenerator}
               onOpenImgToPdfTool={handleOpenImgToPdf}
               onOpenImageToTextTool={handleOpenImageToText}
+              onOpenExternalPortal={() => setIsExternalAssistantOpen(true)}
             />
           </div>
         </div>
@@ -289,6 +330,7 @@ export default function App() {
           onLogout={handleLogout}
           onOpenImgToPdf={hasFeaturePermission(currentUser, 'img_to_pdf_tool') ? handleOpenImgToPdf : undefined}
           onOpenImageToText={hasFeaturePermission(currentUser, 'image_to_text_tool') ? handleOpenImageToText : undefined}
+          onOpenExternalPortal={() => setIsExternalAssistantOpen(true)}
           currentUser={currentUser}
         />
 
@@ -310,6 +352,7 @@ export default function App() {
                   onOpenTicketTool={handleOpenTicketGenerator}
                   onOpenImgToPdfTool={handleOpenImgToPdf}
                   onOpenImageToTextTool={handleOpenImageToText}
+                  onOpenExternalPortal={() => setIsExternalAssistantOpen(true)}
                   onNavigateTab={navigateToTab}
                   currentUser={currentUser}
                 />
@@ -328,6 +371,7 @@ export default function App() {
                   onOpenTicketTool={handleOpenTicketGenerator}
                   onOpenWhatsappTool={handleOpenWhatsappGeneral}
                   onOpenWhatsappWithData={handleOpenWhatsappWithData}
+                  onOpenExternalPortal={() => setIsExternalAssistantOpen(true)}
                 />
               )}
 
@@ -439,6 +483,12 @@ export default function App() {
           onClose={() => setWelcomeUser(null)}
         />
       )}
+
+      {/* External Target Website (MHCET Tickets) Vault Integration Assistant & Simulator */}
+      <ExternalWebsiteAssistantModal
+        isOpen={isExternalAssistantOpen}
+        onClose={() => setIsExternalAssistantOpen(false)}
+      />
     </div>
   );
 }

@@ -28,6 +28,7 @@ import { WhatsappInitialData } from './WhatsappTicketModal';
 import { DEPARTMENT_COURSES, DEFAULT_COURSE } from '../data/courses';
 import { FormValidationErrorModal } from './FormValidationErrorModal';
 import { APP_ASSETS } from '../constants/assets';
+import { cleanCandidateName } from '../utils/ticketExtractor';
 
 export interface TicketState {
   cetNo: string;
@@ -44,13 +45,43 @@ export interface InitialCandidateData {
   id?: string;
   name?: string;
   candidateName?: string;
+  candidate_name?: string;
+  candidate?: string;
+  studentName?: string;
+  student_name?: string;
+  applicantName?: string;
+  applicant_name?: string;
+  fullName?: string;
+  full_name?: string;
+  candidatename?: string;
+  CandidateName?: string;
+  Candidate_Name?: string;
   mobile?: string;
+  phone?: string;
+  mobileNumber?: string;
   email?: string;
+  emailId?: string;
   course?: string;
+  courseName?: string;
   cetNo?: string;
   capId?: string;
+  cetApplicationNumber?: string;
+  capApplicationNumber?: string;
+  cetAppNo?: string;
+  capAppNo?: string;
+  cetApplicationNo?: string;
+  capApplicationNo?: string;
+  cetRegNo?: string;
+  applicationNumber?: string;
+  appNo?: string;
+  capIdNumber?: string;
   dob?: string;
+  birthDate?: string;
+  dateOfBirth?: string;
   query?: string;
+  grievance?: string;
+  _t?: number;
+  [key: string]: any;
 }
 
 interface TicketGeneratorModalProps {
@@ -143,25 +174,88 @@ export const TicketGeneratorModal: React.FC<TicketGeneratorModalProps> = ({
           finalCetNo = finalCapId;
         }
 
+        // Robust Candidate Name resolution from all possible aliases
+        const rawCandidateName =
+          initialCandidate.candidateName ||
+          initialCandidate['Candidate Name'] ||
+          initialCandidate['Candidate name'] ||
+          initialCandidate['candidate name'] ||
+          initialCandidate.name ||
+          initialCandidate.Name ||
+          initialCandidate.candidate_name ||
+          initialCandidate.candidate ||
+          initialCandidate.Candidate ||
+          initialCandidate.studentName ||
+          initialCandidate['Student Name'] ||
+          initialCandidate.student_name ||
+          initialCandidate.applicantName ||
+          initialCandidate['Applicant Name'] ||
+          initialCandidate.applicant_name ||
+          initialCandidate.fullName ||
+          initialCandidate['Full Name'] ||
+          initialCandidate.FullName ||
+          initialCandidate.full_name ||
+          initialCandidate.candidatename ||
+          initialCandidate.CandidateName ||
+          initialCandidate.Candidate_Name ||
+          initialCandidate['उमेदवाराचे नाव'] ||
+          initialCandidate['नाव'] ||
+          '';
+
+        const cleanedCandidateName = cleanCandidateName(String(rawCandidateName));
+        const finalCandidateName = (cleanedCandidateName || String(rawCandidateName)).trim();
+
+        // Robust Course resolution
+        const rawCourse =
+          initialCandidate.course ||
+          initialCandidate.courseName ||
+          DEFAULT_COURSE;
+
+        // Robust Mobile resolution
+        const rawMobile =
+          initialCandidate.mobile ||
+          initialCandidate.phone ||
+          initialCandidate.mobileNumber ||
+          '';
+
+        // Robust Email resolution
+        const rawEmail =
+          initialCandidate.email ||
+          initialCandidate.emailId ||
+          '';
+
+        // Robust DOB resolution
+        const rawDob =
+          initialCandidate.dob ||
+          initialCandidate.birthDate ||
+          initialCandidate.dateOfBirth ||
+          '';
+
+        // Robust Query resolution
+        const rawQuery =
+          initialCandidate.query ||
+          initialCandidate.grievance ||
+          '';
+
         setTicketForm({
           cetNo: finalCetNo.toUpperCase().trim(),
           capId: finalCapId.toUpperCase().trim(),
-          candidateName: initialCandidate.candidateName || initialCandidate.name || '',
-          dob: initialCandidate.dob || '',
-          mobile: initialCandidate.mobile || '',
-          email: initialCandidate.email || '',
-          course: initialCandidate.course || DEFAULT_COURSE,
-          query: initialCandidate.query || '',
+          candidateName: finalCandidateName,
+          dob: rawDob,
+          mobile: rawMobile,
+          email: rawEmail,
+          course: rawCourse || DEFAULT_COURSE,
+          query: rawQuery,
         });
 
         if (
-          initialCandidate.candidateName ||
+          finalCandidateName ||
           finalCetNo ||
           finalCapId ||
-          initialCandidate.mobile ||
-          initialCandidate.query ||
-          initialCandidate.dob ||
-          initialCandidate.email
+          rawMobile ||
+          rawQuery ||
+          rawDob ||
+          rawEmail
         ) {
           setTicketStatus({
             message:

@@ -521,4 +521,7 @@ export const qrUploadService = {
   },
 };
 
+export const getAllVaultFilesAsync = () => qrUploadService.getAllVaultFilesAsync();
+export const getAllVaultFiles = () => qrUploadService.getAllVaultFiles();
+
 

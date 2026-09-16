@@ -18,6 +18,7 @@ import {
   FileImage,
   FileText,
   Wrench,
+  ExternalLink,
 } from 'lucide-react';
 import { TabPermission, UserProfile } from '../types/auth';
 import { hasTabPermission, hasFeaturePermission } from '../services/authService';
@@ -39,6 +40,7 @@ interface SidebarProps {
   onOpenTicketTool?: () => void;
   onOpenImgToPdfTool?: () => void;
   onOpenImageToTextTool?: () => void;
+  onOpenExternalPortal?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -55,6 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenTicketTool,
   onOpenImgToPdfTool,
   onOpenImageToTextTool,
+  onOpenExternalPortal,
 }) => {
   const allNavItems: {
     id: NavTab;
@@ -392,6 +395,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   )}
                 </button>
               )}
+
+              {/* External Target Website - MHCET Ticket Portal */}
+              <button
+                type="button"
+                id="sidebar-tool-external-portal"
+                onClick={() => {
+                  window.open('https://sac.maharashtracet.org/mhcet/portal/tickets/my-tickets', '_blank', 'noopener,noreferrer');
+                  if (onOpenExternalPortal) onOpenExternalPortal();
+                  if (onClose && window.innerWidth < 768) onClose();
+                }}
+                title={isCollapsed ? 'MHCET Tickets Portal (Vault Bridge)' : undefined}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-[#003B73] hover:text-white bg-[#EAF4FB] hover:bg-[#003B73] border border-[#D9E1EA] hover:border-[#003B73] transition-all cursor-pointer shadow-2xs group ${
+                  isCollapsed ? 'justify-center px-0 py-2.5' : ''
+                }`}
+              >
+                <div className="w-7 h-7 rounded-xl bg-white border border-[#D9E1EA] p-1 flex items-center justify-center shrink-0 shadow-2xs text-[#0056A6] group-hover:text-[#003B73]">
+                  <ExternalLink className="w-4 h-4" />
+                </div>
+                {!isCollapsed && (
+                  <div className="flex-1 text-left truncate flex items-center justify-between">
+                    <span className="truncate">Target Website</span>
+                    <span className="text-[9px] px-1 py-0.2 rounded bg-white/60 text-[#003B73] font-bold">
+                      Vault
+                    </span>
+                  </div>
+                )}
+              </button>
             </div>
           </div>
         )}
