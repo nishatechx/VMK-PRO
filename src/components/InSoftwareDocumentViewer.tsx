@@ -16,9 +16,11 @@ import {
   ChevronRight,
   ShieldCheck,
   Sparkles,
+  Crop,
 } from 'lucide-react';
 import { QrUploadedFile, formatBytes, printDocumentDirectly, triggerFileDownload } from '../types/qrUpload';
 import { qrUploadService } from '../services/qrUploadService';
+import { SmartCropModal } from './SmartCropModal';
 
 interface InSoftwareDocumentViewerProps {
   file: QrUploadedFile | null;
@@ -28,17 +30,26 @@ interface InSoftwareDocumentViewerProps {
 }
 
 export const InSoftwareDocumentViewer: React.FC<InSoftwareDocumentViewerProps> = ({
-  file,
+  file: initialFile,
   allFiles = [],
   onClose,
   onSelectFile,
 }) => {
+  const [currentFile, setCurrentFile] = useState<QrUploadedFile | null>(initialFile);
   const [zoom, setZoom] = useState<number>(100);
   const [rotation, setRotation] = useState<number>(0);
   const [copied, setCopied] = useState<boolean>(false);
-  const [isVerified, setIsVerified] = useState<boolean>(() => !!file?.verifiedStamp);
+  const [isVerified, setIsVerified] = useState<boolean>(() => !!initialFile?.verifiedStamp);
+  const [showCropModal, setShowCropModal] = useState<boolean>(false);
 
-  if (!file) return null;
+  // Sync when initialFile prop changes
+  React.useEffect(() => {
+    setCurrentFile(initialFile);
+    setIsVerified(!!initialFile?.verifiedStamp);
+  }, [initialFile]);
+
+  if (!currentFile) return null;
+  const file = currentFile;
 
   const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
   const currentIndex = allFiles.findIndex((f) => f.id === file.id);
@@ -64,6 +75,44 @@ export const InSoftwareDocumentViewer: React.FC<InSoftwareDocumentViewerProps> =
   const handleToggleStamp = () => {
     const updated = qrUploadService.toggleVerifyStamp(file.sessionId, file.id);
     setIsVerified(updated);
+  };
+
+  const handleSaveCrop = async (croppedDataUrl: string, croppedSize: number, saveAsCopy: boolean) => {
+    if (!file) return;
+
+    if (saveAsCopy) {
+      const extMatch = file.name.match(/(\.[^.]+)$/);
+      const ext = extMatch ? extMatch[1] : '.jpg';
+      const baseName = file.name.replace(/\.[^.]+$/, '');
+      const newName = `${baseName}_cropped${ext}`;
+
+      const newFile = await qrUploadService.uploadFile(file.sessionId, {
+        name: newName,
+        type: file.type || 'image/jpeg',
+        size: croppedSize,
+        dataUrl: croppedDataUrl,
+        category: file.category,
+      });
+
+      if (newFile) {
+        setCurrentFile(newFile);
+        onSelectFile?.(newFile);
+      }
+    } else {
+      const updated = await qrUploadService.updateVaultFile(file.id, {
+        dataUrl: croppedDataUrl,
+        size: croppedSize,
+        sessionId: file.sessionId,
+      });
+
+      const updatedObj = updated || {
+        ...file,
+        dataUrl: croppedDataUrl,
+        size: croppedSize,
+      };
+      setCurrentFile(updatedObj);
+      onSelectFile?.(updatedObj);
+    }
   };
 
   const handleCopy = async () => {
@@ -168,6 +217,18 @@ export const InSoftwareDocumentViewer: React.FC<InSoftwareDocumentViewerProps> =
                     <RotateCw className="w-3.5 h-3.5" />
                   </button>
                 </div>
+              )}
+
+              {/* Smart Crop for Images */}
+              {!isPdf && (
+                <button
+                  onClick={() => setShowCropModal(true)}
+                  className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs border border-blue-400/40 cursor-pointer"
+                  title="AI Document Scanner & Auto-Crop"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">AI Scanner & Crop</span>
+                </button>
               )}
 
               {/* Verification Stamp Button */}
@@ -278,6 +339,16 @@ export const InSoftwareDocumentViewer: React.FC<InSoftwareDocumentViewerProps> =
           </div>
         </motion.div>
       </motion.div>
+
+      {/* Smart Crop Modal */}
+      {showCropModal && (
+        <SmartCropModal
+          isOpen={showCropModal}
+          file={file}
+          onClose={() => setShowCropModal(false)}
+          onSaveCrop={handleSaveCrop}
+        />
+      )}
     </AnimatePresence>
   );
 };

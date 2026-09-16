@@ -51,6 +51,8 @@ export default function App() {
     if (hasFeaturePermission(currentUser, 'whatsapp_tool')) {
       // Per instruction: Ticket ID is not prefilled; must be added by user
       setWhatsappInitialData({ ...data, ticketNo: '' });
+      setIsTicketGeneratorOpen(false);
+      setTicketInitialCandidate(null);
       setIsWhatsappTicketOpen(true);
     }
   };
@@ -78,7 +80,7 @@ export default function App() {
 
   const handleOpenTicketWithData = (candidateData: any) => {
     if (hasFeaturePermission(currentUser, 'ticket_generator_tool')) {
-      setTicketInitialCandidate(candidateData);
+      setTicketInitialCandidate({ ...candidateData, _t: Date.now() });
       setIsImageToTextOpen(false);
       setIsTicketGeneratorOpen(true);
     }

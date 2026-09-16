@@ -108,29 +108,64 @@ export const TicketGeneratorModal: React.FC<TicketGeneratorModalProps> = ({
       setAvailableStudents(studs);
 
       if (initialCandidate) {
-        setTicketForm((prev) => ({
-          ...prev,
-          cetNo: initialCandidate.cetNo || initialCandidate.id || prev.cetNo,
-          capId:
-            initialCandidate.capId ||
-            prev.capId ||
-            (initialCandidate.id ? `EN26${initialCandidate.id.replace(/\D/g, '').slice(-6)}` : ''),
-          candidateName: initialCandidate.candidateName || initialCandidate.name || prev.candidateName,
-          dob: initialCandidate.dob || prev.dob,
-          mobile: initialCandidate.mobile || prev.mobile,
-          email: initialCandidate.email || prev.email,
-          course: initialCandidate.course || prev.course,
-          query: initialCandidate.query || prev.query,
-        }));
+        const rawCetNo =
+          initialCandidate.cetNo ||
+          initialCandidate.cetApplicationNumber ||
+          initialCandidate.cetAppNo ||
+          initialCandidate.cetApplicationNo ||
+          initialCandidate.cetRegNo ||
+          initialCandidate.applicationNumber ||
+          initialCandidate.appNo ||
+          '';
+
+        const rawCapId =
+          initialCandidate.capId ||
+          initialCandidate.capNo ||
+          initialCandidate.capApplicationNumber ||
+          initialCandidate.capAppNo ||
+          initialCandidate.capApplicationNo ||
+          initialCandidate.capIdNumber ||
+          '';
+
+        const isCapPrefix = (val: string) =>
+          /^(?:EN|MB|MC|PH|AR|HM|DS|DSE|DSP|TE|CO|PL|BS|AG|LA|ED|MP|NU)\d{6,10}$/i.test(val.trim());
+
+        let finalCapId = rawCapId;
+        let finalCetNo = rawCetNo;
+
+        if (!finalCapId && isCapPrefix(finalCetNo)) {
+          finalCapId = finalCetNo;
+        }
+
+        // In SAC Ticket Generator, CET Application Number is required (*).
+        // If finalCetNo is empty but finalCapId is present, ensure CET Application Number is populated with the ID
+        if (!finalCetNo && finalCapId) {
+          finalCetNo = finalCapId;
+        }
+
+        setTicketForm({
+          cetNo: finalCetNo.toUpperCase().trim(),
+          capId: finalCapId.toUpperCase().trim(),
+          candidateName: initialCandidate.candidateName || initialCandidate.name || '',
+          dob: initialCandidate.dob || '',
+          mobile: initialCandidate.mobile || '',
+          email: initialCandidate.email || '',
+          course: initialCandidate.course || DEFAULT_COURSE,
+          query: initialCandidate.query || '',
+        });
 
         if (
           initialCandidate.candidateName ||
-          initialCandidate.cetNo ||
-          initialCandidate.capId ||
-          initialCandidate.query
+          finalCetNo ||
+          finalCapId ||
+          initialCandidate.mobile ||
+          initialCandidate.query ||
+          initialCandidate.dob ||
+          initialCandidate.email
         ) {
           setTicketStatus({
-            message: 'Candidate details captured and pre-filled from Image-to-Text tool. Please verify and generate ticket.',
+            message:
+              'All 8 fields successfully transferred to respective fields: Candidate Name, CET Application Number, CAP Application Number, DOB, Mobile Number, Email ID, Course Name, and Query.',
             type: 'ok',
           });
         }
@@ -177,26 +212,25 @@ export const TicketGeneratorModal: React.FC<TicketGeneratorModalProps> = ({
   const generateTicket = () => {
     const { cetNo, capId, candidateName, dob, mobile, email, course, query } = ticketForm;
 
-    // 1. Check for empty fields (no empty fields allowed)
+    // 1. Check for empty fields (The 7 mandatory ticket details)
     const missing: string[] = [];
-    if (!cetNo.trim()) missing.push('CET Application No');
-    if (!capId.trim()) missing.push('CAP Application ID');
     if (!candidateName.trim()) missing.push('Candidate Name');
-    if (!dob.trim()) missing.push('DOB (Date of Birth)');
     if (!mobile.trim()) missing.push('Mobile Number');
-    if (!email.trim()) missing.push('Email ID');
+    if (!email.trim()) missing.push('Email Address');
+    if (!dob.trim()) missing.push('DOB (Date of Birth)');
+    if (!cetNo.trim()) missing.push('CET Application Number');
     if (!course.trim()) missing.push('Course Name');
-    if (!query.trim()) missing.push('Query / Grievance Details');
+    if (!query.trim()) missing.push('Query');
 
     if (missing.length > 0) {
       setValidationPopup({
         isOpen: true,
         title: 'Mandatory Fields Missing',
-        message: 'All 8 fields are mandatory. Please fill in the following empty fields before generating the ticket:',
+        message: 'Please fill in the following required candidate details before generating the ticket note:',
         missingFields: missing,
       });
       setTicketStatus({
-        message: `Validation Error: Please fill all 8 mandatory fields (${missing.length} missing).`,
+        message: `Validation Error: Please fill all required fields (${missing.length} missing).`,
         type: 'bad',
       });
       return;
@@ -253,13 +287,12 @@ export const TicketGeneratorModal: React.FC<TicketGeneratorModalProps> = ({
       formattedDob = dob;
     }
 
-    const outputText = `CET Application No: ${cetNo.trim().toUpperCase()}
-CAP Application ID: ${capId.trim().toUpperCase()}
-Candidate Name: ${candidateName.trim()}
-DOB: ${formattedDob}
+    const outputText = `Candidate Name: ${candidateName.trim()}
 Mobile Number: ${cleanMobile}
-Email ID: ${email.trim()}
-Course Name: ${course.trim()}
+Email Address: ${email.trim()}
+DOB (Date of Birth): ${formattedDob}
+CET Application Number: ${cetNo.trim().toUpperCase()}
+${capId.trim() ? `CAP Application ID: ${capId.trim().toUpperCase()}\n` : ''}Course Name: ${course.trim()}
 Query: ${query.trim()}`;
 
     setTicketOutput(outputText);
@@ -380,6 +413,23 @@ Query: ${query.trim()}`;
     }
   };
 
+  const handleSendToWhatsapp = () => {
+    if (onOpenWhatsappWithData) {
+      onOpenWhatsappWithData({
+        name: ticketForm.candidateName.trim(),
+        mobile: ticketForm.mobile.trim(),
+        email: ticketForm.email.trim(),
+        cetRegNo: ticketForm.cetNo.trim().toUpperCase(),
+        capAppNo: ticketForm.capId.trim().toUpperCase(),
+        courseName: ticketForm.course.trim(),
+        ticketNo: '', // Don't prefill ticket no: must be added by user
+        query: ticketForm.query.trim(),
+      });
+    }
+    // Close ticket generator automatically when sending to WhatsApp
+    onClose();
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -464,11 +514,11 @@ Query: ${query.trim()}`;
 
                     <div className="p-5 sm:p-6 space-y-4">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {/* 1. CET Application No */}
+                        {/* 1. CET Application Number */}
                         <div className="flex flex-col gap-1.5">
                           <label htmlFor="cetNo" className="text-xs font-bold text-slate-800 flex items-center gap-1">
                             <Hash className="w-3.5 h-3.5 text-[#0056A6]" />
-                            <span>CET Application No</span>
+                            <span>CET Application Number</span>
                             <span className="text-rose-600">*</span>
                           </label>
                           <input
@@ -478,26 +528,25 @@ Query: ${query.trim()}`;
                             required
                             value={ticketForm.cetNo}
                             onChange={handleTicketChange}
-                            placeholder="e.g. CET20261084291"
+                            placeholder="e.g. CET20261084291 / 24108892"
                             className="w-full px-3.5 py-2.5 text-xs sm:text-sm border border-[#D9E1EA] rounded-xl focus:border-[#0056A6] focus:ring-3 focus:ring-[#0056A6]/15 outline-none bg-white font-mono uppercase font-bold text-slate-900 placeholder:text-slate-400 placeholder:normal-case placeholder:font-normal"
                           />
                         </div>
 
-                        {/* 2. CAP Application ID */}
+                        {/* 2. CAP Application Number (Optional) */}
                         <div className="flex flex-col gap-1.5">
                           <label htmlFor="capId" className="text-xs font-bold text-slate-800 flex items-center gap-1">
                             <Hash className="w-3.5 h-3.5 text-[#0056A6]" />
-                            <span>CAP Application ID</span>
-                            <span className="text-rose-600">*</span>
+                            <span>CAP Application Number</span>
+                            <span className="text-slate-400 text-[11px] font-normal">(Optional)</span>
                           </label>
                           <input
                             id="capId"
                             name="capId"
                             type="text"
-                            required
                             value={ticketForm.capId}
                             onChange={handleTicketChange}
-                            placeholder="e.g. EN26105432 / MB261984"
+                            placeholder="Optional: e.g. EN26105432"
                             className="w-full px-3.5 py-2.5 text-xs sm:text-sm border border-[#D9E1EA] rounded-xl focus:border-[#0056A6] focus:ring-3 focus:ring-[#0056A6]/15 outline-none bg-white font-mono uppercase font-bold text-slate-900 placeholder:text-slate-400 placeholder:normal-case placeholder:font-normal"
                           />
                         </div>
@@ -649,6 +698,19 @@ Query: ${query.trim()}`;
                       <span>Generate Ticket Note</span>
                     </button>
 
+                    {onOpenWhatsappWithData && (
+                      <button
+                        id="forward-to-whatsapp-btn"
+                        type="button"
+                        onClick={handleSendToWhatsapp}
+                        className="px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+                        title="Send candidate details to WhatsApp notice and close Ticket Generator"
+                      >
+                        <MessageCircle className="w-4 h-4 text-white" />
+                        <span>Send to WhatsApp</span>
+                      </button>
+                    )}
+
                     {ticketOutput && (
                       <>
                         <button
@@ -672,30 +734,6 @@ Query: ${query.trim()}`;
                           <Printer className="w-4 h-4 text-[#0056A6]" />
                           <span>Print Slip</span>
                         </button>
-
-                        {onOpenWhatsappWithData && (
-                          <button
-                            id="forward-to-whatsapp-btn"
-                            type="button"
-                            onClick={() => {
-                              onOpenWhatsappWithData({
-                                name: ticketForm.candidateName.trim(),
-                                mobile: ticketForm.mobile.trim(),
-                                email: ticketForm.email.trim(),
-                                cetRegNo: ticketForm.cetNo.trim().toUpperCase(),
-                                capAppNo: ticketForm.capId.trim().toUpperCase(),
-                                courseName: ticketForm.course.trim(),
-                                ticketNo: '', // Don't prefill ticket no: must be added by user
-                                query: ticketForm.query.trim(),
-                              });
-                            }}
-                            className="px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
-                            title="Reflect this created ticket data into WhatsApp notice"
-                          >
-                            <MessageCircle className="w-4 h-4 text-white" />
-                            <span>Dispatch to WhatsApp</span>
-                          </button>
-                        )}
                       </>
                     )}
 
@@ -721,13 +759,27 @@ Query: ${query.trim()}`;
                         </h2>
                       </div>
                       {ticketOutput && (
-                        <button
-                          onClick={copyTicket}
-                          className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-[#EAF4FB] border border-white/20 flex items-center gap-1 transition-colors cursor-pointer"
-                        >
-                          {ticketCopied ? <Check className="w-3 h-3 text-emerald-300" /> : <Copy className="w-3 h-3" />}
-                          <span>{ticketCopied ? 'Copied' : 'Copy'}</span>
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          {onOpenWhatsappWithData && (
+                            <button
+                              id="header-send-to-whatsapp-btn"
+                              type="button"
+                              onClick={handleSendToWhatsapp}
+                              className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-500/30 flex items-center gap-1 transition-colors cursor-pointer"
+                              title="Send to WhatsApp and close Ticket Generator"
+                            >
+                              <MessageCircle className="w-3 h-3 text-white" />
+                              <span>Send to WhatsApp</span>
+                            </button>
+                          )}
+                          <button
+                            onClick={copyTicket}
+                            className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-[#EAF4FB] border border-white/20 flex items-center gap-1 transition-colors cursor-pointer"
+                          >
+                            {ticketCopied ? <Check className="w-3 h-3 text-emerald-300" /> : <Copy className="w-3 h-3" />}
+                            <span>{ticketCopied ? 'Copied' : 'Copy'}</span>
+                          </button>
+                        </div>
                       )}
                     </div>
 

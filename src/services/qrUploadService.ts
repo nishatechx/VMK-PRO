@@ -1,4 +1,5 @@
 import { QrUploadedFile, QR_BROADCAST_CHANNEL } from '../types/qrUpload';
+export type { QrUploadedFile };
 import { db } from '../lib/firebase';
 import { sanitizeForFirestore } from './authService';
 import { getDefaultVaultFiles } from '../data/seedVaultDocuments';
@@ -314,6 +315,98 @@ export const qrUploadService = {
       console.warn('Error toggling stamp:', e);
     }
     return newStatus;
+  },
+
+  // Update an existing file in session, vault, server, and Firestore (e.g. after Smart Cropping)
+  async updateVaultFile(
+    fileId: string,
+    updates: { dataUrl: string; size?: number; name?: string; sessionId?: string }
+  ): Promise<QrUploadedFile | null> {
+    let updated: QrUploadedFile | null = null;
+
+    // 1. Update in Firestore
+    try {
+      const docRef = doc(db, 'qr_uploads', fileId);
+      const updateData: any = { dataUrl: updates.dataUrl };
+      if (updates.size !== undefined) updateData.size = updates.size;
+      if (updates.name) updateData.name = updates.name;
+      await updateDoc(docRef, updateData);
+    } catch (err) {
+      console.warn('[Firebase] Warning updating Firestore document:', err);
+    }
+
+    // 2. Update via server API
+    try {
+      const res = await fetch('/api/qr-files', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileId,
+          sessionId: updates.sessionId,
+          dataUrl: updates.dataUrl,
+          size: updates.size,
+          name: updates.name,
+        }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.file) {
+          updated = json.file;
+        }
+      }
+    } catch (err) {
+      console.warn('Server patch error:', err);
+    }
+
+    // 3. Update in local storage & vault cache
+    try {
+      const vaultSaved = localStorage.getItem(VAULT_STORAGE_KEY);
+      if (vaultSaved) {
+        const list: QrUploadedFile[] = JSON.parse(vaultSaved);
+        const idx = list.findIndex((f) => f.id === fileId);
+        if (idx >= 0) {
+          list[idx] = {
+            ...list[idx],
+            dataUrl: updates.dataUrl,
+            size: updates.size !== undefined ? updates.size : list[idx].size,
+            name: updates.name || list[idx].name,
+          };
+          if (!updated) updated = list[idx];
+          localStorage.setItem(VAULT_STORAGE_KEY, JSON.stringify(list));
+        }
+      }
+
+      if (updates.sessionId) {
+        const key = `${STORAGE_KEY_PREFIX}${updates.sessionId}`;
+        const saved = localStorage.getItem(key);
+        if (saved) {
+          const list: QrUploadedFile[] = JSON.parse(saved);
+          const idx = list.findIndex((f) => f.id === fileId);
+          if (idx >= 0) {
+            list[idx] = {
+              ...list[idx],
+              dataUrl: updates.dataUrl,
+              size: updates.size !== undefined ? updates.size : list[idx].size,
+              name: updates.name || list[idx].name,
+            };
+            if (!updated) updated = list[idx];
+            localStorage.setItem(key, JSON.stringify(list));
+          }
+        }
+      }
+
+      if (broadcastChannel && updated) {
+        broadcastChannel.postMessage({
+          type: 'UPDATE_FILE',
+          sessionId: updates.sessionId,
+          file: updated,
+        });
+      }
+    } catch (e) {
+      console.warn('Local update warning:', e);
+    }
+
+    return updated;
   },
 
   // Delete a file from session and vault

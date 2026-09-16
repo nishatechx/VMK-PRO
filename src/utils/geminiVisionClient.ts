@@ -46,10 +46,47 @@ CRITICAL DIRECTIVES:
 5. OUTPUT FORMAT:
 - Output ONLY the transcribed text. No conversational preamble. Preserve line breaks, paragraphs, lists, and numbers.`;
 
+const ticketVisionSystemInstruction = `You are an expert AI vision system specialized in Maharashtra State Common Entrance Test (CET) Cell and SAC Scrutiny Center verification.
+Your task is to analyze the candidate's document or image (printed or handwritten) and extract ONLY the following 8 fields:
+
+Candidate name:
+CET Application Number:
+CAP Application Number:
+DOB:
+Mobile Number:
+Email ID:
+Course Name:
+Query:
+
+FIELD SPECIFICATIONS:
+1. Candidate name: Full legal name of the candidate.
+2. CET Application Number: CET Application Form Number or Roll Number (e.g., 241088921 or CET202409812).
+3. CAP Application Number: Centralized Admission Process (CAP) Application ID/Number (typically starting with state course prefix like EN24108892, MB24108892, PH24108892, AR24108892, DS24108892, or labelled as CAP Application ID / Application ID).
+4. DOB: Date of birth (in DD/MM/YYYY or YYYY-MM-DD).
+5. Mobile Number: 10-digit mobile number.
+6. Email ID: Candidate email address.
+7. Course Name: Course applied for (e.g. B.E. / B.Tech, B.Pharmacy, MBA / MMS, etc.).
+8. Query: The candidate query, discrepancy, grievance, or issue description described in the document.
+
+STRICT OUTPUT RULES:
+- Extract ONLY the 8 fields above.
+- Do NOT output any other text, instructions, conversational remarks, or extra document fields.
+- If a field is not found in the image, leave its value blank after the colon.
+- Format strictly as:
+Candidate name: <value>
+CET Application Number: <value>
+CAP Application Number: <value>
+DOB: <value>
+Mobile Number: <value>
+Email ID: <value>
+Course Name: <value>
+Query: <value>`;
+
 export async function extractTextClientSide(
   apiKey: string,
   images: Array<{ dataUrl: string; name?: string }>,
-  prompt?: string
+  prompt?: string,
+  mode?: 'default' | 'ticket_fields'
 ): Promise<{
   text: string;
   pages: Array<{ pageIndex: number; name?: string; text: string }>;
@@ -58,6 +95,7 @@ export async function extractTextClientSide(
     throw new Error("No Gemini API key provided. Please enter a valid Gemini API key.");
   }
 
+  const isTicketMode = mode === 'ticket_fields';
   const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
   const results: Array<{ pageIndex: number; name?: string; text: string }> = [];
 
@@ -74,7 +112,18 @@ export async function extractTextClientSide(
       },
     };
 
-    const customPrompt = prompt?.trim()
+    const customPrompt = isTicketMode
+      ? `Extract ONLY the 8 candidate ticket details from this image:
+Candidate name:
+CET Application Number:
+CAP Application Number:
+DOB:
+Mobile Number:
+Email ID:
+Course Name:
+Query:
+Do not extract any other text. Follow the system instructions strictly.`
+      : prompt?.trim()
       ? `Transcribe all text from this image following system instructions. Additional guidance: ${prompt}`
       : `Transcribe all readable text from this image (Marathi, Hindi, English, printed or handwritten). Look at the complete visual context, detect text orientation, preserve exact words, reading order, line breaks, and tables. Use [unclear] if a word is truly illegible. Do not translate or modify anything.`;
 
@@ -89,7 +138,7 @@ export async function extractTextClientSide(
             parts: [imagePart, { text: customPrompt }],
           },
           config: {
-            systemInstruction: visionSystemInstruction,
+            systemInstruction: isTicketMode ? ticketVisionSystemInstruction : visionSystemInstruction,
             temperature: 0.1,
           },
         });

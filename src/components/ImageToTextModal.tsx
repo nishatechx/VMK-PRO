@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   X,
   FileText,
@@ -31,6 +31,7 @@ import {
   Plus,
   ArrowRight,
   Sparkles,
+  Send,
 } from 'lucide-react';
 import { APP_ASSETS } from '../constants/assets';
 import { extractTextClientSide, translateTextClientSide } from '../utils/geminiVisionClient';
@@ -110,6 +111,8 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
 
   // Send to TG feedback
   const [tgNotification, setTgNotification] = useState<string | null>(null);
+  // Extraction mode: 'ticket_fields' extracts strictly the 8 ticket fields, 'default' extracts full OCR text
+  const [extractionMode, setExtractionMode] = useState<'ticket_fields' | 'default'>('ticket_fields');
 
   const activeUser = currentUser || getCurrentUser();
   const isAuthorizedForMasterKey = hasUserApiKeyPermission(activeUser);
@@ -221,38 +224,6 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
 
     setIsVaultPickerOpen(false);
     setSelectedVaultFileIds([]);
-  };
-
-  // Send to TG (SAC Ticket Generator) with captured candidate details
-  const handleSendToTicketGenerator = () => {
-    const textToCapture =
-      activeTextTab === 'translated' && translatedText.trim()
-        ? `${extractedText}\n${translatedText}`
-        : currentText;
-
-    if (!textToCapture.trim()) {
-      setErrorMessage(
-        'Please extract text from an image or paste document text first before sending to SAC Ticket Generator.'
-      );
-      return;
-    }
-
-    const captured = captureTicketDetailsFromText(textToCapture);
-
-    // If candidate name was not explicitly parsed from OCR text, check document file title
-    if (!captured.candidateName && activePage?.name) {
-      const cleanName = activePage.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
-      if (cleanName.length > 3 && !/^(img|image|scan|doc|page|file|untitled)/i.test(cleanName)) {
-        captured.candidateName = cleanName;
-      }
-    }
-
-    if (onSendToTicketGenerator) {
-      setTgNotification('Extracted details captured! Transferring to SAC Ticket Generator...');
-      setTimeout(() => {
-        onSendToTicketGenerator(captured);
-      }, 250);
-    }
   };
 
   // Auto-resize textarea to match text length so no inner scrolling is needed
@@ -483,15 +454,24 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
   };
 
   // Run AI Vision Extraction
-  const handleExtractText = async (targetMode: 'current' | 'all' = 'all') => {
+  const handleExtractText = async (
+    targetMode: 'current' | 'all' = 'all',
+    forcedMode?: 'ticket_fields' | 'default'
+  ): Promise<string | null> => {
     if (pages.length === 0) {
       setErrorMessage('Please upload at least one image to extract text.');
-      return;
+      return null;
     }
+
+    const activeMode = forcedMode || extractionMode;
 
     setIsAnalyzing(true);
     setErrorMessage(null);
-    setAnalysisStep('Optimizing document resolution for vision AI...');
+    setAnalysisStep(
+      activeMode === 'ticket_fields'
+        ? 'Scanning document to extract 8 Candidate Ticket fields...'
+        : 'Optimizing document resolution for vision AI...'
+    );
 
     const imagesToProcess =
       targetMode === 'current' && activePage
@@ -510,14 +490,26 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
         })
       );
 
-      setAnalysisStep('Analyzing complete visual context & orientation...');
+      setAnalysisStep(
+        activeMode === 'ticket_fields'
+          ? 'Extracting Candidate Name, CET No, CAP No, DOB, Mobile, Email, Course & Query...'
+          : 'Analyzing complete visual context & orientation...'
+      );
 
       const stepTimer1 = setTimeout(() => {
-        setAnalysisStep('Recognizing Marathi, Hindi & English scripts and handwriting...');
+        setAnalysisStep(
+          activeMode === 'ticket_fields'
+            ? 'Parsing application identifiers and candidate contact details...'
+            : 'Recognizing Marathi, Hindi & English scripts and handwriting...'
+        );
       }, 1400);
 
       const stepTimer2 = setTimeout(() => {
-        setAnalysisStep('Detecting reading order, paragraphs & structured tables...');
+        setAnalysisStep(
+          activeMode === 'ticket_fields'
+            ? 'Formatting 8 candidate fields for SAC Ticket Generator...'
+            : 'Detecting reading order, paragraphs & structured tables...'
+        );
       }, 3000);
 
       const effectiveKey = getEffectiveApiKey();
@@ -526,6 +518,7 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
         images: optimizedImages,
         prompt: promptGuidance.trim() || undefined,
         apiKey: effectiveKey || undefined,
+        mode: activeMode,
       };
 
       let extractionSuccess = false;
@@ -572,7 +565,8 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
           const clientData = await extractTextClientSide(
             effectiveKey,
             optimizedImages,
-            promptGuidance.trim() || undefined
+            promptGuidance.trim() || undefined,
+            activeMode
           );
           extractionSuccess = true;
           resultText = clientData.text || '';
@@ -602,7 +596,11 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
         throw new Error('Could not extract text from document.');
       }
 
-      setAnalysisStep('Finalizing verbatim transcription...');
+      setAnalysisStep(
+        activeMode === 'ticket_fields'
+          ? 'Verifying 8 ticket generator fields...'
+          : 'Finalizing verbatim transcription...'
+      );
 
       // Update text in state
       setExtractedText(resultText);
@@ -632,6 +630,8 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
           textareaRef.current.focus();
         }
       }, 300);
+
+      return resultText;
     } catch (err: any) {
       console.error('Extraction error:', err);
       const raw = String(err?.message || err || '');
@@ -649,6 +649,7 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
         }
       }
       setErrorMessage(clean);
+      return null;
     } finally {
       setIsAnalyzing(false);
       setAnalysisStep('');
@@ -745,6 +746,72 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
 
   // Active text being viewed or edited in textarea
   const currentText = activeTextTab === 'original' ? extractedText : translatedText;
+
+  // Real-time extracted ticket details for Candidate Name, CET App No, CAP App No, DOB, Mobile, Email, Course, Query
+  const detectedTicketFields = useMemo<CapturedTicketDetails | null>(() => {
+    if (!currentText || !currentText.trim()) return null;
+    return captureTicketDetailsFromText(currentText);
+  }, [currentText]);
+
+  // Send to TG (SAC Ticket Generator) with strictly extracted 8 candidate details:
+  // 1. Candidate Name
+  // 2. CET Application Number
+  // 3. CAP Application Number
+  // 4. DOB (Date of Birth)
+  // 5. Mobile Number
+  // 6. Email ID
+  // 7. Course Name
+  // 8. Query
+  const handleSendToTicketGenerator = async () => {
+    let textToCapture =
+      activeTextTab === 'translated' && translatedText.trim()
+        ? `${extractedText}\n${translatedText}`
+        : currentText;
+
+    // If no text is extracted yet but images exist, run 8 ticket fields extraction first
+    if (!textToCapture.trim()) {
+      if (pages.length > 0) {
+        setTgNotification('Extracting 8 ticket fields from document image...');
+        const extracted = await handleExtractText('all', 'ticket_fields');
+        if (extracted) {
+          textToCapture = extracted;
+        } else {
+          return;
+        }
+      } else {
+        setErrorMessage(
+          'Please upload a candidate document image or paste text first before sending to SAC Ticket Generator.'
+        );
+        return;
+      }
+    }
+
+    const captured = captureTicketDetailsFromText(textToCapture);
+
+    // Send strictly the respective 8 fields to TG with clear fallbacks and aliases
+    const ticketPayload = {
+      candidateName: captured.candidateName || '',
+      cetNo: captured.cetNo || '',
+      capId: captured.capId || '',
+      dob: captured.dob || '',
+      mobile: captured.mobile || '',
+      email: captured.email || '',
+      course: captured.course || '',
+      query: captured.query || '',
+      // Respective field aliases for seamless compatibility
+      cetApplicationNumber: captured.cetNo || '',
+      capApplicationNumber: captured.capId || '',
+      cetAppNo: captured.cetNo || '',
+      capAppNo: captured.capId || '',
+    };
+
+    if (onSendToTicketGenerator) {
+      setTgNotification('Sending 8 extracted details to respective fields in Ticket Generator...');
+      setTimeout(() => {
+        onSendToTicketGenerator(ticketPayload);
+      }, 200);
+    }
+  };
 
   // Re-adjust textarea height to match text length on content, tab, or mode change
   useEffect(() => {
@@ -1296,42 +1363,57 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
             {/* Action Bar / Primary Trigger */}
             <div className="p-3 sm:p-4 border-b border-[#D9E1EA] bg-[#FAFCFF] flex flex-wrap items-center justify-between gap-2.5 shrink-0">
               <div className="flex items-center gap-2">
+                {/* 1. Primary Action: Extract 8 Candidate Ticket Fields */}
                 <button
                   type="button"
                   disabled={pages.length === 0 || isAnalyzing}
-                  onClick={() => handleExtractText('all')}
-                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold shadow-xs transition-all ${
+                  onClick={() => handleExtractText('all', 'ticket_fields')}
+                  className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold shadow-xs transition-all ${
                     pages.length === 0 || isAnalyzing
                       ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                       : 'bg-[#0056A6] hover:bg-[#004080] text-white active:scale-98'
                   }`}
+                  title="Extract strictly the 8 ticket fields: Candidate Name, CET App No, CAP App No, DOB, Mobile, Email, Course, Query"
                 >
-                  {isAnalyzing ? (
+                  {isAnalyzing && extractionMode === 'ticket_fields' ? (
                     <>
                       <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                      <span>Extracting...</span>
+                      <span>Extracting 8 Fields...</span>
                     </>
                   ) : (
                     <>
-                      <FileText className="w-4 h-4" />
+                      <Ticket className="w-4 h-4 text-amber-300" />
                       <span>
                         {pages.length > 1
-                          ? `Extract All (${pages.length} Pages)`
-                          : 'Extract Text'}
+                          ? `Extract 8 Fields (${pages.length} Pages)`
+                          : 'Extract 8 Ticket Fields'}
                       </span>
                     </>
                   )}
+                </button>
+
+                {/* 2. Secondary Action: Full Verbatim OCR */}
+                <button
+                  type="button"
+                  disabled={pages.length === 0 || isAnalyzing}
+                  onClick={() => handleExtractText('all', 'default')}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#D9E1EA] bg-white hover:bg-gray-50 text-xs font-semibold text-[#1F2937] transition-colors cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
+                  title="Extract full verbatim text including all paragraphs and tables"
+                >
+                  <FileText className="w-3.5 h-3.5 text-slate-600" />
+                  <span className="hidden sm:inline">Full Document OCR</span>
+                  <span className="sm:hidden">Full OCR</span>
                 </button>
 
                 {pages.length > 1 && (
                   <button
                     type="button"
                     disabled={isAnalyzing}
-                    onClick={() => handleExtractText('current')}
-                    className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#D9E1EA] bg-white hover:bg-gray-50 text-xs font-semibold text-[#1F2937] transition-colors cursor-pointer"
+                    onClick={() => handleExtractText('current', extractionMode)}
+                    className="hidden lg:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#D9E1EA] bg-white hover:bg-gray-50 text-xs font-semibold text-[#1F2937] transition-colors cursor-pointer"
                     title="Extract text from currently viewed page only"
                   >
-                    <span>Extract Page {activePageIndex + 1} Only</span>
+                    <span>Page {activePageIndex + 1} Only</span>
                   </button>
                 )}
               </div>
@@ -1341,10 +1423,10 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
                 {/* Send to TG (SAC Ticket Generator) */}
                 <button
                   type="button"
-                  disabled={!currentText.trim() || isAnalyzing}
+                  disabled={isAnalyzing}
                   onClick={handleSendToTicketGenerator}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#003B73] hover:bg-[#002850] text-white shadow-xs transition-all cursor-pointer active:scale-98 disabled:opacity-40 disabled:pointer-events-none"
-                  title="Capture candidate details from extracted text and send to SAC Ticket Generator (TG)"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-[#003B73] hover:bg-[#002850] text-white shadow-xs transition-all cursor-pointer active:scale-98 disabled:opacity-40 disabled:pointer-events-none"
+                  title="Populate Candidate Name, CET App No, CAP App No, DOB, Mobile, Email, Course, and Query directly into Ticket Generator"
                 >
                   <Ticket className="w-3.5 h-3.5 text-amber-300" />
                   <span>Send to TG</span>
@@ -1525,6 +1607,19 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
                   </button>
                 )}
 
+                {currentText.trim() && (
+                  <button
+                    type="button"
+                    disabled={isAnalyzing || isTranslating}
+                    onClick={handleSendToTicketGenerator}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#003B73] hover:bg-[#002850] text-white text-xs font-bold transition-all shadow-xs active:scale-98 cursor-pointer"
+                    title="Send Candidate Name, Mobile, Email, DOB, CET No, Course, and Query to Ticket Generator"
+                  >
+                    <Ticket className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Send to TG</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => setShowGuidanceInput((s) => !s)}
@@ -1547,6 +1642,107 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
                   placeholder="e.g. Focus on the signature area or tabular marksheet..."
                   className="w-full px-3 py-1.5 bg-white border border-[#CBD5E1] rounded-lg text-xs text-[#1F2937] focus:outline-hidden focus:ring-2 focus:ring-[#0056A6]"
                 />
+              </div>
+            )}
+
+            {/* 8 Ticket Generator Fields Detected Card */}
+            {detectedTicketFields && (
+              <div className="mx-3 sm:mx-4 mt-2.5 p-3 bg-gradient-to-r from-blue-50/95 via-sky-50/90 to-indigo-50/80 border border-blue-200/90 rounded-xl shadow-2xs shrink-0">
+                <div className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-blue-200/70">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-lg bg-[#0056A6] text-white flex items-center justify-center font-bold text-xs shadow-2xs">
+                      8
+                    </span>
+                    <div>
+                      <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <span>Ticket Generator Fields Detected</span>
+                        <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100/80 px-1.5 py-0.2 rounded-full">
+                          Ready to Send
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-slate-500">
+                        Mapped directly to SAC Candidate Ticket fields
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={isAnalyzing}
+                    onClick={handleSendToTicketGenerator}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#0056A6] hover:bg-[#004080] text-white shadow-xs transition-all cursor-pointer active:scale-98"
+                    title="Send these 8 details directly to the SAC Ticket Generator form"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Send to TG</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                  {/* 1. Candidate Name */}
+                  <div className="bg-white/90 p-2 rounded-lg border border-blue-100/80">
+                    <span className="font-semibold text-slate-500 block text-[10px]">1. Candidate Name:</span>
+                    <span className="font-bold text-slate-800 truncate block" title={detectedTicketFields.candidateName || 'Not detected'}>
+                      {detectedTicketFields.candidateName || <span className="text-amber-600 font-normal italic">Not detected</span>}
+                    </span>
+                  </div>
+
+                  {/* 2. CET App No */}
+                  <div className="bg-white/90 p-2 rounded-lg border border-blue-100/80">
+                    <span className="font-semibold text-slate-500 block text-[10px]">2. CET App Number:</span>
+                    <span className="font-bold font-mono text-slate-800 truncate block" title={detectedTicketFields.cetNo || 'Not detected'}>
+                      {detectedTicketFields.cetNo || <span className="text-amber-600 font-normal italic">Not detected</span>}
+                    </span>
+                  </div>
+
+                  {/* 3. CAP App No */}
+                  <div className="bg-white/90 p-2 rounded-lg border border-blue-100/80">
+                    <span className="font-semibold text-slate-500 block text-[10px]">3. CAP App Number:</span>
+                    <span className="font-bold font-mono text-slate-800 truncate block" title={detectedTicketFields.capId || 'Optional / None'}>
+                      {detectedTicketFields.capId || <span className="text-slate-400 font-normal italic">Optional / None</span>}
+                    </span>
+                  </div>
+
+                  {/* 4. DOB */}
+                  <div className="bg-white/90 p-2 rounded-lg border border-blue-100/80">
+                    <span className="font-semibold text-slate-500 block text-[10px]">4. DOB:</span>
+                    <span className="font-bold font-mono text-slate-800 truncate block" title={detectedTicketFields.dob || 'Not detected'}>
+                      {detectedTicketFields.dob || <span className="text-amber-600 font-normal italic">Not detected</span>}
+                    </span>
+                  </div>
+
+                  {/* 5. Mobile Number */}
+                  <div className="bg-white/90 p-2 rounded-lg border border-blue-100/80">
+                    <span className="font-semibold text-slate-500 block text-[10px]">5. Mobile Number:</span>
+                    <span className="font-bold font-mono text-slate-800 truncate block" title={detectedTicketFields.mobile || 'Not detected'}>
+                      {detectedTicketFields.mobile || <span className="text-amber-600 font-normal italic">Not detected</span>}
+                    </span>
+                  </div>
+
+                  {/* 6. Email ID */}
+                  <div className="bg-white/90 p-2 rounded-lg border border-blue-100/80">
+                    <span className="font-semibold text-slate-500 block text-[10px]">6. Email ID:</span>
+                    <span className="font-bold text-slate-800 truncate block" title={detectedTicketFields.email || 'Not detected'}>
+                      {detectedTicketFields.email || <span className="text-amber-600 font-normal italic">Not detected</span>}
+                    </span>
+                  </div>
+
+                  {/* 7. Course Name */}
+                  <div className="bg-white/90 p-2 rounded-lg border border-blue-100/80">
+                    <span className="font-semibold text-slate-500 block text-[10px]">7. Course Name:</span>
+                    <span className="font-bold text-slate-800 truncate block" title={detectedTicketFields.course || 'Not detected'}>
+                      {detectedTicketFields.course || <span className="text-amber-600 font-normal italic">Not detected</span>}
+                    </span>
+                  </div>
+
+                  {/* 8. Query */}
+                  <div className="bg-white/90 p-2 rounded-lg border border-blue-100/80">
+                    <span className="font-semibold text-slate-500 block text-[10px]">8. Query / Issue:</span>
+                    <span className="font-medium text-slate-800 truncate block" title={detectedTicketFields.query || 'Not detected'}>
+                      {detectedTicketFields.query || <span className="text-amber-600 font-normal italic">Not detected</span>}
+                    </span>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1638,7 +1834,7 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
                     disabled={isAnalyzing || isTranslating}
                     onClick={handleSendToTicketGenerator}
                     className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#003B73] hover:bg-[#002850] text-white rounded-lg font-bold text-xs shadow-xs transition-colors cursor-pointer"
-                    title="Send captured candidate details to SAC Ticket Generator"
+                    title="Send Candidate Name, Mobile, Email, DOB, CET No, Course, and Query to Ticket Generator"
                   >
                     <Ticket className="w-3.5 h-3.5 text-amber-300" />
                     <span>Send to TG</span>

@@ -451,6 +451,47 @@ async function startServer() {
     }
   });
 
+  // Update/crop an existing file in session and vault
+  app.patch("/api/qr-files", (req, res) => {
+    try {
+      const { sessionId, fileId, dataUrl, size, name } = req.body;
+      if (!fileId) {
+        return res.status(400).json({ error: "Missing fileId" });
+      }
+
+      let updatedFile: QrUploadedFile | null = null;
+
+      // Update in session
+      if (sessionId && sessionStore.has(sessionId)) {
+        const list = sessionStore.get(sessionId)!;
+        const target = list.find((f) => f.id === fileId);
+        if (target) {
+          if (dataUrl) target.dataUrl = dataUrl;
+          if (size !== undefined) target.size = size;
+          if (name) target.name = name;
+          updatedFile = target;
+        }
+      }
+
+      // Update in vaultStore
+      const vaultTarget = vaultStore.find((f) => f.id === fileId);
+      if (vaultTarget) {
+        if (dataUrl) vaultTarget.dataUrl = dataUrl;
+        if (size !== undefined) vaultTarget.size = size;
+        if (name) vaultTarget.name = name;
+        if (!updatedFile) updatedFile = vaultTarget;
+      }
+
+      if (updatedFile && sessionId) {
+        broadcastToFileSubscribers(sessionId, updatedFile);
+      }
+
+      return res.json({ success: true, file: updatedFile });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Error updating file' });
+    }
+  });
+
   // Delete file
   app.delete("/api/qr-files", (req, res) => {
     try {
@@ -504,8 +545,9 @@ async function startServer() {
 
       const customKey = req.body?.apiKey || (req.headers['x-gemini-api-key'] as string);
       const ai = getGeminiClient(customKey);
+      const isTicketMode = req.body?.mode === 'ticket_fields';
 
-      const systemInstruction = `You are a world-class AI vision system specialized in accurate, faithful transcription of both handwritten and printed text from images.
+      const defaultSystemInstruction = `You are a world-class AI vision system specialized in accurate, faithful transcription of both handwritten and printed text from images.
 
 Your task is to analyze the complete visual context of the uploaded image and accurately extract all readable text into digital format.
 
@@ -546,6 +588,44 @@ CRITICAL DIRECTIVES:
 - Do NOT wrap in introductory or concluding remarks (such as "Here is the extracted text:").
 - Preserve line breaks, paragraphs, lists, and numbers as originally presented.`;
 
+      const ticketSystemInstruction = `You are an expert AI vision system specialized in Maharashtra State Common Entrance Test (CET) Cell and SAC Scrutiny Center verification.
+Your task is to analyze the candidate's document or image (printed or handwritten) and extract ONLY the following 8 fields:
+
+Candidate name:
+CET Application Number:
+CAP Application Number:
+DOB:
+Mobile Number:
+Email ID:
+Course Name:
+Query:
+
+FIELD SPECIFICATIONS & INSTRUCTIONS:
+1. Candidate name: Full legal name of the candidate.
+2. CET Application Number: CET Application Form Number or Roll Number (e.g., 241088921 or CET202409812).
+3. CAP Application Number: Centralized Admission Process (CAP) Application ID/Number (typically starting with state course prefix like EN24108892, MB24108892, PH24108892, AR24108892, DS24108892, or labelled as CAP Application ID / Application ID).
+4. DOB: Date of birth (in DD/MM/YYYY or YYYY-MM-DD).
+5. Mobile Number: 10-digit mobile number.
+6. Email ID: Candidate email address.
+7. Course Name: Course applied for (e.g. B.E. / B.Tech, B.Pharmacy, MBA / MMS, etc.).
+8. Query: The candidate query, discrepancy, grievance, or issue description described in the document.
+
+STRICT OUTPUT RULES:
+- Extract ONLY the 8 fields above.
+- Do NOT output any other text, instructions, conversational remarks, or extra document fields.
+- If a field is not found in the image, leave its value blank after the colon.
+- Format strictly as:
+Candidate name: <value>
+CET Application Number: <value>
+CAP Application Number: <value>
+DOB: <value>
+Mobile Number: <value>
+Email ID: <value>
+Course Name: <value>
+Query: <value>`;
+
+      const systemInstruction = isTicketMode ? ticketSystemInstruction : defaultSystemInstruction;
+
       const results: Array<{ pageIndex: number; name?: string; text: string }> = [];
 
       // Multi-model resilience: prioritize Google's recommended gemini-3.6-flash and immediately
@@ -573,7 +653,18 @@ CRITICAL DIRECTIVES:
           },
         };
 
-        const customPrompt = prompt?.trim()
+        const customPrompt = isTicketMode
+          ? `Extract ONLY the 8 candidate ticket details from this image:
+Candidate name:
+CET Application Number:
+CAP Application Number:
+DOB:
+Mobile Number:
+Email ID:
+Course Name:
+Query:
+Do not extract any other text. Follow the system instructions strictly.`
+          : prompt?.trim()
           ? `Transcribe all text from this image following the system instructions. Additional guidance: ${prompt}`
           : `Transcribe all readable text from this image (Marathi, Hindi, English, printed or handwritten). Look at the complete visual context, detect text orientation, preserve exact words, reading order, line breaks, and tables. Use [unclear] if a word is truly illegible. Do not translate or modify anything.`;
 
@@ -770,6 +861,154 @@ CRITICAL DIRECTIVES:
       return res.status(500).json({
         success: false,
         error: cleanMessage,
+      });
+    }
+  });
+
+  // AI-Powered Document Detection, Corners Extraction, Orientation, and Quality Validation
+  app.post("/api/ai-document-detect", async (req, res) => {
+    try {
+      const dataUrl = req.body?.image;
+      if (!dataUrl) {
+        return res.status(400).json({ error: "Missing image in request body" });
+      }
+
+      const customKey = req.body?.apiKey || (req.headers['x-gemini-api-key'] as string);
+      const ai = getGeminiClient(customKey);
+      const { mimeType, base64Data } = parseBase64Image(dataUrl);
+
+      const systemInstruction = `You are a world-class AI document scanner and computer vision engine.
+Your task is to analyze the image containing a document (e.g. Aadhaar card, PAN card, certificate, official application form, driving license, receipt, passport, ID card, or document) photographed in the real world.
+The document may be photographed from an angle, tilted, rotated, placed on a desk/table, or have uneven shadows.
+
+Identify:
+1. The EXACT four corners of the document in normalized percentage coordinates (0.0 to 100.0) relative to image width and height:
+   - topLeft: { x, y } (top-left corner of the document)
+   - topRight: { x, y } (top-right corner of the document)
+   - bottomRight: { x, y } (bottom-right corner of the document)
+   - bottomLeft: { x, y } (bottom-left corner of the document)
+2. documentType: classified document type (e.g. "Aadhaar Card", "PAN Card", "Government Certificate", "Application Form", "Driving License", "Passport", "Receipt", "Official Document")
+3. confidence: integer between 70 and 99 representing detection certainty
+4. detectedAngle: rotation angle in degrees needed to make text right-side up (0, 90, 180, 270, or small skew like -5 to +5)
+5. perspectiveDistorted: boolean, true if the document was photographed at an angle or trapezoidally distorted
+6. qualityReport:
+   - isEntireDocumentVisible: boolean (true if all borders are in frame)
+   - allFourEdgesFound: boolean
+   - isProperlyAligned: boolean
+   - isTextCutOffLikely: boolean
+   - isBlurry: boolean
+   - isTooDark: boolean
+   - clarityScore: number (0-100)
+   - recommendation: concise human-readable assessment (e.g. "Document detected with high precision. Ready for perspective correction.")
+7. suggestedEnhancement: one of "magic_clean", "vivid_id", "high_contrast_bw", "grayscale", "original"
+
+Return STRICTLY a JSON object matching this schema.`;
+
+      const prompt = "Detect the 4 corners of the document, classify the document, check orientation, and evaluate quality.";
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType,
+                  data: base64Data,
+                },
+              },
+              {
+                text: prompt,
+              },
+            ],
+          },
+        ],
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: "object",
+            properties: {
+              corners: {
+                type: "object",
+                properties: {
+                  topLeft: {
+                    type: "object",
+                    properties: { x: { type: "number" }, y: { type: "number" } },
+                    required: ["x", "y"],
+                  },
+                  topRight: {
+                    type: "object",
+                    properties: { x: { type: "number" }, y: { type: "number" } },
+                    required: ["x", "y"],
+                  },
+                  bottomRight: {
+                    type: "object",
+                    properties: { x: { type: "number" }, y: { type: "number" } },
+                    required: ["x", "y"],
+                  },
+                  bottomLeft: {
+                    type: "object",
+                    properties: { x: { type: "number" }, y: { type: "number" } },
+                    required: ["x", "y"],
+                  },
+                },
+                required: ["topLeft", "topRight", "bottomRight", "bottomLeft"],
+              },
+              documentType: { type: "string" },
+              confidence: { type: "number" },
+              detectedAngle: { type: "number" },
+              perspectiveDistorted: { type: "boolean" },
+              qualityReport: {
+                type: "object",
+                properties: {
+                  isEntireDocumentVisible: { type: "boolean" },
+                  allFourEdgesFound: { type: "boolean" },
+                  isProperlyAligned: { type: "boolean" },
+                  isTextCutOffLikely: { type: "boolean" },
+                  isBlurry: { type: "boolean" },
+                  isTooDark: { type: "boolean" },
+                  clarityScore: { type: "number" },
+                  recommendation: { type: "string" },
+                },
+                required: [
+                  "isEntireDocumentVisible",
+                  "allFourEdgesFound",
+                  "isProperlyAligned",
+                  "isTextCutOffLikely",
+                  "isBlurry",
+                  "isTooDark",
+                  "clarityScore",
+                  "recommendation",
+                ],
+              },
+              suggestedEnhancement: { type: "string" },
+            },
+            required: [
+              "corners",
+              "documentType",
+              "confidence",
+              "detectedAngle",
+              "perspectiveDistorted",
+              "qualityReport",
+              "suggestedEnhancement",
+            ],
+          },
+        },
+      });
+
+      const responseText = response.text?.trim();
+      if (!responseText) {
+        throw new Error("Empty response from AI vision model");
+      }
+
+      const result = JSON.parse(responseText);
+      return res.json(result);
+    } catch (err: any) {
+      console.error("[AI DOCUMENT DETECT ERROR]", err);
+      return res.status(500).json({
+        error: err?.message || "Failed to detect document with AI",
       });
     }
   });

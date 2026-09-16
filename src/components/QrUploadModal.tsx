@@ -26,6 +26,10 @@ import {
   Printer,
   Image as ImageIcon,
   ChevronDown,
+  Crop,
+  Sparkles,
+  Camera,
+  RotateCw,
 } from 'lucide-react';
 import {
   QrUploadedFile,
@@ -36,6 +40,9 @@ import {
 } from '../types/qrUpload';
 import { qrUploadService } from '../services/qrUploadService';
 import { InSoftwareDocumentViewer } from './InSoftwareDocumentViewer';
+import { SmartCropModal } from './SmartCropModal';
+import { LiveCameraScannerModal } from './LiveCameraScannerModal';
+import { autoCropAndOptimizeDocument } from '../utils/documentVision';
 import { APP_ASSETS } from '../constants/assets';
 
 interface QrUploadModalProps {
@@ -81,13 +88,24 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose, o
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
   const [copiedSession, setCopiedSession] = useState<boolean>(false);
   const [previewFile, setPreviewFile] = useState<QrUploadedFile | null>(null);
+  const [cropTargetFile, setCropTargetFile] = useState<QrUploadedFile | null>(null);
   const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ text: string; type: 'success' | 'error' | '' }>({
     text: '',
     type: '',
   });
 
+  // AI & Computer Vision Auto-Cropping States
+  const [autoCropOnUpload, setAutoCropOnUpload] = useState<boolean>(true);
+  const [isProcessingAutoCrop, setIsProcessingAutoCrop] = useState<boolean>(false);
+  const [autoCropProgressText, setAutoCropProgressText] = useState<string>('');
+  const [showLiveCameraModal, setShowLiveCameraModal] = useState<boolean>(false);
+  const [showScanChoiceModal, setShowScanChoiceModal] = useState<boolean>(false);
+  const [newUploadCropFile, setNewUploadCropFile] = useState<QrUploadedFile | null>(null);
+  const [isDraggingOver, setIsDraggingOver] = useState<boolean>(false);
+
   const localFileInputRef = useRef<HTMLInputElement>(null);
+  const singleScanFileInputRef = useRef<HTMLInputElement>(null);
 
   // Derive mobile upload URL
   const uploadUrl = typeof window !== 'undefined'
@@ -190,52 +208,242 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose, o
     window.open(uploadUrl, '_blank');
   };
 
-  const handleLocalFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = e.target.files;
-    if (!selectedFiles || selectedFiles.length === 0) return;
+  /**
+   * Process multiple files (from file dialog or drag-and-drop)
+   * Uses real-time computer vision document boundary detection & perspective correction
+   * to automatically optimize and flatten images before saving into the vault.
+   */
+  const processFilesForVault = async (filesToProcess: FileList | File[]) => {
+    if (!filesToProcess || filesToProcess.length === 0) return;
+
+    setIsProcessingAutoCrop(true);
+    let processedCount = 0;
+    let croppedCount = 0;
 
     try {
-      for (let i = 0; i < selectedFiles.length; i++) {
-        const file = selectedFiles[i];
-        const validTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+      for (let i = 0; i < filesToProcess.length; i++) {
+        const file = filesToProcess[i];
+        const validTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg', 'image/webp'];
         const ext = file.name.split('.').pop()?.toLowerCase();
-        const isAllowedExt = ext && ['pdf', 'jpeg', 'jpg', 'png'].includes(ext);
+        const isAllowedExt = ext && ['pdf', 'jpeg', 'jpg', 'png', 'webp'].includes(ext);
 
         if (!validTypes.includes(file.type) && !isAllowedExt) {
           setStatusMessage({
-            text: `Skipped "${file.name}": Only PDF, JPEG, and PNG files are allowed.`,
+            text: `Skipped "${file.name}": Only PDF, JPEG, PNG, and WebP files are allowed.`,
             type: 'error',
           });
           continue;
         }
 
-        const dataUrl = await fileToDataUrl(file);
-        await qrUploadService.uploadFile(sessionId, {
-          name: file.name,
-          type: file.type || 'application/octet-stream',
-          size: file.size,
-          dataUrl,
-        });
+        const rawDataUrl = await fileToDataUrl(file);
+        const isPdf = file.type === 'application/pdf' || ext === 'pdf';
+
+        if (!isPdf && autoCropOnUpload) {
+          setAutoCropProgressText(
+            `Analyzing & perspective correcting: "${file.name}" (${i + 1}/${filesToProcess.length})...`
+          );
+          try {
+            const optimized = await autoCropAndOptimizeDocument(rawDataUrl);
+            await qrUploadService.uploadFile(sessionId, {
+              name: file.name,
+              type: 'image/jpeg',
+              size: optimized.size,
+              dataUrl: optimized.dataUrl,
+              category: 'Auto-Cropped',
+            });
+            croppedCount++;
+          } catch (cropErr) {
+            console.warn('[Auto-Crop Fallback to Raw File]', cropErr);
+            await qrUploadService.uploadFile(sessionId, {
+              name: file.name,
+              type: file.type || 'image/jpeg',
+              size: file.size,
+              dataUrl: rawDataUrl,
+            });
+          }
+        } else {
+          await qrUploadService.uploadFile(sessionId, {
+            name: file.name,
+            type: file.type || 'application/octet-stream',
+            size: file.size,
+            dataUrl: rawDataUrl,
+          });
+        }
+        processedCount++;
       }
 
       await fetchFiles();
-      setStatusMessage({
-        text: 'Document(s) successfully stored in Software Vault!',
-        type: 'success',
-      });
+      if (croppedCount > 0) {
+        setStatusMessage({
+          text: `✓ ${croppedCount} document(s) perspective-corrected & added to Software Vault!`,
+          type: 'success',
+        });
+      } else if (processedCount > 0) {
+        setStatusMessage({
+          text: `✓ ${processedCount} file(s) stored in Software Vault!`,
+          type: 'success',
+        });
+      }
     } catch {
       setStatusMessage({
         text: 'Failed to process selected file(s).',
         type: 'error',
       });
     } finally {
+      setIsProcessingAutoCrop(false);
+      setAutoCropProgressText('');
       if (localFileInputRef.current) localFileInputRef.current.value = '';
+      if (singleScanFileInputRef.current) singleScanFileInputRef.current.value = '';
+    }
+  };
+
+  const handleLocalFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      await processFilesForVault(e.target.files);
+    }
+  };
+
+  const handleSingleScanFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      setNewUploadCropFile({
+        id: `pending-scan-${Date.now()}`,
+        name: file.name,
+        size: file.size,
+        type: file.type || 'image/jpeg',
+        dataUrl,
+        uploadedAt: new Date().toISOString(),
+      });
+      setShowScanChoiceModal(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      if (singleScanFileInputRef.current) singleScanFileInputRef.current.value = '';
+    }
+  };
+
+  const handleSaveNewUploadCrop = async (croppedDataUrl: string, croppedSize: number) => {
+    if (!newUploadCropFile) return;
+    try {
+      await qrUploadService.uploadFile(sessionId, {
+        name: newUploadCropFile.name,
+        type: 'image/jpeg',
+        size: croppedSize,
+        dataUrl: croppedDataUrl,
+        category: 'Auto-Cropped',
+      });
+      await fetchFiles();
+      setNewUploadCropFile(null);
+      setStatusMessage({
+        text: `✓ Document "${newUploadCropFile.name}" perspective-corrected & added to Software Vault!`,
+        type: 'success',
+      });
+    } catch (err) {
+      console.error(err);
+      setStatusMessage({
+        text: 'Failed to save document to Vault.',
+        type: 'error',
+      });
+    }
+  };
+
+  const handleLiveCameraCapture = async (capturedDataUrl: string) => {
+    setShowLiveCameraModal(false);
+    setIsProcessingAutoCrop(true);
+    setAutoCropProgressText('Correcting perspective and optimizing captured document...');
+    try {
+      const optimized = await autoCropAndOptimizeDocument(capturedDataUrl);
+      const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
+      const fileName = `Scan_${timestamp}.jpg`;
+      await qrUploadService.uploadFile(sessionId, {
+        name: fileName,
+        type: 'image/jpeg',
+        size: optimized.size,
+        dataUrl: optimized.dataUrl,
+        category: 'Camera-Scan',
+      });
+      await fetchFiles();
+      setStatusMessage({
+        text: `✓ Live camera scan perspective-corrected and stored in Software Vault!`,
+        type: 'success',
+      });
+    } catch (err) {
+      console.error('Camera capture error:', err);
+      setStatusMessage({
+        text: 'Failed to optimize camera document.',
+        type: 'error',
+      });
+    } finally {
+      setIsProcessingAutoCrop(false);
+      setAutoCropProgressText('');
+    }
+  };
+
+  // Drag and Drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      await processFilesForVault(e.dataTransfer.files);
     }
   };
 
   const handleDeleteFile = async (fileId: string) => {
     await qrUploadService.deleteFile(sessionId, fileId);
     await fetchFiles();
+  };
+
+  const handleSaveCrop = async (croppedDataUrl: string, croppedSize: number, saveAsCopy: boolean) => {
+    if (!cropTargetFile) return;
+
+    if (saveAsCopy) {
+      const extMatch = cropTargetFile.name.match(/(\.[^.]+)$/);
+      const ext = extMatch ? extMatch[1] : '.jpg';
+      const baseName = cropTargetFile.name.replace(/\.[^.]+$/, '');
+      const newName = `${baseName}_cropped${ext}`;
+
+      await qrUploadService.uploadFile(sessionId, {
+        name: newName,
+        type: cropTargetFile.type || 'image/jpeg',
+        size: croppedSize,
+        dataUrl: croppedDataUrl,
+        category: cropTargetFile.category,
+      });
+
+      setStatusMessage({
+        text: `Cropped document "${newName}" saved in Vault`,
+        type: 'success',
+      });
+    } else {
+      await qrUploadService.updateVaultFile(cropTargetFile.id, {
+        dataUrl: croppedDataUrl,
+        size: croppedSize,
+        sessionId: cropTargetFile.sessionId || sessionId,
+      });
+
+      setStatusMessage({
+        text: `Document "${cropTargetFile.name}" updated with crop`,
+        type: 'success',
+      });
+    }
+
+    await fetchFiles();
+    setCropTargetFile(null);
   };
 
   const handleToggleStamp = async (file: QrUploadedFile) => {
@@ -426,9 +634,17 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose, o
                 ref={localFileInputRef}
                 type="file"
                 multiple
-                accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
                 className="hidden"
                 onChange={handleLocalFileSelect}
+              />
+              {/* Hidden file input for single image scan & crop */}
+              <input
+                ref={singleScanFileInputRef}
+                type="file"
+                accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={handleSingleScanFileSelect}
               />
 
               {/* MAIN CONTENT AREA: DUAL PANES OR SINGLE PANE */}
@@ -529,8 +745,78 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose, o
                           </div>
                         </div>
 
+                        {/* Auto-Crop & Perspective Correction Option Toggle */}
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-8 h-8 rounded-lg bg-blue-100 text-[#0056A6] flex items-center justify-center shrink-0">
+                              <Crop className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-slate-800">Auto-crop & perspective correction</span>
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
+                                  autoCropOnUpload 
+                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-200' 
+                                    : 'bg-slate-200 text-slate-600 border-slate-300'
+                                }`}>
+                                  {autoCropOnUpload ? 'Enabled' : 'Disabled'}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-500 truncate">
+                                Automatically detect borders, straighten perspective, and optimize images before storing in Vault.
+                              </p>
+                            </div>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer shrink-0" title="Toggle automatic perspective correction on upload">
+                            <input
+                              type="checkbox"
+                              checked={autoCropOnUpload}
+                              onChange={(e) => setAutoCropOnUpload(e.target.checked)}
+                              className="sr-only peer"
+                            />
+                            <div className="w-9 h-5 bg-slate-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0056A6]"></div>
+                          </label>
+                        </div>
+
+                        {/* Real-time processing progress bar */}
+                        {isProcessingAutoCrop && (
+                          <div className="bg-blue-50 border border-blue-200 text-[#003B73] px-4 py-3 rounded-xl flex items-center gap-3 text-xs font-semibold animate-pulse shadow-2xs">
+                            <RotateCw className="w-4 h-4 animate-spin text-[#0056A6] shrink-0" />
+                            <span className="flex-1 truncate">
+                              {autoCropProgressText || 'Detecting document borders and applying perspective correction...'}
+                            </span>
+                          </div>
+                        )}
+
                         {/* Options Buttons Grid */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {/* Option: Scan & Auto-Crop Document */}
+                          <button
+                            type="button"
+                            id="upload-opt-scan-crop-btn"
+                            onClick={() => setShowScanChoiceModal(true)}
+                            className="bg-gradient-to-br from-blue-50/80 to-indigo-50/40 hover:bg-blue-100/60 border-2 border-blue-300 hover:border-[#0056A6] rounded-2xl p-3.5 flex items-center justify-between transition-all cursor-pointer group shadow-2xs text-left"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-10 h-10 rounded-xl bg-[#0056A6] text-white flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-xs">
+                                <Crop className="w-5 h-5 text-white" />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <h4 className="font-bold text-slate-900 text-xs sm:text-sm leading-tight truncate">
+                                    Scan & Auto-Crop Document
+                                  </h4>
+                                </div>
+                                <p className="text-[11px] text-slate-500 leading-snug mt-0.5 truncate">
+                                  Live camera or image with real-time border detection
+                                </p>
+                              </div>
+                            </div>
+                            <div className="w-8 h-8 rounded-xl border border-blue-200 bg-white text-[#0056A6] flex items-center justify-center shrink-0 shadow-2xs group-hover:bg-blue-50">
+                              <Sparkles className="w-4 h-4 text-[#0056A6]" />
+                            </div>
+                          </button>
+
                           {/* Option: Make Images to PDF Tool (USER EXPLICIT REQUEST) */}
                           <button
                             type="button"
@@ -927,6 +1213,18 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose, o
                                     <span className="hidden sm:inline">View</span>
                                   </button>
 
+                                  {/* Crop Button for Images */}
+                                  {!isPdf && (
+                                    <button
+                                      onClick={() => setCropTargetFile(file)}
+                                      className="px-2.5 sm:px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50/70 hover:bg-blue-100 text-[#0056A6] text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                                      title="AI Document Scanner & Auto-Crop"
+                                    >
+                                      <Sparkles className="w-3.5 h-3.5" />
+                                      <span className="hidden sm:inline">AI Crop</span>
+                                    </button>
+                                  )}
+
                                   {/* Download Button */}
                                   <button
                                     onClick={() => triggerFileDownload(file.dataUrl, file.name)}
@@ -974,6 +1272,18 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose, o
                                           <Printer className="w-3.5 h-3.5" />
                                           <span>Print Document</span>
                                         </button>
+                                        {!isPdf && (
+                                          <button
+                                            onClick={() => {
+                                              setCropTargetFile(file);
+                                              setActiveDropdownId(null);
+                                            }}
+                                            className="w-full text-left px-3 py-1.5 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+                                          >
+                                            <Sparkles className="w-3.5 h-3.5 text-[#0056A6]" />
+                                            <span>AI Scanner & Crop</span>
+                                          </button>
+                                        )}
                                         <button
                                           onClick={() => {
                                             handleToggleStamp(file);
@@ -1043,12 +1353,24 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose, o
                                   </p>
 
                                   <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between">
-                                    <button
-                                      onClick={() => setPreviewFile(file)}
-                                      className="text-[11px] font-semibold text-[#0056A6] hover:underline"
-                                    >
-                                      View
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        onClick={() => setPreviewFile(file)}
+                                        className="text-[11px] font-semibold text-[#0056A6] hover:underline"
+                                      >
+                                        View
+                                      </button>
+                                      {!isPdf && (
+                                        <button
+                                          onClick={() => setCropTargetFile(file)}
+                                          className="text-[11px] font-semibold text-slate-600 hover:text-[#0056A6] flex items-center gap-0.5 cursor-pointer"
+                                          title="AI Document Scanner & Auto-Crop"
+                                        >
+                                          <Sparkles className="w-3 h-3 text-[#0056A6]" />
+                                          <span>AI Crop</span>
+                                        </button>
+                                      )}
+                                    </div>
                                     <button
                                       onClick={() => triggerFileDownload(file.dataUrl, file.name)}
                                       className="p-1 text-slate-500 hover:text-slate-800"
@@ -1073,6 +1395,17 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose, o
                         </div>
 
                         <div className="flex items-center gap-2 sm:gap-3">
+                          <button
+                            type="button"
+                            id="vault-footer-scan-crop-btn"
+                            onClick={() => setShowScanChoiceModal(true)}
+                            className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs sm:text-sm flex items-center gap-1.5 border border-slate-300 transition-all cursor-pointer"
+                            title="Scan with camera or photo with perspective correction"
+                          >
+                            <Crop className="w-4 h-4 text-[#0056A6]" />
+                            <span>Scan & Crop</span>
+                          </button>
+
                           {onOpenImgToPdf && (
                             <button
                               type="button"
@@ -1116,6 +1449,128 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose, o
           onClose={() => setPreviewFile(null)}
           onSelectFile={(f) => setPreviewFile(f)}
         />
+      )}
+
+      {/* Smart Crop Modal for Existing Vault Documents */}
+      {cropTargetFile && (
+        <SmartCropModal
+          isOpen={!!cropTargetFile}
+          file={cropTargetFile}
+          onClose={() => setCropTargetFile(null)}
+          onSaveCrop={handleSaveCrop}
+        />
+      )}
+
+      {/* Smart Crop Modal for New Upload (Review & Crop before Vault) */}
+      {newUploadCropFile && (
+        <SmartCropModal
+          isOpen={!!newUploadCropFile}
+          file={newUploadCropFile}
+          isNewUpload={true}
+          title="Auto-Crop & Verify Document"
+          actionButtonLabel="Add to Software Vault"
+          onClose={() => setNewUploadCropFile(null)}
+          onSaveCrop={async (croppedDataUrl, croppedSize) => {
+            await handleSaveNewUploadCrop(croppedDataUrl, croppedSize);
+          }}
+        />
+      )}
+
+      {/* Live Camera Scanner Modal */}
+      {showLiveCameraModal && (
+        <LiveCameraScannerModal
+          isOpen={showLiveCameraModal}
+          onClose={() => setShowLiveCameraModal(false)}
+          onCapture={handleLiveCameraCapture}
+        />
+      )}
+
+      {/* Scan & Auto-Crop Choice Dialog */}
+      {showScanChoiceModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-[#0056A6] text-white flex items-center justify-center shadow-2xs">
+                  <Crop className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Scan & Auto-Crop Document</h3>
+                  <p className="text-[11px] text-slate-500">Real-time computer vision document boundary detection</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowScanChoiceModal(false)}
+                className="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {/* Option 1: Live Camera Scanner */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowScanChoiceModal(false);
+                  setShowLiveCameraModal(true);
+                }}
+                className="w-full text-left p-3.5 rounded-xl border border-slate-200 hover:border-[#0056A6] hover:bg-blue-50/40 transition-all cursor-pointer group flex items-start gap-3"
+              >
+                <div className="w-10 h-10 rounded-xl bg-blue-100 text-[#0056A6] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <Camera className="w-5 h-5 text-[#0056A6]" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-xs sm:text-sm text-slate-900">Live Camera Scanner</span>
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-[#0056A6]">
+                      Real-Time
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                    Use your camera with real-time border detection, corner tracking, and automatic capture.
+                  </p>
+                </div>
+              </button>
+
+              {/* Option 2: Image from Computer with Corner Review */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowScanChoiceModal(false);
+                  singleScanFileInputRef.current?.click();
+                }}
+                className="w-full text-left p-3.5 rounded-xl border border-slate-200 hover:border-[#0056A6] hover:bg-blue-50/40 transition-all cursor-pointer group flex items-start gap-3"
+              >
+                <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <UploadCloud className="w-5 h-5 text-slate-700" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-xs sm:text-sm text-slate-900">Select Image File</span>
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-700">
+                      Auto-Detect & Tweak
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                    Choose an image file, view auto-detected corners, adjust corners if needed, and save to Vault.
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-slate-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowScanChoiceModal(false)}
+                className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
