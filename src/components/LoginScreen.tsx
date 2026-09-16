@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Lock, User, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { Lock, User, Eye, EyeOff, AlertCircle, Clock } from 'lucide-react';
 import { authenticateAsync } from '../services/authService';
 import { UserProfile } from '../types/auth';
 
 interface LoginScreenProps {
   onLoginSuccess: (user: UserProfile) => void;
+  sessionTimeoutMessage?: string | null;
 }
 
 // Lush green rice fields with majestic mountains background video (Pexels 36796314)
@@ -13,7 +14,7 @@ const VIDEO_BG_URL =
 const VIDEO_POSTER_URL =
   'https://images.pexels.com/videos/36796314/pictures/preview-0.jpg';
 
-export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
+export function LoginScreen({ onLoginSuccess, sessionTimeoutMessage }: LoginScreenProps) {
   const [username, setUsername] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
@@ -126,6 +127,20 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         onSubmit={handleSubmit}
         className="relative z-10 w-full max-w-[320px] sm:max-w-[360px] flex flex-col gap-3.5 bg-transparent p-0 m-0 my-auto"
       >
+        {/* Auto-logout / Session Timeout Notice */}
+        {sessionTimeoutMessage && (
+          <div
+            id="session-timeout-alert"
+            className="w-full flex items-start gap-2.5 p-3 bg-amber-500 text-slate-950 rounded-xl text-xs font-semibold shadow-lg border border-amber-400 animate-in fade-in slide-in-from-top-2 duration-200"
+          >
+            <Clock className="w-4 h-4 shrink-0 text-slate-950 mt-0.5" />
+            <div className="flex-1">
+              <span className="font-bold block text-slate-950">Auto-Logout (1 Min Inactivity)</span>
+              <span className="text-slate-900 leading-tight block mt-0.5">{sessionTimeoutMessage}</span>
+            </div>
+          </div>
+        )}
+
         {/* Error Feedback */}
         {errorMsg && (
           <div className="w-full flex items-center gap-2 p-2.5 bg-red-600 text-white rounded-xl text-xs font-medium shadow-md">

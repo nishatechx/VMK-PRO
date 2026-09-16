@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   LayoutDashboard,
   UserCheck,
@@ -19,6 +19,10 @@ import {
   FileText,
   Wrench,
   ExternalLink,
+  Key,
+  Eye,
+  EyeOff,
+  AlertCircle,
 } from 'lucide-react';
 import { TabPermission, UserProfile } from '../types/auth';
 import { hasTabPermission, hasFeaturePermission } from '../services/authService';
@@ -59,6 +63,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenImageToTextTool,
   onOpenExternalPortal,
 }) => {
+  const [isBridgePassModalOpen, setIsBridgePassModalOpen] = useState<boolean>(false);
+  const [bridgePassInput, setBridgePassInput] = useState<string>('');
+  const [bridgePassError, setBridgePassError] = useState<string | null>(null);
+  const [showBridgePass, setShowBridgePass] = useState<boolean>(false);
+
   const allNavItems: {
     id: NavTab;
     label: string;
@@ -396,32 +405,61 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </button>
               )}
 
-              {/* External Target Website - MHCET Ticket Portal */}
-              <button
-                type="button"
-                id="sidebar-tool-external-portal"
-                onClick={() => {
-                  window.open('https://sac.maharashtracet.org/mhcet/portal/tickets/my-tickets', '_blank', 'noopener,noreferrer');
-                  if (onOpenExternalPortal) onOpenExternalPortal();
-                  if (onClose && window.innerWidth < 768) onClose();
-                }}
-                title={isCollapsed ? 'MHCET Tickets Portal (Vault Bridge)' : undefined}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-[#003B73] hover:text-white bg-[#EAF4FB] hover:bg-[#003B73] border border-[#D9E1EA] hover:border-[#003B73] transition-all cursor-pointer shadow-2xs group ${
-                  isCollapsed ? 'justify-center px-0 py-2.5' : ''
-                }`}
-              >
-                <div className="w-7 h-7 rounded-xl bg-white border border-[#D9E1EA] p-1 flex items-center justify-center shrink-0 shadow-2xs text-[#0056A6] group-hover:text-[#003B73]">
-                  <ExternalLink className="w-4 h-4" />
-                </div>
-                {!isCollapsed && (
-                  <div className="flex-1 text-left truncate flex items-center justify-between">
-                    <span className="truncate">Target Website</span>
-                    <span className="text-[9px] px-1 py-0.2 rounded bg-white/60 text-[#003B73] font-bold">
-                      Vault
+              {/* Shifted Vault Picker Bridge Banner - Password Protected (vmk@8975) */}
+              {!isCollapsed ? (
+                <div className="mt-1.5 bg-gradient-to-br from-[#003B73] via-[#004f98] to-[#0284C7] rounded-xl p-2.5 text-white shadow-xs border border-[#002850]">
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <div className="w-5 h-5 rounded-md bg-white/20 flex items-center justify-center text-amber-300 shrink-0">
+                        <Lock className="w-3 h-3" />
+                      </div>
+                      <span className="text-[11px] font-bold text-white truncate">
+                        Vault Picker Bridge
+                      </span>
+                    </div>
+                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-400 text-slate-950 shrink-0">
+                      PIN
                     </span>
                   </div>
-                )}
-              </button>
+                  <p className="text-[10px] text-blue-100 leading-tight mb-2">
+                    MHCET Ticket Portal file upload bridge for external website.
+                  </p>
+                  <button
+                    type="button"
+                    id="sidebar-vault-bridge-btn"
+                    onClick={() => {
+                      setIsBridgePassModalOpen(true);
+                      setBridgePassInput('');
+                      setBridgePassError(null);
+                    }}
+                    className="w-full py-1.5 px-2 rounded-lg bg-white hover:bg-blue-50 text-[#003B73] font-bold text-[11px] flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-98"
+                    title="Unlock Vault Picker Bridge (Password Protected: vmk@8975)"
+                  >
+                    <Key className="w-3 h-3 text-[#0056A6]" />
+                    <span>Unlock Bridge</span>
+                    <ExternalLink className="w-3 h-3 text-slate-400 ml-auto" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  id="sidebar-vault-bridge-btn-collapsed"
+                  onClick={() => {
+                    setIsBridgePassModalOpen(true);
+                    setBridgePassInput('');
+                    setBridgePassError(null);
+                  }}
+                  title="Vault Picker Bridge (Password: vmk@8975)"
+                  className="relative w-full flex items-center justify-center py-2.5 rounded-xl text-[#003B73] bg-[#EAF4FB] hover:bg-[#003B73] hover:text-white border border-[#D9E1EA] transition-all cursor-pointer shadow-2xs group"
+                >
+                  <div className="w-7 h-7 rounded-xl bg-white border border-[#D9E1EA] p-1 flex items-center justify-center shrink-0 shadow-2xs text-[#0056A6] group-hover:text-[#003B73]">
+                    <ExternalLink className="w-4 h-4" />
+                  </div>
+                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-400 text-slate-950 flex items-center justify-center shadow-xs">
+                    <Lock className="w-2.5 h-2.5" />
+                  </span>
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -458,6 +496,108 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
         </button>
       </div>
+
+      {/* Password Verification Modal for Vault Picker Bridge (vmk@8975) */}
+      {isBridgePassModalOpen && (
+        <div
+          id="vault-bridge-password-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsBridgePassModalOpen(false);
+          }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-5 sm:p-6 relative animate-in fade-in zoom-in-95 duration-150">
+            <button
+              type="button"
+              onClick={() => setIsBridgePassModalOpen(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-11 h-11 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-[#0056A6] shrink-0">
+                <Lock className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Vault Picker Bridge Security</h3>
+                <p className="text-xs text-slate-500">MHCET Ticket Portal Integration</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+              This bridge opens the official Maharashtra CET ticket portal and enables direct Vault file uploads for ticket forms. Enter the authorization password to proceed.
+            </p>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (bridgePassInput.trim() === 'vmk@8975') {
+                  window.open('https://sac.maharashtracet.org/mhcet/portal/tickets/my-tickets', '_blank', 'noopener,noreferrer');
+                  if (onOpenExternalPortal) onOpenExternalPortal();
+                  if (onClose && window.innerWidth < 768) onClose();
+                  setIsBridgePassModalOpen(false);
+                  setBridgePassInput('');
+                  setBridgePassError(null);
+                } else {
+                  setBridgePassError('Invalid password. Correct password is vmk@8975');
+                }
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  Bridge Security Password
+                </label>
+                <div className="relative">
+                  <input
+                    type={showBridgePass ? 'text' : 'password'}
+                    value={bridgePassInput}
+                    onChange={(e) => {
+                      setBridgePassInput(e.target.value);
+                      if (bridgePassError) setBridgePassError(null);
+                    }}
+                    placeholder="Enter password (vmk@8975)"
+                    autoFocus
+                    required
+                    className="w-full px-3.5 py-2.5 pr-10 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#0056A6]/30 focus:border-[#0056A6]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowBridgePass(!showBridgePass)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                  >
+                    {showBridgePass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {bridgePassError && (
+                  <p className="mt-1.5 text-xs text-red-600 font-medium flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{bridgePassError}</span>
+                  </p>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsBridgePassModalOpen(false)}
+                  className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-[#003B73] hover:bg-[#002b54] text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5"
+                >
+                  <Key className="w-3.5 h-3.5" />
+                  <span>Verify & Unlock</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </aside>
   );
 };

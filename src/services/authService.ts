@@ -559,10 +559,41 @@ export async function findUserByUsername(username: string): Promise<UserProfile 
   }
 }
 
+const LAST_ACTIVE_KEY = 'vmk_last_active_time';
+export const INACTIVITY_TIMEOUT_MS = 60 * 1000; // 1 minute auto-logout inactivity limit
+
+export function updateLastActiveTime(): void {
+  try {
+    localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
+  } catch {}
+}
+
+export function isSessionExpired(): boolean {
+  try {
+    const rawTime = localStorage.getItem(LAST_ACTIVE_KEY);
+    if (!rawTime) {
+      // If user exists in storage without timestamp, expire session
+      const user = localStorage.getItem(CURRENT_USER_KEY);
+      return !!user;
+    }
+    const elapsed = Date.now() - parseInt(rawTime, 10);
+    return elapsed > INACTIVITY_TIMEOUT_MS;
+  } catch {
+    return false;
+  }
+}
+
 export function getCurrentUser(): UserProfile | null {
   try {
     const raw = localStorage.getItem(CURRENT_USER_KEY);
     if (!raw) return null;
+    if (isSessionExpired()) {
+      localStorage.removeItem(CURRENT_USER_KEY);
+      localStorage.removeItem('vmk_auth_token');
+      localStorage.removeItem('vmk_auth_time');
+      localStorage.removeItem(LAST_ACTIVE_KEY);
+      return null;
+    }
     return JSON.parse(raw);
   } catch {
     return null;
@@ -573,10 +604,12 @@ export function setCurrentUser(user: UserProfile | null): void {
   if (user) {
     localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
     localStorage.setItem('vmk_auth_token', `logged_in_${user.username}`);
+    updateLastActiveTime();
   } else {
     localStorage.removeItem(CURRENT_USER_KEY);
     localStorage.removeItem('vmk_auth_token');
     localStorage.removeItem('vmk_auth_time');
+    localStorage.removeItem(LAST_ACTIVE_KEY);
   }
 }
 

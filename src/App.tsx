@@ -28,13 +28,22 @@ import {
   DNO_USER,
   hasTabPermission,
   hasFeaturePermission,
+  updateLastActiveTime,
+  isSessionExpired,
 } from './services/authService';
 import { UserProfile } from './types/auth';
-import { Building2, ShieldCheck, ExternalLink, Phone, Mail, MapPin, MessageCircle } from 'lucide-react';
+import { Building2, ShieldCheck, ExternalLink, Phone, Mail, MapPin, MessageCircle, Clock } from 'lucide-react';
 
 export default function App() {
   const [currentUser, setCurUser] = useState<UserProfile | null>(() => getCurrentUser());
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => !!getCurrentUser());
+  const [sessionTimeoutNotice, setSessionTimeoutNotice] = useState<string | null>(() => {
+    if (typeof window !== 'undefined' && isSessionExpired()) {
+      return 'Session timed out after 1 minute of inactivity. Please enter your credentials to login.';
+    }
+    return null;
+  });
+  const [idleWarningSeconds, setIdleWarningSeconds] = useState<number | null>(null);
 
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
   // Sidebar hidden by default per user requirement: "keep side bar hide by default"
@@ -113,6 +122,9 @@ export default function App() {
   const [vaultPickerAccept, setVaultPickerAccept] = useState<string[]>(['.pdf', '.jpg', '.jpeg', '.png']);
 
   const handleLoginSuccess = (user: UserProfile) => {
+    updateLastActiveTime();
+    setSessionTimeoutNotice(null);
+    setIdleWarningSeconds(null);
     setCurUser(user);
     setIsAuthenticated(true);
     setWelcomeUser(user);
@@ -130,6 +142,8 @@ export default function App() {
     setCurUser(null);
     setIsAuthenticated(false);
     setWelcomeUser(null);
+    setIdleWarningSeconds(null);
+    setSessionTimeoutNotice(null);
   };
 
   const handleRefreshSession = () => {
@@ -211,6 +225,95 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // 1-minute inactivity auto-logout tracker
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    updateLastActiveTime();
+    let lastActionTime = Date.now();
+
+    const recordActivity = () => {
+      lastActionTime = Date.now();
+      updateLastActiveTime();
+      setIdleWarningSeconds(null);
+    };
+
+    const userEvents = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click', 'wheel'];
+
+    let throttleTimeout: any = null;
+    const throttledListener = () => {
+      if (!throttleTimeout) {
+        throttleTimeout = setTimeout(() => {
+          recordActivity();
+          throttleTimeout = null;
+        }, 300);
+      }
+    };
+
+    userEvents.forEach((evt) => {
+      window.addEventListener(evt, throttledListener, { passive: true });
+    });
+
+    const timer = setInterval(() => {
+      const now = Date.now();
+      const elapsed = now - lastActionTime;
+      const remaining = 60000 - elapsed;
+
+      // Show countdown warning in the final 15s of 1-minute timeout
+      if (remaining <= 15000 && remaining > 0) {
+        setIdleWarningSeconds(Math.ceil(remaining / 1000));
+      } else if (remaining > 15000) {
+        setIdleWarningSeconds(null);
+      }
+
+      if (elapsed >= 60000) {
+        clearInterval(timer);
+        setCurrentUser(null);
+        setCurUser(null);
+        setIsAuthenticated(false);
+        setIdleWarningSeconds(null);
+        setSessionTimeoutNotice(
+          'Session timed out after 1 minute of inactivity. Please enter your credentials to login.'
+        );
+        setIsTicketGeneratorOpen(false);
+        setIsWhatsappTicketOpen(false);
+        setIsQrUploadModalOpen(false);
+        setIsImgToPdfOpen(false);
+        setIsImageToTextOpen(false);
+        setIsExternalAssistantOpen(false);
+      }
+    }, 1000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        const now = Date.now();
+        if (now - lastActionTime >= 60000) {
+          clearInterval(timer);
+          setCurrentUser(null);
+          setCurUser(null);
+          setIsAuthenticated(false);
+          setIdleWarningSeconds(null);
+          setSessionTimeoutNotice(
+            'Session timed out after 1 minute of inactivity. Please enter your credentials to login.'
+          );
+        } else {
+          lastActionTime = Date.now();
+          updateLastActiveTime();
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      userEvents.forEach((evt) => {
+        window.removeEventListener(evt, throttledListener);
+      });
+      document.removeEventListener('visibilitychange', handleVisibility);
+      clearInterval(timer);
+      if (throttleTimeout) clearTimeout(throttleTimeout);
+    };
+  }, [isAuthenticated]);
+
   // Handle Mobile QR scanning view if session exists in URL
   if (qrSessionParam) {
     return (
@@ -251,7 +354,12 @@ export default function App() {
 
   // Not logged in -> Show Login View
   if (!isAuthenticated || !currentUser) {
-    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
+    return (
+      <LoginScreen
+        onLoginSuccess={handleLoginSuccess}
+        sessionTimeoutMessage={sessionTimeoutNotice}
+      />
+    );
   }
 
   const navigateToTab = (tab: NavTab) => {
@@ -268,6 +376,29 @@ export default function App() {
       id="vmk-washim-app-root"
       className="flex h-screen w-full bg-[#F7F9FC] text-[#4B5563] font-sans select-none overflow-hidden"
     >
+      {/* 1-Minute Inactivity Warning Banner (shown during final 15s) */}
+      {idleWarningSeconds !== null && (
+        <div
+          id="inactivity-countdown-banner"
+          className="fixed top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-2 bg-amber-400 text-slate-950 font-semibold rounded-2xl shadow-xl border border-amber-300 animate-bounce"
+        >
+          <Clock className="w-4 h-4 text-slate-950 shrink-0" />
+          <span className="text-xs sm:text-sm">
+            Auto-logout in <strong className="font-bold underline">{idleWarningSeconds}s</strong> due to inactivity.
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              updateLastActiveTime();
+              setIdleWarningSeconds(null);
+            }}
+            className="ml-1 px-3 py-1 bg-slate-950 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+          >
+            I'm Working
+          </button>
+        </div>
+      )}
+
       {/* Left Sidebar (Desktop Docked when open - Hidden by default) */}
       {isSidebarOpen && (
         <div
