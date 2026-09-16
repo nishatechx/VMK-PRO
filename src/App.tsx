@@ -109,8 +109,24 @@ export default function App() {
     }
   };
 
+  const [imageToTextInitialImage, setImageToTextInitialImage] = useState<string | null>(null);
+
   const handleOpenImageToText = () => {
     if (hasFeaturePermission(currentUser, 'image_to_text_tool')) {
+      setImageToTextInitialImage(null);
+      setIsImageToTextOpen(true);
+    }
+  };
+
+  const handleOpenImageToTextWithImage = (imageFileOrUrl?: string | any) => {
+    if (hasFeaturePermission(currentUser, 'image_to_text_tool')) {
+      if (typeof imageFileOrUrl === 'string') {
+        setImageToTextInitialImage(imageFileOrUrl);
+      } else if (imageFileOrUrl && typeof imageFileOrUrl === 'object' && 'dataUrl' in imageFileOrUrl) {
+        setImageToTextInitialImage(imageFileOrUrl.dataUrl);
+      } else {
+        setImageToTextInitialImage(null);
+      }
       setIsImageToTextOpen(true);
     }
   };
@@ -225,7 +241,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // 1-minute inactivity auto-logout tracker
+  // 5-minute inactivity auto-logout tracker
   useEffect(() => {
     if (!isAuthenticated) return;
 
@@ -257,23 +273,23 @@ export default function App() {
     const timer = setInterval(() => {
       const now = Date.now();
       const elapsed = now - lastActionTime;
-      const remaining = 60000 - elapsed;
+      const remaining = 300000 - elapsed;
 
-      // Show countdown warning in the final 15s of 1-minute timeout
-      if (remaining <= 15000 && remaining > 0) {
+      // Show countdown warning in the final 30s of 5-minute timeout
+      if (remaining <= 30000 && remaining > 0) {
         setIdleWarningSeconds(Math.ceil(remaining / 1000));
-      } else if (remaining > 15000) {
+      } else if (remaining > 30000) {
         setIdleWarningSeconds(null);
       }
 
-      if (elapsed >= 60000) {
+      if (elapsed >= 300000) {
         clearInterval(timer);
         setCurrentUser(null);
         setCurUser(null);
         setIsAuthenticated(false);
         setIdleWarningSeconds(null);
         setSessionTimeoutNotice(
-          'Session timed out after 1 minute of inactivity. Please enter your credentials to login.'
+          'Session timed out after 5 minutes of inactivity. Please enter your credentials to login.'
         );
         setIsTicketGeneratorOpen(false);
         setIsWhatsappTicketOpen(false);
@@ -287,14 +303,14 @@ export default function App() {
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
         const now = Date.now();
-        if (now - lastActionTime >= 60000) {
+        if (now - lastActionTime >= 300000) {
           clearInterval(timer);
           setCurrentUser(null);
           setCurUser(null);
           setIsAuthenticated(false);
           setIdleWarningSeconds(null);
           setSessionTimeoutNotice(
-            'Session timed out after 1 minute of inactivity. Please enter your credentials to login.'
+            'Session timed out after 5 minutes of inactivity. Please enter your credentials to login.'
           );
         } else {
           lastActionTime = Date.now();
@@ -581,6 +597,7 @@ export default function App() {
         isOpen={isQrUploadModalOpen}
         onClose={() => setIsQrUploadModalOpen(false)}
         onOpenImgToPdf={hasFeaturePermission(currentUser, 'img_to_pdf_tool') ? handleOpenImgToPdf : undefined}
+        onOpenImageToText={hasFeaturePermission(currentUser, 'image_to_text_tool') ? handleOpenImageToTextWithImage : undefined}
       />
 
       <TicketGeneratorModal
@@ -603,7 +620,11 @@ export default function App() {
 
       <ImageToTextModal
         isOpen={isImageToTextOpen}
-        onClose={() => setIsImageToTextOpen(false)}
+        onClose={() => {
+          setIsImageToTextOpen(false);
+          setImageToTextInitialImage(null);
+        }}
+        initialImage={imageToTextInitialImage}
         currentUser={currentUser}
         onSendToTicketGenerator={handleOpenTicketWithData}
       />

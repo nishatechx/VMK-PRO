@@ -40,7 +40,11 @@ function parseBase64Image(dataUrl: string): { mimeType: string; base64Data: stri
   return { mimeType: 'image/jpeg', base64Data: dataUrl };
 }
 
-const systemInstruction = `You are a world-class AI vision system specialized in accurate, faithful transcription of both handwritten and printed text from images.
+export const config = {
+  maxDuration: 60,
+};
+
+const defaultSystemInstruction = `You are a world-class AI vision system specialized in accurate, faithful transcription of both handwritten and printed text from images.
 
 Your task is to analyze the complete visual context of the uploaded image and accurately extract all readable text into digital format.
 
@@ -80,6 +84,42 @@ CRITICAL DIRECTIVES:
 - Output ONLY the transcribed text.
 - Do NOT wrap in introductory or concluding remarks (such as "Here is the extracted text:").
 - Preserve line breaks, paragraphs, lists, and numbers as originally presented.`;
+
+const ticketSystemInstruction = `You are an expert AI vision system specialized in Maharashtra State Common Entrance Test (CET) Cell and SAC Scrutiny Center verification.
+Your task is to analyze the candidate's document or image (printed or handwritten) and extract ONLY the following 8 fields:
+
+Candidate name:
+CET Application Number:
+CAP Application Number:
+DOB:
+Mobile Number:
+Email ID:
+Course Name:
+Query:
+
+FIELD SPECIFICATIONS & INSTRUCTIONS:
+1. Candidate name: Full legal name of the candidate.
+2. CET Application Number: CET Application Form Number or Roll Number (e.g., 241088921 or CET202409812).
+3. CAP Application Number: Centralized Admission Process (CAP) Application ID/Number (typically starting with state course prefix like EN24108892, MB24108892, PH24108892, AR24108892, DS24108892, or labelled as CAP Application ID / Application ID).
+4. DOB: Date of birth (in DD/MM/YYYY or YYYY-MM-DD).
+5. Mobile Number: 10-digit mobile number.
+6. Email ID: Candidate email address.
+7. Course Name: Course applied for (e.g. B.E. / B.Tech, B.Pharmacy, MBA / MMS, etc.).
+8. Query: The candidate query, discrepancy, grievance, or issue description described in the document.
+
+STRICT OUTPUT RULES:
+- Extract ONLY the 8 fields above.
+- Do NOT output any other text, instructions, conversational remarks, or extra document fields.
+- If a field is not found in the image, leave its value blank after the colon.
+- Format strictly as:
+Candidate name: <value>
+CET Application Number: <value>
+CAP Application Number: <value>
+DOB: <value>
+Mobile Number: <value>
+Email ID: <value>
+Course Name: <value>
+Query: <value>`;
 
 async function readRequestBody(req: any): Promise<any> {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -149,8 +189,18 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, x-gemini-api-key');
+
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
+
     const customKey = body.apiKey || (req.headers['x-gemini-api-key'] as string);
     const ai = getGeminiClient(customKey);
+    const isTicketMode = body.mode === 'ticket_fields';
+    const activeSystemInstruction = isTicketMode ? ticketSystemInstruction : defaultSystemInstruction;
     const results: Array<{ pageIndex: number; name?: string; text: string }> = [];
 
     for (let i = 0; i < imageList.length; i++) {
@@ -168,9 +218,21 @@ export default async function handler(req: any, res: any) {
         },
       };
 
-      const customPrompt = prompt?.trim()
-        ? `Transcribe all text from this image following the system instructions. Additional guidance: ${prompt}`
-        : `Transcribe all readable text from this image (Marathi, Hindi, English, printed or handwritten). Look at the complete visual context, detect text orientation, preserve exact words, reading order, line breaks, and tables. Use [unclear] if a word is truly illegible. Do not translate or modify anything.`;
+      const customPrompt = isTicketMode
+        ? `Extract ONLY the 8 candidate ticket details from this image:
+Candidate name:
+CET Application Number:
+CAP Application Number:
+DOB:
+Mobile Number:
+Email ID:
+Course Name:
+Query:
+
+Do not add commentary. If a field is missing, output the label with a blank value.`
+        : (prompt?.trim()
+          ? `Transcribe all text from this image following the system instructions. Additional guidance: ${prompt}`
+          : `Transcribe all readable text from this image (Marathi, Hindi, English, printed or handwritten). Look at the complete visual context, detect text orientation, preserve exact words, reading order, line breaks, and tables. Use [unclear] if a word is truly illegible. Do not translate or modify anything.`);
 
       let extractedText = '';
       let lastModelError: any = null;
@@ -183,7 +245,7 @@ export default async function handler(req: any, res: any) {
               parts: [imagePart, { text: customPrompt }],
             },
             config: {
-              systemInstruction,
+              systemInstruction: activeSystemInstruction,
               temperature: 0.1,
             },
           });

@@ -49,6 +49,7 @@ interface QrUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenImgToPdf?: () => void;
+  onOpenImageToText?: (image?: string | QrUploadedFile) => void;
 }
 
 // Format date matching the screenshot: "9 Sep 2026, 09:53 AM"
@@ -72,7 +73,12 @@ function formatDocumentDate(isoString: string): string {
   }
 }
 
-export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose, onOpenImgToPdf }) => {
+export const QrUploadModal: React.FC<QrUploadModalProps> = ({
+  isOpen,
+  onClose,
+  onOpenImgToPdf,
+  onOpenImageToText,
+}) => {
   const [sessionId, setSessionId] = useState<string>(() => {
     return 'VMK-' + Math.floor(100000 + Math.random() * 900000);
   });
@@ -844,6 +850,33 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose, o
                             </div>
                           </button>
 
+                          {/* Option: Send Image to Text Tool (USER EXPLICIT REQUEST) */}
+                          {onOpenImageToText && (
+                            <button
+                              type="button"
+                              id="upload-opt-send-img-to-text-btn"
+                              onClick={() => onOpenImageToText()}
+                              className="bg-gradient-to-br from-indigo-500/10 to-violet-600/10 border-2 border-indigo-500/40 hover:border-indigo-600 rounded-2xl p-3.5 flex items-center justify-between transition-all cursor-pointer group shadow-2xs text-left"
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-xs">
+                                  <FileText className="w-5 h-5 text-white" />
+                                </div>
+                                <div className="min-w-0">
+                                  <h4 className="font-bold text-slate-900 text-xs sm:text-sm leading-tight truncate">
+                                    Send Img to Text
+                                  </h4>
+                                  <p className="text-[11px] text-slate-500 leading-snug mt-0.5 truncate">
+                                    Extract candidate details & text with AI
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="w-8 h-8 rounded-xl border border-indigo-300 bg-white text-indigo-600 flex items-center justify-center shrink-0 shadow-2xs group-hover:bg-indigo-50">
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </div>
+                            </button>
+                          )}
+
                           {/* Option: Upload from Computer */}
                           <button
                             type="button"
@@ -971,6 +1004,18 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose, o
                         </div>
 
                         <div className="flex items-center gap-2">
+                          {onOpenImageToText && (
+                            <button
+                              type="button"
+                              id="vault-header-send-img-to-text-btn"
+                              onClick={() => onOpenImageToText()}
+                              className="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 border border-white/25 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                              title="Send to Image to Text"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Send Img to Text</span>
+                            </button>
+                          )}
                           {onOpenImgToPdf && (
                             <button
                               type="button"
@@ -1225,6 +1270,18 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose, o
                                     </button>
                                   )}
 
+                                  {/* Send Image to Text Button */}
+                                  {!isPdf && onOpenImageToText && (
+                                    <button
+                                      onClick={() => onOpenImageToText(file)}
+                                      className="px-2.5 sm:px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50/70 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                                      title="Send Image to Text (OCR)"
+                                    >
+                                      <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                                      <span className="hidden sm:inline">Img to Text</span>
+                                    </button>
+                                  )}
+
                                   {/* Download Button */}
                                   <button
                                     onClick={() => triggerFileDownload(file.dataUrl, file.name)}
@@ -1282,6 +1339,18 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose, o
                                           >
                                             <Sparkles className="w-3.5 h-3.5 text-[#0056A6]" />
                                             <span>AI Scanner & Crop</span>
+                                          </button>
+                                        )}
+                                        {!isPdf && onOpenImageToText && (
+                                          <button
+                                            onClick={() => {
+                                              onOpenImageToText(file);
+                                              setActiveDropdownId(null);
+                                            }}
+                                            className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 flex items-center gap-2 text-indigo-700"
+                                          >
+                                            <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                                            <span>Send to Img to Text</span>
                                           </button>
                                         )}
                                         <button
@@ -1370,6 +1439,16 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose, o
                                           <span>AI Crop</span>
                                         </button>
                                       )}
+                                      {!isPdf && onOpenImageToText && (
+                                        <button
+                                          onClick={() => onOpenImageToText(file)}
+                                          className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5 cursor-pointer"
+                                          title="Send Image to Text (OCR)"
+                                        >
+                                          <FileText className="w-3 h-3 text-indigo-600" />
+                                          <span>Img to Text</span>
+                                        </button>
+                                      )}
                                     </div>
                                     <button
                                       onClick={() => triggerFileDownload(file.dataUrl, file.name)}
@@ -1405,6 +1484,19 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose, o
                             <Crop className="w-4 h-4 text-[#0056A6]" />
                             <span>Scan & Crop</span>
                           </button>
+
+                          {onOpenImageToText && (
+                            <button
+                              type="button"
+                              id="vault-footer-send-img-to-text-btn"
+                              onClick={() => onOpenImageToText()}
+                              className="px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs sm:text-sm flex items-center gap-1.5 border border-indigo-200 transition-all cursor-pointer"
+                              title="Send to Image to Text"
+                            >
+                              <FileText className="w-4 h-4 text-indigo-600" />
+                              <span>Send Img to Text</span>
+                            </button>
+                          )}
 
                           {onOpenImgToPdf && (
                             <button
@@ -1448,6 +1540,7 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({ isOpen, onClose, o
           allFiles={vaultFiles}
           onClose={() => setPreviewFile(null)}
           onSelectFile={(f) => setPreviewFile(f)}
+          onOpenImageToText={onOpenImageToText}
         />
       )}
 

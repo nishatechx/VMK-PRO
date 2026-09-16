@@ -563,6 +563,37 @@ export function fastClientCornerDetection(
   };
 }
 
+async function optimizeImageForAiDetection(dataUrl: string): Promise<string> {
+  if (!dataUrl || dataUrl.length < 1.2 * 1024 * 1024) return dataUrl;
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const maxDim = 1600;
+      let w = img.width;
+      let h = img.height;
+      if (w > maxDim || h > maxDim) {
+        if (w > h) {
+          h = Math.round((h * maxDim) / w);
+          w = maxDim;
+        } else {
+          w = Math.round((w * maxDim) / h);
+          h = maxDim;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return resolve(dataUrl);
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 /**
  * Call Server-Side AI Document Detection (Gemini 3.8 Flash)
  */
@@ -571,13 +602,14 @@ export async function detectDocumentWithAI(
   customApiKey?: string
 ): Promise<DetectionResult> {
   try {
+    const optimizedImage = await optimizeImageForAiDetection(dataUrl);
     const res = await fetch('/api/ai-document-detect', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        image: dataUrl,
+        image: optimizedImage,
         apiKey: customApiKey,
       }),
     });

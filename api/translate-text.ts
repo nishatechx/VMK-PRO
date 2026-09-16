@@ -65,10 +65,14 @@ async function readRequestBody(req: any): Promise<any> {
   });
 }
 
+export const config = {
+  maxDuration: 60,
+};
+
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, x-gemini-api-key');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();

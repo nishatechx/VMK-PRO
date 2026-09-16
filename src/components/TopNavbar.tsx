@@ -80,11 +80,12 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           <Menu className="w-5 h-5" />
         </button>
 
-        <div className="flex items-center">
+        <div className="flex items-center shrink-0">
           <img
+            id="top-navbar-brand-logo"
             src={APP_ASSETS.LOGO}
-            alt="Logo"
-            className="h-10 sm:h-12 md:h-14 max-w-[260px] sm:max-w-[340px] object-contain py-0.5"
+            alt="State Common Entrance Test Cell, Maharashtra"
+            className="h-9 sm:h-11 md:h-12 w-auto max-w-[190px] sm:max-w-[280px] md:max-w-[340px] object-contain block py-0.5"
             referrerPolicy="no-referrer"
           />
         </div>

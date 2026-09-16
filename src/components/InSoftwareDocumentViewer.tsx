@@ -27,6 +27,7 @@ interface InSoftwareDocumentViewerProps {
   allFiles?: QrUploadedFile[];
   onClose: () => void;
   onSelectFile?: (file: QrUploadedFile) => void;
+  onOpenImageToText?: (file: QrUploadedFile) => void;
 }
 
 export const InSoftwareDocumentViewer: React.FC<InSoftwareDocumentViewerProps> = ({
@@ -34,6 +35,7 @@ export const InSoftwareDocumentViewer: React.FC<InSoftwareDocumentViewerProps> =
   allFiles = [],
   onClose,
   onSelectFile,
+  onOpenImageToText,
 }) => {
   const [currentFile, setCurrentFile] = useState<QrUploadedFile | null>(initialFile);
   const [zoom, setZoom] = useState<number>(100);
@@ -228,6 +230,21 @@ export const InSoftwareDocumentViewer: React.FC<InSoftwareDocumentViewerProps> =
                 >
                   <Sparkles className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">AI Scanner & Crop</span>
+                </button>
+              )}
+
+              {/* Send to Image to Text OCR for Images */}
+              {!isPdf && onOpenImageToText && (
+                <button
+                  onClick={() => {
+                    onOpenImageToText(file);
+                    onClose();
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs border border-indigo-400/40 cursor-pointer"
+                  title="Send to Image to Text (OCR)"
+                >
+                  <FileText className="w-3.5 h-3.5 text-indigo-200" />
+                  <span className="hidden sm:inline">Img to Text</span>
                 </button>
               )}
 
