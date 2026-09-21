@@ -9,6 +9,10 @@ export interface QrUploadedFile {
   isDownloadedToSoftware: boolean;
   verifiedStamp: boolean;
   category: string;
+  uploadedBy?: string;
+  uploaderName?: string;
+  uploaderRole?: string;
+  district?: string;
 }
 
 declare global {

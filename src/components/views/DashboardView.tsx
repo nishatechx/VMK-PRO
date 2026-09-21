@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   FileText,
   MessageCircle,
@@ -8,6 +8,7 @@ import {
   UserCheck,
   GraduationCap,
   Ticket,
+  MapPin,
 } from 'lucide-react';
 import {
   getStudentRecords,
@@ -41,9 +42,42 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onNavigateTab,
   currentUser,
 }) => {
-  const students = getStudentRecords();
-  const visitors = getVisitorRecords();
-  const tickets = getTicketRecords();
+  const allStudents = getStudentRecords();
+  const allVisitors = getVisitorRecords();
+  const allTickets = getTicketRecords();
+
+  const isDno = currentUser?.role === 'dno' || currentUser?.username?.toLowerCase() === 'dno';
+  const currentDistrict = (currentUser?.district || 'Washim').trim().toLowerCase();
+
+  const students = useMemo(() => {
+    return allStudents.filter((s) => {
+      if (isDno) {
+        const sDist = (s.district || 'Washim').trim().toLowerCase();
+        return sDist === currentDistrict;
+      }
+      return s.createdBy === currentUser?.username || s.createdBy === currentUser?.id;
+    });
+  }, [allStudents, isDno, currentDistrict, currentUser]);
+
+  const visitors = useMemo(() => {
+    return allVisitors.filter((v) => {
+      if (isDno) {
+        const vDist = (v.district || 'Washim').trim().toLowerCase();
+        return vDist === currentDistrict;
+      }
+      return v.createdBy === currentUser?.username || v.createdBy === currentUser?.id;
+    });
+  }, [allVisitors, isDno, currentDistrict, currentUser]);
+
+  const tickets = useMemo(() => {
+    return allTickets.filter((t) => {
+      if (isDno) {
+        const tDist = (t.district || 'Washim').trim().toLowerCase();
+        return tDist === currentDistrict;
+      }
+      return t.createdBy === currentUser?.username || t.createdBy === currentUser?.id;
+    });
+  }, [allTickets, isDno, currentDistrict, currentUser]);
 
   const verifiedCount = students.filter((s) => s.status === 'Verified').length;
   const objectionCount = students.filter((s) => s.status === 'Objection Raised').length;
@@ -170,6 +204,33 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <div className="flex flex-col lg:flex-row gap-5 items-start">
         {/* Left Workspace Column */}
         <div className="flex-1 min-w-0 w-full space-y-5">
+          {/* DNO District Supervision Banner */}
+          {isDno && (
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-sky-50 to-indigo-50 border border-sky-200/80 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs text-sky-950">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <MapPin className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                    <span>District Nodal Officer (DNO) Supervision</span>
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-sky-200/70 text-sky-800">
+                      {currentUser?.district || 'Washim'} District
+                    </span>
+                  </div>
+                  <p className="text-slate-600 text-xs mt-0.5">
+                    Live operational metrics scoped exclusively to <strong>{currentUser?.district || 'Washim'}</strong> facilitation centers and counselors.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-1 bg-white border border-sky-200 rounded-xl text-xs font-bold text-sky-700 shadow-2xs">
+                  {students.length} Candidates &bull; {tickets.length} Tickets
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Quick Stats Bar - Strictly only allotted stats */}
           {quickStats.length > 0 && (
             <div className={`grid grid-cols-2 ${quickStats.length > 2 ? 'lg:grid-cols-4' : 'lg:grid-cols-2'} gap-3 sm:gap-4`}>

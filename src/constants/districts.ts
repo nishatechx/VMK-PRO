@@ -1,0 +1,43 @@
+// List of 36 Administrative Districts in Maharashtra State for CET Cell Facilitation
+export const MAHARASHTRA_DISTRICTS = [
+  'Ahmednagar (Ahilyanagar)',
+  'Akola',
+  'Amravati',
+  'Beed',
+  'Bhandara',
+  'Buldhana',
+  'Chandrapur',
+  'Chhatrapati Sambhajinagar',
+  'Dharashiv',
+  'Dhule',
+  'Gadchiroli',
+  'Gondia',
+  'Hingoli',
+  'Jalgaon',
+  'Jalna',
+  'Kolhapur',
+  'Latur',
+  'Mumbai City',
+  'Mumbai Suburban',
+  'Nagpur',
+  'Nanded',
+  'Nandurbar',
+  'Nashik',
+  'Palghar',
+  'Parbhani',
+  'Pune',
+  'Raigad',
+  'Ratnagiri',
+  'Sangli',
+  'Satara',
+  'Sindhudurg',
+  'Solapur',
+  'Thane',
+  'Wardha',
+  'Washim',
+  'Yavatmal',
+] as const;
+
+export type MaharashtraDistrict = (typeof MAHARASHTRA_DISTRICTS)[number] | string;
+
+export const DEFAULT_DISTRICT = 'Washim';

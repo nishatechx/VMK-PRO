@@ -54,6 +54,10 @@ interface QrUploadedFile {
   isDownloadedToSoftware: boolean;
   verifiedStamp: boolean;
   category: string;
+  uploadedBy?: string;
+  uploaderName?: string;
+  uploaderRole?: string;
+  district?: string;
 }
 
 // In-memory data store for real-time cross-device sync
@@ -329,7 +333,7 @@ async function startServer() {
   // Upload file from Mobile or Desktop
   app.post("/api/qr-upload", (req, res) => {
     try {
-      const { sessionId, name, type, size, dataUrl, category } = req.body;
+      const { sessionId, name, type, size, dataUrl, category, uploadedBy, uploaderName, uploaderRole, district } = req.body;
 
       if (!sessionId || !name || !dataUrl) {
         return res.status(400).json({ error: "Missing required fields (sessionId, name, dataUrl)" });
@@ -346,6 +350,10 @@ async function startServer() {
         isDownloadedToSoftware: true,
         verifiedStamp: false,
         category: category || detectDocCategory(name),
+        uploadedBy: uploadedBy ? String(uploadedBy).trim() : undefined,
+        uploaderName: uploaderName ? String(uploaderName).trim() : undefined,
+        uploaderRole: uploaderRole ? String(uploaderRole).trim() : undefined,
+        district: district ? String(district).trim() : undefined,
       };
 
       // Store in session
@@ -363,7 +371,7 @@ async function startServer() {
       // Realtime push to any listening desktop clients
       broadcastToFileSubscribers(file.sessionId, file);
 
-      console.log(`[QR-UPLOAD] Received "${file.name}" (${file.size} bytes) for Session ${file.sessionId}`);
+      console.log(`[QR-UPLOAD] Received "${file.name}" (${file.size} bytes) for Session ${file.sessionId} by ${file.uploadedBy || 'anonymous'} [${file.district || 'Unassigned'}]`);
 
       return res.status(200).json({ success: true, file });
     } catch (err: any) {
@@ -387,10 +395,32 @@ async function startServer() {
     }
   });
 
-  // Get all vault files
+  // Get all vault files (Strictly scoped: counselors only see their own files; DNO can see their district or all files)
   app.get("/api/qr-vault", (req, res) => {
     try {
-      return res.json({ success: true, files: vaultStore });
+      const username = ((req.query.username as string) || '').trim().toLowerCase();
+      const role = ((req.query.role as string) || '').trim().toLowerCase();
+      const district = ((req.query.district as string) || '').trim().toLowerCase();
+
+      let files = vaultStore;
+
+      const isDno = role === 'dno' || username === 'dno';
+
+      if (isDno) {
+        if (district && username !== 'dno') {
+          files = files.filter(f => !f.district || f.district.trim().toLowerCase() === district);
+        }
+        return res.json({ success: true, files });
+      }
+
+      // Counselor / Staff: Only see their own files. Any other counselor cannot see them.
+      if (username) {
+        files = files.filter(f => (f.uploadedBy || '').trim().toLowerCase() === username);
+      } else {
+        files = [];
+      }
+
+      return res.json({ success: true, files });
     } catch (err: any) {
       return res.status(500).json({ error: err?.message || 'Error fetching vault files' });
     }

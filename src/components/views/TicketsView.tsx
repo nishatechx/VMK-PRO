@@ -30,6 +30,8 @@ import {
   X,
   Send,
   Eye,
+  MapPin,
+  Lock,
 } from 'lucide-react';
 import { TicketRecord, TicketStatus, TicketType, UserProfile } from '../../types/auth';
 import { hasFeaturePermission } from '../../services/authService';
@@ -87,9 +89,25 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
     return () => unsubscribe();
   }, []);
 
+  const isDno = currentUser?.role === 'dno' || currentUser?.username?.toLowerCase() === 'dno';
+  const currentDistrict = (currentUser?.district || 'Washim').trim().toLowerCase();
+
+  // Scoped tickets base:
+  // - DNO: shows ONLY tickets from counselors belonging to his assigned district
+  // - Counselor / Staff: shows ONLY tickets created by this counselor/staff member
+  const scopedTickets = useMemo(() => {
+    return tickets.filter((t) => {
+      if (isDno) {
+        const ticketDist = (t.district || 'Washim').trim().toLowerCase();
+        return ticketDist === currentDistrict;
+      }
+      return t.createdBy === currentUser?.username || t.createdBy === currentUser?.id;
+    });
+  }, [tickets, isDno, currentDistrict, currentUser]);
+
   // Filter & Search Tickets
   const filteredTickets = useMemo(() => {
-    return tickets
+    return scopedTickets
       .filter((t) => {
         // Creator filter
         if (creatorFilter === 'me' && currentUser) {
@@ -134,16 +152,16 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
         const timeB = new Date(b.createdAt).getTime();
         return sortBy === 'newest' ? timeB - timeA : timeA - timeB;
       });
-  }, [tickets, searchTerm, statusFilter, typeFilter, creatorFilter, sortBy, currentUser]);
+  }, [scopedTickets, searchTerm, statusFilter, typeFilter, creatorFilter, sortBy, currentUser]);
 
   // Statistics
-  const totalCount = tickets.length;
+  const totalCount = scopedTickets.length;
   const myCount = currentUser
-    ? tickets.filter((t) => t.createdBy === currentUser.username || t.createdBy === currentUser.id).length
+    ? scopedTickets.filter((t) => t.createdBy === currentUser.username || t.createdBy === currentUser.id).length
     : 0;
-  const openCount = tickets.filter((t) => t.status === 'Open').length;
-  const inProgressCount = tickets.filter((t) => t.status === 'In Progress').length;
-  const resolvedCount = tickets.filter((t) => t.status === 'Resolved' || t.status === 'Closed').length;
+  const openCount = scopedTickets.filter((t) => t.status === 'Open').length;
+  const inProgressCount = scopedTickets.filter((t) => t.status === 'In Progress').length;
+  const resolvedCount = scopedTickets.filter((t) => t.status === 'Resolved' || t.status === 'Closed').length;
 
   const handleCopyText = async (text: string, id: string) => {
     try {
@@ -421,6 +439,33 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
           <span>{actionFeedback.message}</span>
         </div>
       )}
+
+      {/* District Scoping Banner */}
+      <div className={`p-3.5 rounded-2xl border flex flex-wrap items-center justify-between gap-3 text-xs shadow-2xs ${
+        isDno ? 'bg-sky-50 border-sky-200 text-sky-950' : 'bg-slate-50 border-slate-200 text-slate-800'
+      }`}>
+        <div className="flex items-center gap-2">
+          {isDno ? (
+            <MapPin className="w-4 h-4 text-sky-600 shrink-0" />
+          ) : (
+            <Lock className="w-4 h-4 text-slate-500 shrink-0" />
+          )}
+          <span>
+            {isDno ? (
+              <>
+                DNO Supervision Mode &bull; Showing only tickets belonging to <strong>{currentUser?.district || 'Washim'} District</strong> counselors and staff.
+              </>
+            ) : (
+              <>
+                Private Counselor View &bull; Showing only your created tickets.
+              </>
+            )}
+          </span>
+        </div>
+        <span className="px-2.5 py-0.5 rounded-full font-bold bg-white border border-current text-[11px] shrink-0">
+          {scopedTickets.length} Accessible Tickets
+        </span>
+      </div>
 
       {/* Analytics / Metric Highlights */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">

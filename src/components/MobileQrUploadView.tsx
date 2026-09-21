@@ -34,6 +34,24 @@ interface StagedFileItem {
 }
 
 export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionId, onBackToMain }) => {
+  const [uploaderParams] = useState<{
+    uploadedBy?: string;
+    uploaderName?: string;
+    uploaderRole?: string;
+    district?: string;
+  }>(() => {
+    if (typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      return {
+        uploadedBy: sp.get('uploader') || undefined,
+        uploaderName: sp.get('uploaderName') || sp.get('uploader') || undefined,
+        uploaderRole: sp.get('uploaderRole') || 'counsellor',
+        district: sp.get('district') || undefined,
+      };
+    }
+    return {};
+  });
+
   const [stagedFiles, setStagedFiles] = useState<StagedFileItem[]>([]);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
@@ -204,6 +222,10 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
           type: item.file.type || 'application/octet-stream',
           size: item.file.size,
           dataUrl,
+          uploadedBy: uploaderParams.uploadedBy,
+          uploaderName: uploaderParams.uploaderName,
+          uploaderRole: uploaderParams.uploaderRole,
+          district: uploaderParams.district,
         });
 
         completed++;

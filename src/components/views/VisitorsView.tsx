@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   UserCheck,
   UserPlus,
@@ -20,6 +20,7 @@ import {
   ListFilter,
   User,
   MapPin,
+  Lock,
   HelpCircle,
   ExternalLink,
   RefreshCw,
@@ -242,6 +243,8 @@ export const VisitorsView: React.FC<VisitorsViewProps> = ({ currentUser, onNavig
       status: checkOutTime.trim() ? 'Checked Out' : status,
       candidateAppId: candidateAppId.trim() ? candidateAppId.trim().toUpperCase() : undefined,
       remarks: remarks.trim() || undefined,
+      district: currentUser?.district || 'Washim',
+      createdBy: currentUser?.username || currentUser?.id,
       createdAt: editingVisitor ? editingVisitor.createdAt : new Date().toISOString(),
     };
 
@@ -334,7 +337,7 @@ export const VisitorsView: React.FC<VisitorsViewProps> = ({ currentUser, onNavig
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `VMK_Washim_Visitors_Register_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `VMK_${currentUser?.district || 'Washim'}_Visitors_Register_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -344,7 +347,23 @@ export const VisitorsView: React.FC<VisitorsViewProps> = ({ currentUser, onNavig
     window.print();
   };
 
-  const filteredVisitors = visitors.filter((v) => {
+  const isDno = currentUser?.role === 'dno' || currentUser?.username?.toLowerCase() === 'dno';
+  const currentDistrict = (currentUser?.district || 'Washim').trim().toLowerCase();
+
+  // Scoped visitors:
+  // - DNO: only sees visitors logged in his assigned district
+  // - Counselor / Staff: only sees visitors logged by themselves
+  const scopedVisitors = useMemo(() => {
+    return visitors.filter((v) => {
+      if (isDno) {
+        const vDist = (v.district || 'Washim').trim().toLowerCase();
+        return vDist === currentDistrict;
+      }
+      return v.createdBy === currentUser?.username || v.createdBy === currentUser?.id;
+    });
+  }, [visitors, isDno, currentDistrict, currentUser]);
+
+  const filteredVisitors = scopedVisitors.filter((v) => {
     const matchesSearch =
       v.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       v.mobile.includes(searchTerm) ||
@@ -361,13 +380,13 @@ export const VisitorsView: React.FC<VisitorsViewProps> = ({ currentUser, onNavig
   });
 
   // Calculate Metrics
-  const totalCount = visitors.length;
-  const inPremisesCount = visitors.filter((v) => v.status === 'In Premises').length;
-  const checkedOutCount = visitors.filter((v) => v.status === 'Checked Out').length;
-  const candidateCount = visitors.filter((v) => v.visitorType === 'Candidate').length;
-  const parentCount = visitors.filter((v) => v.visitorType === 'Parent').length;
-  const instituteCount = visitors.filter((v) => v.visitorType === 'Institute').length;
-  const otherCount = visitors.filter((v) => v.visitorType === 'Other').length;
+  const totalCount = scopedVisitors.length;
+  const inPremisesCount = scopedVisitors.filter((v) => v.status === 'In Premises').length;
+  const checkedOutCount = scopedVisitors.filter((v) => v.status === 'Checked Out').length;
+  const candidateCount = scopedVisitors.filter((v) => v.visitorType === 'Candidate').length;
+  const parentCount = scopedVisitors.filter((v) => v.visitorType === 'Parent').length;
+  const instituteCount = scopedVisitors.filter((v) => v.visitorType === 'Institute').length;
+  const otherCount = scopedVisitors.filter((v) => v.visitorType === 'Other').length;
 
   const canAddVisitor = hasFeaturePermission(currentUser, 'add_visitor');
   const canExport = hasFeaturePermission(currentUser, 'export_reports');
@@ -435,7 +454,7 @@ export const VisitorsView: React.FC<VisitorsViewProps> = ({ currentUser, onNavig
             </div>
           ) : (
             <div className="px-3 py-1.5 bg-slate-100 rounded-xl text-xs font-bold text-slate-700 border border-slate-200">
-              Directory ({visitors.length})
+              Directory ({scopedVisitors.length})
             </div>
           )}
 
@@ -497,6 +516,33 @@ export const VisitorsView: React.FC<VisitorsViewProps> = ({ currentUser, onNavig
             </button>
           )}
         </div>
+      </div>
+
+      {/* District Scoping Banner */}
+      <div className={`p-3.5 rounded-2xl border flex flex-wrap items-center justify-between gap-3 text-xs shadow-2xs ${
+        isDno ? 'bg-sky-50 border-sky-200 text-sky-950' : 'bg-slate-50 border-slate-200 text-slate-800'
+      }`}>
+        <div className="flex items-center gap-2">
+          {isDno ? (
+            <MapPin className="w-4 h-4 text-sky-600 shrink-0" />
+          ) : (
+            <Lock className="w-4 h-4 text-slate-500 shrink-0" />
+          )}
+          <span>
+            {isDno ? (
+              <>
+                DNO District Supervision &bull; Displaying visitor entries recorded under <strong>{currentUser?.district || 'Washim'} District</strong> facilitation desks.
+              </>
+            ) : (
+              <>
+                Facilitation Desk &bull; Displaying visitors logged by you.
+              </>
+            )}
+          </span>
+        </div>
+        <span className="px-2.5 py-0.5 rounded-full font-bold bg-white border border-current text-[11px] shrink-0">
+          {scopedVisitors.length} Registered Visitors
+        </span>
       </div>
 
       {/* KPI Stats Cards */}

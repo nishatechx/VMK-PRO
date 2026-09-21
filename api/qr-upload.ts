@@ -20,7 +20,7 @@ export default async function handler(req: any, res: any) {
 
   try {
     const body = await readRequestBody(req);
-    const { sessionId, name, type, size, dataUrl, category } = body;
+    const { sessionId, name, type, size, dataUrl, category, uploadedBy, uploaderName, uploaderRole, district } = body;
 
     if (!sessionId || !name || !dataUrl) {
       return res.status(400).json({ success: false, error: "Missing required fields (sessionId, name, dataUrl)" });
@@ -37,6 +37,10 @@ export default async function handler(req: any, res: any) {
       isDownloadedToSoftware: true,
       verifiedStamp: false,
       category: category || detectDocCategory(name),
+      uploadedBy: uploadedBy ? String(uploadedBy).trim() : undefined,
+      uploaderName: uploaderName ? String(uploaderName).trim() : undefined,
+      uploaderRole: uploaderRole ? String(uploaderRole).trim() : undefined,
+      district: district ? String(district).trim() : undefined,
     };
 
     // Store in session

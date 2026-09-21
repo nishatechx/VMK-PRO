@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Users,
   UserPlus,
@@ -26,8 +26,10 @@ import {
   Trash,
   Settings2,
   X,
+  MapPin,
 } from 'lucide-react';
 import { UserProfile, TabPermission, FeaturePermission, UserRole } from '../../types/auth';
+import { MAHARASHTRA_DISTRICTS } from '../../constants/districts';
 import {
   getAllUsers,
   subscribeToUsers,
@@ -58,8 +60,28 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   onRefreshSession,
 }) => {
   const [users, setUsers] = useState<UserProfile[]>(() => getAllUsers());
+  const [roleFilter, setRoleFilter] = useState<'all' | 'dno' | 'counsellor' | 'supporting_staff' | 'student'>('all');
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+
+  const isDno = currentUser?.role === 'dno' || currentUser?.username?.toLowerCase() === 'dno';
+  const currentDistrict = (currentUser?.district || 'Washim').trim().toLowerCase();
+
+  // "show dno only his districts counselors data"
+  // For DNO: strictly isolate users to their assigned administrative district
+  const scopedUsers = useMemo(() => {
+    return users.filter((u) => {
+      // Always show this DNO's own profile
+      if (u.id === currentUser.id || u.username.toLowerCase() === currentUser.username.toLowerCase()) {
+        return true;
+      }
+      if (isDno) {
+        const uDistrict = (u.district || 'Washim').trim().toLowerCase();
+        return uDistrict === currentDistrict;
+      }
+      return true;
+    });
+  }, [users, isDno, currentDistrict, currentUser]);
 
   // Form State
   const [username, setUsername] = useState('');
@@ -69,6 +91,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   const [designation, setDesignation] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  const [district, setDistrict] = useState<string>('Washim');
   const [profilePicture, setProfilePicture] = useState('');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -229,6 +252,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     setDesignation('Supporting Staff');
     setPhone('');
     setEmail('');
+    setDistrict(currentUser.district || 'Washim');
     setProfilePicture('');
     setIsUploadingImage(false);
     setUploadError('');
@@ -250,6 +274,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     setDesignation(user.designation || '');
     setPhone(user.phone || '');
     setEmail(user.email || '');
+    setDistrict(user.district || currentUser.district || 'Washim');
     setProfilePicture(user.profilePicture || '');
     setIsUploadingImage(false);
     setUploadError('');
@@ -333,9 +358,14 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     setAllowedTabs(['profile']);
   };
 
-  const handleRolePreset = (selectedRole: 'counsellor' | 'supporting_staff' | 'student') => {
+  const handleRolePreset = (selectedRole: 'dno' | 'counsellor' | 'supporting_staff' | 'student') => {
     setRole(selectedRole);
-    if (selectedRole === 'counsellor') {
+    if (selectedRole === 'dno') {
+      setDesignation('District Nodal Officer (DNO)');
+      setAllowedTabs(['dashboard', 'visitors', 'tickets', 'students', 'user_management', 'settings', 'profile', 'google_sheets']);
+      setAllowedFeatures(['whatsapp_tool', 'qr_upload_tool', 'ticket_generator_tool', 'img_to_pdf_tool', 'image_to_text_tool', 'add_candidate', 'add_visitor', 'export_reports']);
+      setCanUseApiKey(true);
+    } else if (selectedRole === 'counsellor') {
       setDesignation('Student Guidance Counsellor');
       setAllowedTabs(['dashboard', 'tickets', 'visitors', 'students', 'profile']);
       setAllowedFeatures(['whatsapp_tool', 'ticket_generator_tool', 'add_candidate', 'add_visitor']);
@@ -394,6 +424,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
       designation: designation.trim() || 'Portal Operator',
       phone: phone.trim(),
       email: email.trim(),
+      district: district.trim() || currentUser.district || 'Washim',
       role: role,
       allowedTabs: allowedTabs,
       allowedFeatures: allowedFeatures,
@@ -523,13 +554,86 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
         </div>
       </div>
 
+      {/* DNO District Scoping Banner */}
+      <div className="p-3.5 bg-sky-50 border border-sky-200/80 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs text-sky-950 shadow-2xs">
+        <div className="flex items-center gap-2.5">
+          <MapPin className="w-4 h-4 text-sky-700 shrink-0" />
+          <span>
+            DNO District Scope: <strong className="font-bold text-sky-900 text-sm">{currentUser.district || 'Washim'}</strong> &bull; Showing only counselors, staff and candidate accounts in <strong>{currentUser.district || 'Washim'} District</strong>.
+          </span>
+        </div>
+        <span className="px-2.5 py-1 bg-white border border-sky-200 rounded-lg font-bold text-sky-800 text-[11px] shrink-0">
+          {scopedUsers.filter((u) => u.username.toLowerCase() !== 'dno').length} Staff in District
+        </span>
+      </div>
+
       {/* User Profiles Table */}
       <div className="bg-white/90 backdrop-blur-xs border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs">
-        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-            Active System Profiles ({users.length})
-          </h3>
-          <span className="text-xs text-slate-400">Total authorized accounts</span>
+        {/* Category Filters Header */}
+        <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50">
+          <div className="flex items-center gap-2">
+            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+              Active Profiles ({scopedUsers.length})
+            </h3>
+          </div>
+
+          <div className="flex items-center gap-1.5 overflow-x-auto text-xs select-none">
+            <button
+              type="button"
+              onClick={() => setRoleFilter('all')}
+              className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                roleFilter === 'all'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              All ({scopedUsers.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setRoleFilter('dno')}
+              className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                roleFilter === 'dno'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              DNO ({scopedUsers.filter((u) => u.role === 'dno' || u.username.toLowerCase() === 'dno').length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setRoleFilter('counsellor')}
+              className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                roleFilter === 'counsellor'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              Counsellors ({scopedUsers.filter((u) => u.role === 'counsellor').length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setRoleFilter('supporting_staff')}
+              className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                roleFilter === 'supporting_staff'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              Supporting Staff ({scopedUsers.filter((u) => u.role === 'supporting_staff' || u.role === 'operator').length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setRoleFilter('student')}
+              className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                roleFilter === 'student'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              Students ({scopedUsers.filter((u) => u.role === 'student').length})
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -547,7 +651,14 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {users.map((u) => {
+              {scopedUsers
+                .filter((u) => {
+                  if (roleFilter === 'all') return true;
+                  if (roleFilter === 'dno') return u.role === 'dno' || u.username.toLowerCase() === 'dno';
+                  if (roleFilter === 'supporting_staff') return u.role === 'supporting_staff' || u.role === 'operator';
+                  return u.role === roleFilter;
+                })
+                .map((u) => {
                 const isMasterDno = u.id === DNO_USER.id || u.username.toLowerCase() === 'dno';
 
                 return (
@@ -583,10 +694,14 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                       </div>
                     </td>
 
-                    {/* Name & Designation */}
+                    {/* Name & Designation & District */}
                     <td className="py-3.5 px-4">
                       <p className="font-semibold text-slate-900">{u.fullName}</p>
                       <p className="text-[11px] text-slate-500">{u.designation || 'Staff'}</p>
+                      <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 text-[10px] font-semibold border border-blue-200/80">
+                        <MapPin className="w-2.5 h-2.5 text-blue-600" />
+                        <span>{u.district || 'Washim'}</span>
+                      </span>
                     </td>
 
                     {/* Password */}
@@ -895,10 +1010,15 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
               {/* Role Presets */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
-                  Select Staff Role
+                  Select Staff / User Role Category
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
                   {[
+                    {
+                      id: 'dno' as const,
+                      label: 'DNO (District Officer)',
+                      desc: 'District Nodal Officer • Full admin & supervision',
+                    },
                     {
                       id: 'counsellor' as const,
                       label: 'Counsellor',
@@ -1029,6 +1149,33 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                     placeholder="e.g. operator@vmk.mah.gov.in"
                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:border-blue-600"
                   />
+                </div>
+
+                {/* District Selection Field for DNO Supervision */}
+                <div className="sm:col-span-2 bg-gradient-to-r from-blue-50/70 to-indigo-50/50 p-3.5 rounded-xl border border-blue-200/80 shadow-2xs">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                      <MapPin className="w-4 h-4 text-blue-600" />
+                      <span>Assigned Maharashtra District: <span className="text-red-500">*</span></span>
+                    </label>
+                    <span className="text-[10px] text-blue-800 font-bold bg-blue-100/90 px-2.5 py-0.5 rounded-full border border-blue-200">
+                      DNO Scoping & Visibility
+                    </span>
+                  </div>
+                  <select
+                    value={district}
+                    onChange={(e) => setDistrict(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 cursor-pointer"
+                  >
+                    {MAHARASHTRA_DISTRICTS.map((dist) => (
+                      <option key={dist} value={dist}>
+                        {dist} {dist === (currentUser?.district || 'Washim') ? '• (Current Center District)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-slate-600 mt-1.5 leading-relaxed">
+                    The DNO assigned to <strong>{district}</strong> can view and supervise this staff member's uploaded files and activity data. Other counselors cannot view each other's uploaded vault files.
+                  </p>
                 </div>
               </div>
 

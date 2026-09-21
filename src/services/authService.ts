@@ -56,6 +56,7 @@ export const DNO_USER: UserProfile = {
   fullName: 'Mr. Shrinath Ghodake',
   designation: 'District Nodal Officer (DNO)',
   role: 'dno',
+  district: 'Washim',
   allowedTabs: [
     'dashboard',
     'visitors',
@@ -184,6 +185,10 @@ export function getAllUsers(): UserProfile[] {
       }
       if (!parsed[dnoIndex].allowedTabs.includes('tickets')) {
         parsed[dnoIndex].allowedTabs.push('tickets');
+        modified = true;
+      }
+      if (!parsed[dnoIndex].district) {
+        parsed[dnoIndex].district = 'Washim';
         modified = true;
       }
       if (modified) {

@@ -10,6 +10,10 @@ export interface QrUploadedFile {
   verifiedStamp?: boolean;
   category?: string;
   notes?: string;
+  uploadedBy?: string; // username of user who uploaded (e.g. 'counsellor1', 'dno')
+  uploaderName?: string; // display name of uploader
+  uploaderRole?: string; // role of uploader ('counsellor', 'supporting_staff', 'dno')
+  district?: string; // administrative district (e.g. 'Washim', 'Akola')
 }
 
 export const QR_BROADCAST_CHANNEL = 'vmk_qr_file_sync_channel';

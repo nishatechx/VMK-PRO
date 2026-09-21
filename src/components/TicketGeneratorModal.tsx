@@ -411,6 +411,7 @@ Query: ${query.trim()}`;
       createdBy: activeUser?.username || 'counsellor',
       creatorName: activeUser?.fullName || activeUser?.username || 'Counsellor Officer',
       creatorRole: activeUser?.role || 'counsellor',
+      district: activeUser?.district || 'Washim',
       createdAt: new Date().toISOString(),
     };
 

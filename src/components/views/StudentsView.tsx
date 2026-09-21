@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Search,
   Plus,
@@ -18,6 +18,8 @@ import {
   Check,
   XCircle,
   FileSpreadsheet,
+  MapPin,
+  Lock,
 } from 'lucide-react';
 import { StudentRecord, UserProfile } from '../../types/auth';
 import { DEPARTMENT_COURSES, DEFAULT_COURSE } from '../../data/courses';
@@ -126,6 +128,8 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
       status: newStatus,
       date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
       remarks: newRemarks.trim() || 'Candidate profile registered in scrutiny desk',
+      district: currentUser.district || 'Washim',
+      createdBy: currentUser.username || currentUser.id,
       createdAt: new Date().toISOString(),
     };
 
@@ -148,7 +152,23 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
     }
   };
 
-  const filtered = students.filter((s) => {
+  const isDno = currentUser?.role === 'dno' || currentUser?.username?.toLowerCase() === 'dno';
+  const currentDistrict = (currentUser?.district || 'Washim').trim().toLowerCase();
+
+  // Scoped students:
+  // - DNO: only sees candidate records in his assigned district
+  // - Counselor / Staff: only sees candidates registered by themselves
+  const scopedStudents = useMemo(() => {
+    return students.filter((s) => {
+      if (isDno) {
+        const sDist = (s.district || 'Washim').trim().toLowerCase();
+        return sDist === currentDistrict;
+      }
+      return s.createdBy === currentUser?.username || s.createdBy === currentUser?.id;
+    });
+  }, [students, isDno, currentDistrict, currentUser]);
+
+  const filtered = scopedStudents.filter((s) => {
     const matchesSearch =
       s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       s.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -173,7 +193,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
           <div className="flex items-center gap-2">
             <h2 className="text-base font-bold text-slate-900">Students</h2>
             <span className="text-xs font-mono font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full">
-              {students.length} Records
+              {scopedStudents.length} Records
             </span>
           </div>
         </div>
@@ -212,6 +232,33 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
             </button>
           )}
         </div>
+      </div>
+
+      {/* District Scoping Banner */}
+      <div className={`p-3.5 rounded-2xl border flex flex-wrap items-center justify-between gap-3 text-xs shadow-2xs ${
+        isDno ? 'bg-sky-50 border-sky-200 text-sky-950' : 'bg-slate-50 border-slate-200 text-slate-800'
+      }`}>
+        <div className="flex items-center gap-2">
+          {isDno ? (
+            <MapPin className="w-4 h-4 text-sky-600 shrink-0" />
+          ) : (
+            <Lock className="w-4 h-4 text-slate-500 shrink-0" />
+          )}
+          <span>
+            {isDno ? (
+              <>
+                DNO District Supervision &bull; Displaying candidate records registered under <strong>{currentUser?.district || 'Washim'} District</strong> counselors.
+              </>
+            ) : (
+              <>
+                Counselor Desk &bull; Displaying candidate records registered by you.
+              </>
+            )}
+          </span>
+        </div>
+        <span className="px-2.5 py-0.5 rounded-full font-bold bg-white border border-current text-[11px] shrink-0">
+          {scopedStudents.length} Scoped Candidates
+        </span>
       </div>
 
       {/* Filters Bar */}

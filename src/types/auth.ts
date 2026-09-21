@@ -43,6 +43,7 @@ export interface TicketRecord {
   createdBy: string; // username of the counsellor/officer
   creatorName: string; // full display name
   creatorRole: string; // counsellor, supporting_staff, dno
+  district?: string; // e.g. "Washim", "Akola", etc.
   createdAt: string; // ISO timestamp
   updatedAt?: string;
 }
@@ -54,6 +55,7 @@ export interface UserProfile {
   fullName: string;
   designation: string;
   role: UserRole;
+  district?: string; // Assigned administrative district (e.g. "Washim", "Akola")
   allowedTabs: TabPermission[];
   allowedFeatures: FeaturePermission[];
   canUseApiKey?: boolean; // Granted by DNO to access the master Gemini Vision API key
@@ -77,6 +79,8 @@ export interface StudentRecord {
   remarks: string;
   cetRegNo?: string;
   category?: string;
+  district?: string; // Assigned district (e.g. "Washim", "Akola")
+  createdBy?: string; // Username of creator
   createdAt: string;
 }
 
@@ -106,5 +110,7 @@ export interface VisitorRecord {
   status: 'In Premises' | 'Checked Out';
   candidateAppId?: string; // e.g. "EN24109432"
   remarks?: string;
+  district?: string; // Assigned district (e.g. "Washim", "Akola")
+  createdBy?: string; // Username of creator
   createdAt: string;
 }

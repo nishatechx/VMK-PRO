@@ -1,7 +1,8 @@
 import { QrUploadedFile, QR_BROADCAST_CHANNEL } from '../types/qrUpload';
 export type { QrUploadedFile };
 import { db } from '../lib/firebase';
-import { sanitizeForFirestore } from './authService';
+import { sanitizeForFirestore, getCurrentUser } from './authService';
+import { UserProfile } from '../types/auth';
 import { getDefaultVaultFiles } from '../data/seedVaultDocuments';
 import {
   collection,
@@ -30,12 +31,65 @@ try {
   // BroadcastChannel unavailable
 }
 
+/**
+ * Strict role-based isolation rule:
+ * - "show vault files to concern user only like any other counselor should not be able to see other user files"
+ * - "only dno can see this"
+ * - "give district list to select while user account creation so that respective dno can see his counselors and supporting staff data"
+ */
+export function filterVaultFilesForUser(
+  files: QrUploadedFile[],
+  user: UserProfile | null | undefined
+): QrUploadedFile[] {
+  if (!user) return [];
+
+  const isDno = user.role === 'dno' || user.username.toLowerCase() === 'dno';
+
+  if (isDno) {
+    // Root master DNO ('dno' without district) can see all files across Maharashtra
+    if (user.username.toLowerCase() === 'dno' && !user.district) {
+      return files;
+    }
+    // Respective district DNO can see files belonging to their assigned district
+    const dnoDistrict = (user.district || 'Washim').trim().toLowerCase();
+    return files.filter((f) => {
+      if (!f.district) return true; // Legacy/unassigned files visible to DNO
+      return f.district.trim().toLowerCase() === dnoDistrict;
+    });
+  }
+
+  // Any other counselor / staff / operator:
+  // Strictly filter to files where uploadedBy === current user's username!
+  // No other counselor can see them!
+  const currentUsername = user.username.trim().toLowerCase();
+  return files.filter((f) => {
+    const uploader = (f.uploadedBy || '').trim().toLowerCase();
+    return uploader === currentUsername;
+  });
+}
+
 export const qrUploadService = {
   // Upload a file to session - transmits to backend server & Firebase Firestore
   async uploadFile(
     sessionId: string,
-    fileData: { name: string; type: string; size: number; dataUrl: string; category?: string }
+    fileData: {
+      name: string;
+      type: string;
+      size: number;
+      dataUrl: string;
+      category?: string;
+      uploadedBy?: string;
+      uploaderName?: string;
+      uploaderRole?: string;
+      district?: string;
+    }
   ): Promise<QrUploadedFile> {
+    const user = getCurrentUser();
+    const uploadedBy = fileData.uploadedBy || user?.username || 'counsellor';
+    const uploaderName = fileData.uploaderName || user?.fullName || user?.username || 'Counselor';
+    const uploaderRole = fileData.uploaderRole || user?.role || 'counsellor';
+    const district = fileData.district || user?.district || 'Washim';
+
     const newFile: QrUploadedFile = {
       id: 'file-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
       sessionId,
@@ -47,13 +101,17 @@ export const qrUploadService = {
       isDownloadedToSoftware: true,
       verifiedStamp: false,
       category: fileData.category || this.detectCategory(fileData.name),
+      uploadedBy,
+      uploaderName,
+      uploaderRole,
+      district,
     };
 
     // 1. Post to Firebase Firestore Database
     try {
       const docRef = doc(db, 'qr_uploads', newFile.id);
       await setDoc(docRef, sanitizeForFirestore(newFile));
-      console.log(`[Firebase Firestore] Saved document ${newFile.id} to Firestore`);
+      console.log(`[Firebase Firestore] Saved document ${newFile.id} to Firestore (User: ${uploadedBy}, District: ${district})`);
     } catch (firestoreErr) {
       console.warn('[Firebase Firestore] Warning saving to Firestore:', firestoreErr);
     }
@@ -70,6 +128,10 @@ export const qrUploadService = {
           size: newFile.size,
           dataUrl: newFile.dataUrl,
           category: newFile.category,
+          uploadedBy: newFile.uploadedBy,
+          uploaderName: newFile.uploaderName,
+          uploaderRole: newFile.uploaderRole,
+          district: newFile.district,
         }),
       });
 
@@ -153,52 +215,76 @@ export const qrUploadService = {
     return this.getFromLocalStorage(sessionId);
   },
 
-  // Get all files stored inside the software vault across all sessions
-  async getAllVaultFilesAsync(): Promise<QrUploadedFile[]> {
+  // Get all files stored inside the software vault across all sessions (Strictly scoped by user and district)
+  async getAllVaultFilesAsync(forUser?: UserProfile | null): Promise<QrUploadedFile[]> {
+    const targetUser = forUser !== undefined ? forUser : getCurrentUser();
+
+    // 1. Query Server API with user identity
     try {
-      const q = query(collection(db, 'qr_uploads'), limit(50));
+      const params = new URLSearchParams();
+      if (targetUser) {
+        params.set('username', targetUser.username);
+        params.set('role', targetUser.role);
+        if (targetUser.district) params.set('district', targetUser.district);
+      }
+      const res = await fetch(`/api/qr-vault?${params.toString()}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (Array.isArray(json.files)) {
+          json.files.forEach((f: QrUploadedFile) => this.saveToSoftwareVault(f));
+          return filterVaultFilesForUser(json.files, targetUser);
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    // 2. Query Firestore
+    try {
+      const isDno = targetUser?.role === 'dno' || targetUser?.username?.toLowerCase() === 'dno';
+      let q;
+      if (isDno) {
+        q = query(collection(db, 'qr_uploads'), limit(100));
+      } else if (targetUser?.username) {
+        q = query(collection(db, 'qr_uploads'), where('uploadedBy', '==', targetUser.username), limit(100));
+      } else {
+        q = query(collection(db, 'qr_uploads'), limit(50));
+      }
+
       const snapshot = await getDocs(q);
       if (!snapshot.empty) {
         const list: QrUploadedFile[] = [];
         snapshot.forEach((d) => list.push(d.data() as QrUploadedFile));
         list.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
         list.forEach((f) => this.saveToSoftwareVault(f));
-        return list;
+        return filterVaultFilesForUser(list, targetUser);
       }
     } catch (e) {
       // ignore
     }
 
-    try {
-      const res = await fetch('/api/qr-vault');
-      if (res.ok) {
-        const json = await res.json();
-        if (Array.isArray(json.files) && json.files.length > 0) {
-          json.files.forEach((f: QrUploadedFile) => this.saveToSoftwareVault(f));
-          return json.files;
-        }
-      }
-    } catch {
-      // ignore
-    }
-    return this.getAllVaultFiles();
+    return this.getAllVaultFiles(targetUser);
   },
 
-  // Synchronous read from local vault cache
-  getAllVaultFiles(): QrUploadedFile[] {
+  // Synchronous read from local vault cache (Strictly scoped by user and district)
+  getAllVaultFiles(forUser?: UserProfile | null): QrUploadedFile[] {
+    const targetUser = forUser !== undefined ? forUser : getCurrentUser();
     try {
       const saved = localStorage.getItem(VAULT_STORAGE_KEY);
+      let allFiles: QrUploadedFile[] = [];
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          allFiles = parsed;
         }
       }
-      const initialSeeds = getDefaultVaultFiles();
-      localStorage.setItem(VAULT_STORAGE_KEY, JSON.stringify(initialSeeds));
-      return initialSeeds;
+      if (allFiles.length === 0) {
+        allFiles = getDefaultVaultFiles();
+        localStorage.setItem(VAULT_STORAGE_KEY, JSON.stringify(allFiles));
+      }
+      return filterVaultFilesForUser(allFiles, targetUser);
     } catch {
-      return getDefaultVaultFiles();
+      return filterVaultFilesForUser(getDefaultVaultFiles(), targetUser);
     }
   },
 
@@ -521,7 +607,7 @@ export const qrUploadService = {
   },
 };
 
-export const getAllVaultFilesAsync = () => qrUploadService.getAllVaultFilesAsync();
-export const getAllVaultFiles = () => qrUploadService.getAllVaultFiles();
+export const getAllVaultFilesAsync = (forUser?: UserProfile | null) => qrUploadService.getAllVaultFilesAsync(forUser);
+export const getAllVaultFiles = (forUser?: UserProfile | null) => qrUploadService.getAllVaultFiles(forUser);
 
 

@@ -38,7 +38,9 @@ import {
   triggerFileDownload,
   printDocumentDirectly,
 } from '../types/qrUpload';
-import { qrUploadService } from '../services/qrUploadService';
+import { qrUploadService, filterVaultFilesForUser } from '../services/qrUploadService';
+import { UserProfile } from '../types/auth';
+import { getCurrentUser } from '../services/authService';
 import { InSoftwareDocumentViewer } from './InSoftwareDocumentViewer';
 import { SmartCropModal } from './SmartCropModal';
 import { LiveCameraScannerModal } from './LiveCameraScannerModal';
@@ -48,6 +50,7 @@ import { APP_ASSETS } from '../constants/assets';
 interface QrUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
+  currentUser?: UserProfile | null;
   onOpenImgToPdf?: () => void;
   onOpenImageToText?: (image?: string | QrUploadedFile) => void;
 }
@@ -76,9 +79,14 @@ function formatDocumentDate(isoString: string): string {
 export const QrUploadModal: React.FC<QrUploadModalProps> = ({
   isOpen,
   onClose,
+  currentUser,
   onOpenImgToPdf,
   onOpenImageToText,
 }) => {
+  const activeUser = currentUser || getCurrentUser();
+  const isDno = activeUser?.role === 'dno' || activeUser?.username?.toLowerCase() === 'dno';
+  const userDistrict = activeUser?.district || 'Washim';
+
   const [sessionId, setSessionId] = useState<string>(() => {
     return 'VMK-' + Math.floor(100000 + Math.random() * 900000);
   });
@@ -113,19 +121,19 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
   const localFileInputRef = useRef<HTMLInputElement>(null);
   const singleScanFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Derive mobile upload URL
+  // Derive mobile upload URL with counselor and district context for strict isolation
   const uploadUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}${window.location.pathname}?qrSession=${sessionId}`
+    ? `${window.location.origin}${window.location.pathname}?qrSession=${sessionId}&uploader=${encodeURIComponent(activeUser?.username || '')}&uploaderName=${encodeURIComponent(activeUser?.fullName || activeUser?.username || '')}&uploaderRole=${encodeURIComponent(activeUser?.role || 'counsellor')}&district=${encodeURIComponent(userDistrict)}`
     : `https://vmkwashim.gov.in/?qrSession=${sessionId}`;
 
-  // Fetch session & vault files
+  // Fetch session & vault files filtered strictly by user role and district
   const fetchFiles = async () => {
     try {
-      const allVault = await qrUploadService.getAllVaultFilesAsync();
+      const allVault = await qrUploadService.getAllVaultFilesAsync(activeUser);
       setVaultFiles(allVault);
     } catch {
       // fallback to sync cache
-      const cached = qrUploadService.getAllVaultFiles();
+      const cached = qrUploadService.getAllVaultFiles(activeUser);
       setVaultFiles(cached);
     }
   };
@@ -139,6 +147,10 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
     const interval = setInterval(fetchFiles, 1500);
 
     const onIncomingFile = (newFile: QrUploadedFile) => {
+      // Ensure incoming file conforms to user's access boundaries
+      const filtered = filterVaultFilesForUser([newFile], activeUser);
+      if (filtered.length === 0) return;
+
       setVaultFiles((prev) => {
         if (prev.some((f) => f.id === newFile.id)) return prev;
         return [newFile, ...prev];
@@ -256,6 +268,10 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
               size: optimized.size,
               dataUrl: optimized.dataUrl,
               category: 'Auto-Cropped',
+              uploadedBy: activeUser?.username,
+              uploaderName: activeUser?.fullName || activeUser?.username,
+              uploaderRole: activeUser?.role,
+              district: userDistrict,
             });
             croppedCount++;
           } catch (cropErr) {
@@ -265,6 +281,10 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
               type: file.type || 'image/jpeg',
               size: file.size,
               dataUrl: rawDataUrl,
+              uploadedBy: activeUser?.username,
+              uploaderName: activeUser?.fullName || activeUser?.username,
+              uploaderRole: activeUser?.role,
+              district: userDistrict,
             });
           }
         } else {
@@ -273,6 +293,10 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
             type: file.type || 'application/octet-stream',
             size: file.size,
             dataUrl: rawDataUrl,
+            uploadedBy: activeUser?.username,
+            uploaderName: activeUser?.fullName || activeUser?.username,
+            uploaderRole: activeUser?.role,
+            district: userDistrict,
           });
         }
         processedCount++;
@@ -339,6 +363,10 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
         size: croppedSize,
         dataUrl: croppedDataUrl,
         category: 'Auto-Cropped',
+        uploadedBy: activeUser?.username,
+        uploaderName: activeUser?.fullName || activeUser?.username,
+        uploaderRole: activeUser?.role,
+        district: userDistrict,
       });
       await fetchFiles();
       setNewUploadCropFile(null);
@@ -369,6 +397,10 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
         size: optimized.size,
         dataUrl: optimized.dataUrl,
         category: 'Camera-Scan',
+        uploadedBy: activeUser?.username,
+        uploaderName: activeUser?.fullName || activeUser?.username,
+        uploaderRole: activeUser?.role,
+        district: userDistrict,
       });
       await fetchFiles();
       setStatusMessage({
@@ -429,6 +461,10 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
         size: croppedSize,
         dataUrl: croppedDataUrl,
         category: cropTargetFile.category,
+        uploadedBy: activeUser?.username || cropTargetFile.uploadedBy,
+        uploaderName: activeUser?.fullName || activeUser?.username || cropTargetFile.uploaderName,
+        uploaderRole: activeUser?.role || cropTargetFile.uploaderRole,
+        district: userDistrict || cropTargetFile.district,
       });
 
       setStatusMessage({
@@ -997,9 +1033,17 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                             <UploadCloud className="w-5 h-5 text-white" />
                           </div>
                           <div>
-                            <h2 className="text-base font-bold text-white tracking-wide leading-tight">
-                              Software Vault
+                            <h2 className="text-base font-bold text-white tracking-wide leading-tight flex items-center gap-2">
+                              <span>Software Vault</span>
+                              <span className="text-[10px] font-bold bg-white/20 text-white px-2 py-0.5 rounded-md border border-white/20">
+                                {isDno ? `DNO View • ${userDistrict}` : `Private Counselor View`}
+                              </span>
                             </h2>
+                            <p className="text-[11px] text-blue-100 font-normal">
+                              {isDno
+                                ? `Supervising verified documents for ${userDistrict} District counselors`
+                                : `Private vault — other counselors cannot access your files`}
+                            </p>
                           </div>
                         </div>
 
@@ -1039,6 +1083,31 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                             </button>
                           )}
                         </div>
+                      </div>
+
+                      {/* Scoping and Privacy Banner */}
+                      <div className={`px-5 py-2 flex items-center justify-between text-xs border-b shrink-0 ${
+                        isDno 
+                          ? 'bg-blue-50/90 text-blue-900 border-blue-100' 
+                          : 'bg-emerald-50/90 text-emerald-900 border-emerald-100'
+                      }`}>
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className={`w-4 h-4 shrink-0 ${isDno ? 'text-blue-600' : 'text-emerald-600'}`} />
+                          <span className="text-[11px] leading-tight">
+                            {isDno ? (
+                              <span>
+                                <strong>DNO Supervision Mode:</strong> Showing all uploaded documents across <strong>{userDistrict} District</strong> staff & counselors ({displayedVaultFiles.length} files).
+                              </span>
+                            ) : (
+                              <span>
+                                <strong>Strict Privacy Active:</strong> Showing your uploaded vault documents only (<strong>{activeUser?.fullName || activeUser?.username}</strong>). Other counselors cannot see your documents.
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-bold bg-white px-2 py-0.5 rounded-md border border-slate-200 text-slate-700 shrink-0">
+                          {userDistrict} District
+                        </span>
                       </div>
 
                       {/* Filter Category Tabs */}
@@ -1219,10 +1288,16 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                                       <span>•</span>
                                       <span>{formattedDate}</span>
                                     </div>
-                                    <div className="mt-1">
+                                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
                                       <span className="inline-block text-[10px] font-semibold text-[#0056A6] bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-md">
                                         {file.category || 'Candidate Document'}
                                       </span>
+                                      {file.uploadedBy && (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
+                                          <span>By: {file.uploaderName || file.uploadedBy}</span>
+                                          {file.district && <span className="text-blue-700 font-semibold">• {file.district}</span>}
+                                        </span>
+                                      )}
                                     </div>
                                   </div>
                                 </div>

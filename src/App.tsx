@@ -596,6 +596,7 @@ export default function App() {
       <QrUploadModal
         isOpen={isQrUploadModalOpen}
         onClose={() => setIsQrUploadModalOpen(false)}
+        currentUser={currentUser}
         onOpenImgToPdf={hasFeaturePermission(currentUser, 'img_to_pdf_tool') ? handleOpenImgToPdf : undefined}
         onOpenImageToText={hasFeaturePermission(currentUser, 'image_to_text_tool') ? handleOpenImageToTextWithImage : undefined}
       />
