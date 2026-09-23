@@ -1,7 +1,12 @@
-import React, { useState } from "react";
-import { authenticateAsync } from "../services/authService";
+import React, { useState, useEffect, useRef } from "react";
+import {
+  authenticateAsync,
+  findUserByUsername,
+  getAllUsers,
+  SUPER_ADMIN_USER,
+} from "../services/authService";
 import { UserProfile } from "../types/auth";
-import { AlertCircle, Clock } from "lucide-react";
+import { ArrowRight, ArrowLeft, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { APP_ASSETS } from "../constants/assets";
 
 interface LoginScreenProps {
@@ -9,43 +14,104 @@ interface LoginScreenProps {
   sessionTimeoutMessage?: string | null;
 }
 
-const OWL_USER =
-  "https://blogger.googleusercontent.com/img/a/AVvXsEjJTzqBsxUb7bUn4spbV1MCF9IIV52IOZBn2CI1wk6Lhbt4Z6Ixi9aeEVLogDs0ROJPSWJp2XWjqTrgJBn8MC2e2HI9MqW18Xuf3RNdkhEQJxQ3gGuQiajpAVc_mHe6pRBv3eRdHU9f_S2p7I-I18uTW3dt02tr1EaQT4wdqOHW331QZhTmFgggO3TWRRA";
+const BACKGROUND_IMAGE_URL =
+  "https://blogger.googleusercontent.com/img/a/AVvXsEiCfgSBobC0QO7wxdO4El6WiJPyRaJRPwfNCho5cNz-uDrLf-eIqNAp0YtrOxeU8v5U9aunXe1nZ56ugNIMANhLg3Z1PJi6ZYm41qgEElTeL_xo34Gna6rLAIv45CJwdzakCDw2M1m1roPKrWbOgWUKsq4HgIZtJPw2Iyeh981r-pmf3IsLdMcBeWMbzGg=s1600";
 
-const OWL_PASSWORD =
-  "https://blogger.googleusercontent.com/img/a/AVvXsEg7KiEDCaNRU9PviiSmaKBiacBQgrrVc7m4dzpw_nF2MB8_QGr-C0UY4JnwFQsP6RevNmCsyl0PGfmvemKvk6Cg75abveJa7-M4okyA8CqckwCrAN7sdlJjy8OAfwTihk6dl6DCV_hfr5pVBqNLlMTt2VDHKolPQ4XN1KIW8scu4zPtz9W7KV-2m3DeVSo";
+/**
+ * Cleanly extracts a friendly display name (e.g., "Shrinath")
+ */
+function extractDisplayName(user: UserProfile | null, rawInput: string): string {
+  if (user?.fullName) {
+    const withoutSalutation = user.fullName
+      .replace(/^(Mr\.|Dr\.|Mrs\.|Ms\.|Prof\.)\s*/i, "")
+      .trim();
+    const firstWord = withoutSalutation.split(" ")[0];
+    return firstWord || withoutSalutation;
+  }
+  const clean = rawInput.trim();
+  if (clean.toLowerCase() === "shri123" || clean.toLowerCase() === "shrinath") {
+    return "Shrinath";
+  }
+  return clean.charAt(0).toUpperCase() + clean.slice(1);
+}
 
-const LOGIN_BG =
-  "https://blogger.googleusercontent.com/img/a/AVvXsEgeAKwgGG1tV7qY4_y9u9NQ2dt_mGCqcSI-8zsaVnPa9Yk3YQxli3_XbRG9kyPMPUtFZwtpET9k3AMOlt17h6kM_WhC8TmJEjkMK0y-uiK1cUCHY_ik8C3K4ooZypOVq_70GmvLGQfdyqnFQRjrOGreEperImh8FrREM_4WuS-UN9X7BbFI9q_qIwyqewc=s1600";
+export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
+  // Step 1: User ID input | Step 2: Password input
+  const [step, setStep] = useState<1 | 2>(1);
 
-export function LoginScreen({ onLoginSuccess, sessionTimeoutMessage }: LoginScreenProps) {
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
-  const [activeField, setActiveField] = useState("user");
+  const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  React.useEffect(() => {
-    const img1 = new Image();
-    img1.src = OWL_USER;
-    const img2 = new Image();
-    img2.src = OWL_PASSWORD;
-    const imgLogo = new Image();
-    imgLogo.src = APP_ASSETS.LOGO;
-  }, []);
+  // Authenticated or resolved user profile for step 2
+  const [resolvedUser, setResolvedUser] = useState<UserProfile | null>(null);
 
-  const isTypingPassword = activeField === "password" || password.length > 0;
-  const owl = isTypingPassword ? OWL_PASSWORD : OWL_USER;
+  const userIdInputRef = useRef<HTMLInputElement>(null);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanUser = userId.trim();
-    const cleanPass = password.trim();
+  // Auto-focus input when transitioning between steps
+  useEffect(() => {
+    if (step === 1) {
+      userIdInputRef.current?.focus();
+    } else if (step === 2) {
+      passwordInputRef.current?.focus();
+    }
+  }, [step]);
 
-    if (!cleanUser) {
+  // Handle Step 1: User ID Validation & Step Transition
+  const handleUserIdSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const cleanId = userId.trim();
+
+    if (!cleanId) {
       setErrorMsg("Please enter your User ID");
       return;
     }
+
+    setErrorMsg(null);
+    setIsLoading(true);
+
+    try {
+      // 1. Check direct lookup in auth service
+      let matchedUser = await findUserByUsername(cleanId);
+
+      // 2. Fallback check from memory/local storage
+      if (!matchedUser) {
+        const all = getAllUsers();
+        matchedUser =
+          all.find((u) => u.username.toLowerCase() === cleanId.toLowerCase()) || null;
+      }
+
+      // 3. Common alias support (e.g. SHRI123 -> Super Admin Shrinath)
+      if (!matchedUser && cleanId.toLowerCase() === "shri123") {
+        matchedUser = SUPER_ADMIN_USER;
+      }
+
+      if (matchedUser) {
+        setResolvedUser(matchedUser);
+        setStep(2);
+      } else {
+        // If not in known database list, allow user to proceed with entered ID
+        setResolvedUser(null);
+        setStep(2);
+      }
+    } catch (err) {
+      console.warn("User lookup issue:", err);
+      // Still proceed to password prompt cleanly
+      setResolvedUser(null);
+      setStep(2);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle Step 2: Password Authentication
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanId = userId.trim();
+    const cleanPass = password.trim();
 
     if (!cleanPass) {
       setErrorMsg("Please enter your password");
@@ -56,244 +122,240 @@ export function LoginScreen({ onLoginSuccess, sessionTimeoutMessage }: LoginScre
     setIsLoading(true);
 
     try {
-      const user = await authenticateAsync(cleanUser, cleanPass);
+      // Authenticate with user ID or normalized alias
+      let authId = cleanId;
+      if (cleanId.toLowerCase() === "shri123") {
+        authId = "shrinath";
+      }
+
+      const user = await authenticateAsync(authId, cleanPass);
       if (user) {
         if (onLoginSuccess) {
           onLoginSuccess(user);
         }
       } else {
-        setErrorMsg("Invalid User ID or Password");
+        setErrorMsg("Invalid password. Please try again.");
         setIsLoading(false);
       }
     } catch (err) {
-      console.error("Login error:", err);
-      setErrorMsg("Unable to connect. Please try again.");
+      console.error("Authentication error:", err);
+      setErrorMsg("Unable to verify credentials. Please try again.");
       setIsLoading(false);
     }
   };
 
-  return (
-    <div
-      id="login-screen-root"
-      className="relative min-h-screen w-full flex items-center justify-center p-4 sm:p-6 select-none overflow-hidden"
-    >
-      {/* Background Image */}
-      <img
-        src={LOGIN_BG}
-        alt="Login Background"
-        referrerPolicy="no-referrer"
-        className="absolute inset-0 w-full h-full object-cover object-center pointer-events-none"
-      />
-      {/* Subtle overlay for optimal contrast */}
-      <div className="absolute inset-0 bg-slate-900/20 backdrop-blur-[0.5px] pointer-events-none" />
+  // Return from Step 2 back to Step 1
+  const handleChangeUserId = () => {
+    setStep(1);
+    setPassword("");
+    setErrorMsg(null);
+  };
 
-      {/* Official Government Portal Logo - Top Left */}
-      <div
-        id="login-brand-logo-container"
-        className="absolute top-4 left-4 sm:top-6 sm:left-8 z-30 flex items-center"
-      >
-        <div className="bg-white/95 backdrop-blur-md px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl shadow-lg border border-white/80 transition-all hover:bg-white flex items-center">
+  const displayName = extractDisplayName(resolvedUser, userId);
+
+  return (
+    <main
+      id="login-screen-root"
+      style={{
+        backgroundImage: `url("${BACKGROUND_IMAGE_URL}")`,
+      }}
+      className="relative w-screen h-screen min-h-screen bg-cover bg-center bg-no-repeat overflow-hidden flex items-center justify-center lg:justify-end px-5 sm:px-10 lg:pr-[12%] xl:pr-[16%] text-white select-none"
+    >
+      {/* Subtle overlay only on small mobile viewports for enhanced contrast without a card */}
+      <div className="absolute inset-0 bg-slate-950/20 lg:bg-transparent pointer-events-none" />
+
+      {/* LOGIN UI: Natural, unboxed interface directly over the background */}
+      <div className="relative z-10 w-full max-w-[420px] min-h-[380px] flex flex-col justify-center">
+        {/* Brand Logo on top above login form */}
+        <div className="mb-5 flex justify-center lg:justify-start">
           <img
-            id="login-brand-logo"
+            id="login-page-brand-logo"
             src={APP_ASSETS.LOGO}
             alt="State Common Entrance Test Cell, Maharashtra"
+            className="h-14 sm:h-16 md:h-20 w-auto max-w-[320px] sm:max-w-[400px] object-contain block drop-shadow-md select-none transition-transform hover:scale-[1.02]"
             referrerPolicy="no-referrer"
-            className="h-8 sm:h-11 md:h-13 w-auto max-w-[190px] sm:max-w-[270px] md:max-w-[320px] object-contain block"
-          />
-        </div>
-      </div>
-
-      <div className="relative z-10 w-full max-w-[430px] mx-auto">
-        {/* OWL CHARACTER */}
-        <div className="relative z-20 h-[155px] flex items-end justify-center -mb-[42px]">
-          <img
-            src={owl}
-            alt="VMKTools Owl"
-            referrerPolicy="no-referrer"
-            className="
-              h-[195px]
-              w-auto
-              object-contain
-              block
-              translate-y-[60px]
-              transition-all
-              duration-300
-              ease-in-out
-            "
           />
         </div>
 
-        {/* LOGIN FORM CARD */}
-        <div
-          className="
-            relative
-            z-10
-            rounded-[24px]
-            bg-white
-            px-8
-            pt-[58px]
-            pb-8
-            shadow-2xl
-            border
-            border-slate-100
-          "
-        >
-          {/* Timeout Alert Notice */}
-          {sessionTimeoutMessage && (
-            <div
-              id="session-timeout-alert"
-              className="mb-4 w-full flex items-start gap-2.5 p-3 bg-amber-50 border border-amber-300 text-amber-900 rounded-xl text-xs font-semibold animate-in fade-in"
-            >
-              <Clock className="w-4 h-4 shrink-0 text-amber-700 mt-0.5" />
-              <div className="flex-1">
-                <span className="font-bold block text-amber-900">Session Expired</span>
-                <span className="text-amber-800 leading-tight block mt-0.5">{sessionTimeoutMessage}</span>
-              </div>
-            </div>
-          )}
-
-          {/* Error Message */}
-          {errorMsg && (
-            <div
-              id="login-error-alert"
-              className="mb-4 w-full flex items-center gap-2 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-medium"
-            >
-              <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
-              <span>{errorMsg}</span>
-            </div>
-          )}
-
-          <form
-            onSubmit={handleSubmit}
-            className="space-y-5"
-            autoComplete="off"
-            autoCapitalize="off"
-            autoCorrect="off"
-            spellCheck="false"
+        {/* ========================================================================= */}
+        {/* STEP 1: USER ID                                                           */}
+        {/* ========================================================================= */}
+        {step === 1 && (
+          <div
+            key="step-1"
+            className="w-full space-y-6 transition-all duration-300 ease-out animate-in fade-in slide-in-from-bottom-3"
           >
-            {/* USER ID */}
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">
-                User ID
-              </label>
+            {/* Inline Error Message */}
+            {errorMsg && (
+              <div
+                role="alert"
+                className="flex items-center gap-2 p-3 rounded-xl bg-red-950/80 border border-red-500/60 text-red-200 text-xs font-semibold backdrop-blur-md animate-in fade-in shadow-md"
+              >
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
 
-              <input
-                id="username-input"
-                name="user_identifier_auth"
-                type="text"
-                value={userId}
-                onFocus={() => setActiveField("user")}
-                onChange={(e) => {
-                  setUserId(e.target.value);
-                  if (errorMsg) setErrorMsg(null);
-                }}
-                placeholder="Enter your User ID"
-                required
-                autoFocus
-                autoComplete="off"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-                data-lpignore="true"
-                data-form-type="other"
-                data-bwignore="true"
-                className="
-                  w-full
-                  h-12
-                  rounded-xl
-                  border border-slate-200
-                  bg-slate-50
-                  px-4
-                  text-slate-900
-                  outline-none
-                  transition
-                  focus:border-blue-500
-                  focus:ring-4
-                  focus:ring-blue-500/10
-                  focus:bg-white
-                "
-              />
+            {/* Step 1 Form */}
+            <form onSubmit={handleUserIdSubmit} className="space-y-5" noValidate>
+              <div className="space-y-2">
+                <label
+                  htmlFor="user-id-field"
+                  className="block text-xs font-bold uppercase tracking-wider text-white drop-shadow-xs"
+                >
+                  User ID
+                </label>
+                <input
+                  ref={userIdInputRef}
+                  id="user-id-field"
+                  type="text"
+                  value={userId}
+                  onChange={(e) => {
+                    setUserId(e.target.value);
+                    if (errorMsg) setErrorMsg(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleUserIdSubmit();
+                    }
+                  }}
+                  placeholder="Enter your User ID"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  disabled={isLoading}
+                  className="w-full h-[54px] px-4 rounded-xl border-2 border-white bg-white/95 focus:bg-white text-slate-900 placeholder-slate-400 text-sm font-semibold outline-none transition-all duration-200 focus:border-yellow-400 focus:ring-4 focus:ring-yellow-400/30 shadow-md"
+                />
+              </div>
+
+              {/* Continue Button - 100% Solid (Non-Transparent) Yellow Gradient */}
+              <button
+                type="submit"
+                disabled={isLoading || !userId.trim()}
+                className="w-full h-[54px] rounded-xl bg-gradient-to-r from-yellow-400 via-amber-400 to-yellow-500 hover:from-yellow-300 hover:to-amber-400 active:scale-[0.99] text-slate-950 font-black text-base shadow-xl shadow-yellow-950/30 border border-yellow-300 transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-4 focus:ring-yellow-400/40"
+              >
+                {isLoading ? (
+                  <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <span>Continue</span>
+                    <ArrowRight className="w-5 h-5 stroke-[2.5]" />
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* STEP 2: USER NAME + PASSWORD                                              */}
+        {/* ========================================================================= */}
+        {step === 2 && (
+          <div
+            key="step-2"
+            className="w-full space-y-6 transition-all duration-300 ease-out animate-in fade-in slide-in-from-bottom-3"
+          >
+            {/* Heading: White 'Welcome back, ' with bold yellow user name ahead of hand 👋 */}
+            <div className="space-y-1.5">
+              <h1 className="text-3xl sm:text-4xl font-black tracking-tight drop-shadow-md leading-tight">
+                <span className="text-white">Welcome back, </span>
+                <span className="text-yellow-400 font-black">{displayName}</span> 👋
+              </h1>
+              <p className="text-sm font-semibold text-white/90 drop-shadow-xs">
+                Good to see you again.
+              </p>
             </div>
 
-            {/* PASSWORD */}
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Password
-              </label>
+            {/* Inline Error Message */}
+            {errorMsg && (
+              <div
+                role="alert"
+                className="flex items-center gap-2 p-3 rounded-xl bg-red-950/80 border border-red-500/60 text-red-200 text-xs font-semibold backdrop-blur-md animate-in fade-in shadow-md"
+              >
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
 
-              <input
-                id="password-input"
-                name="pass_secret_token"
-                type="password"
-                value={password}
-                onFocus={() => setActiveField("password")}
-                onChange={(e) => {
-                  setPassword(e.target.value);
-                  if (errorMsg) setErrorMsg(null);
-                }}
-                placeholder="Enter your password"
-                required
-                autoComplete="new-password"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-                data-lpignore="true"
-                data-form-type="other"
-                data-bwignore="true"
-                className="
-                  w-full
-                  h-12
-                  rounded-xl
-                  border border-slate-200
-                  bg-slate-50
-                  px-4
-                  text-slate-900
-                  outline-none
-                  transition
-                  focus:border-blue-500
-                  focus:ring-4
-                  focus:ring-blue-500/10
-                  focus:bg-white
-                "
-              />
-            </div>
+            {/* Step 2 Form */}
+            <form onSubmit={handlePasswordSubmit} className="space-y-4" noValidate>
+              <div className="space-y-2">
+                <label
+                  htmlFor="password-field"
+                  className="block text-xs font-bold uppercase tracking-wider text-white drop-shadow-xs"
+                >
+                  Password
+                </label>
+                <div className="relative">
+                  <input
+                    ref={passwordInputRef}
+                    id="password-field"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (errorMsg) setErrorMsg(null);
+                    }}
+                    placeholder="Enter your password"
+                    autoComplete="current-password"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    disabled={isLoading}
+                    className="w-full h-[54px] pl-4 pr-12 rounded-xl border-2 border-white bg-white/95 focus:bg-white text-slate-900 placeholder-slate-400 text-sm font-semibold outline-none transition-all duration-200 focus:border-yellow-400 focus:ring-4 focus:ring-yellow-400/30 shadow-md"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+                    tabIndex={-1}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-5 h-5" />
+                    ) : (
+                      <Eye className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+              </div>
 
-            {/* LOGIN BUTTON */}
-            <button
-              id="login-submit-btn"
-              type="submit"
-              disabled={isLoading || !userId.trim() || !password.trim()}
-              className="
-                w-full
-                h-12
-                rounded-xl
-                bg-blue-600
-                text-white
-                font-semibold
-                shadow-lg
-                shadow-blue-600/20
-                transition
-                hover:bg-blue-700
-                active:scale-[0.98]
-                disabled:opacity-60
-                disabled:cursor-not-allowed
-                cursor-pointer
-                flex
-                items-center
-                justify-center
-                gap-2
-              "
-            >
-              {isLoading ? (
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <span>Login</span>
-              )}
-            </button>
-          </form>
-        </div>
+              {/* Action Buttons: Sign In and Back below password field */}
+              <div className="space-y-2.5 pt-1">
+                {/* Sign In Button - 100% Solid (Non-Transparent) Yellow Gradient */}
+                <button
+                  type="submit"
+                  disabled={isLoading || !password.trim()}
+                  className="w-full h-[54px] rounded-xl bg-gradient-to-r from-yellow-400 via-amber-400 to-yellow-500 hover:from-yellow-300 hover:to-amber-400 active:scale-[0.99] text-slate-950 font-black text-base shadow-xl shadow-yellow-950/30 border border-yellow-300 transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-4 focus:ring-yellow-400/40"
+                >
+                  {isLoading ? (
+                    <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <span>Sign In</span>
+                      <ArrowRight className="w-5 h-5 stroke-[2.5]" />
+                    </>
+                  )}
+                </button>
+
+                {/* Back Button - 100% Solid (Non-Transparent) Dark Button */}
+                <button
+                  type="button"
+                  onClick={handleChangeUserId}
+                  disabled={isLoading}
+                  className="w-full h-[48px] rounded-xl bg-slate-950 hover:bg-slate-900 active:scale-[0.99] text-white font-bold text-sm border border-slate-700 shadow-lg transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Back</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
       </div>
-    </div>
+    </main>
   );
 }
 

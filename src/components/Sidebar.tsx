@@ -23,6 +23,9 @@ import {
   Eye,
   EyeOff,
   AlertCircle,
+  UserPlus,
+  Users,
+  Download,
 } from 'lucide-react';
 import { TabPermission, UserProfile } from '../types/auth';
 import { hasTabPermission, hasFeaturePermission } from '../services/authService';
@@ -85,16 +88,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'user_management' as NavTab, label: 'User Management', icon: ShieldCheck },
   ];
 
-  // Check if current user is DNO administrator
+  // Check if current user is Super Admin or DNO administrator
+  const isSuperAdmin = currentUser?.role === 'super_admin' || currentUser?.username?.toLowerCase() === 'shrinath';
   const isDnoAdmin = currentUser?.role === 'dno' || currentUser?.username?.toLowerCase() === 'dno';
 
-  // Tool permissions for active facilitation utilities
-  const canWhatsapp = hasFeaturePermission(currentUser, 'whatsapp_tool');
-  const canQr = hasFeaturePermission(currentUser, 'qr_upload_tool');
-  const canTicket = hasFeaturePermission(currentUser, 'ticket_generator_tool');
-  const canImgToPdf = hasFeaturePermission(currentUser, 'img_to_pdf_tool');
-  const canImageToText = hasFeaturePermission(currentUser, 'image_to_text_tool');
-  const hasAnyTools = canWhatsapp || canQr || canTicket || canImgToPdf || canImageToText;
+  // Tool permissions for active facilitation utilities (hidden for Super Admin)
+  const canWhatsapp = !isSuperAdmin && hasFeaturePermission(currentUser, 'whatsapp_tool');
+  const canQr = !isSuperAdmin && hasFeaturePermission(currentUser, 'qr_upload_tool');
+  const canTicket = !isSuperAdmin && hasFeaturePermission(currentUser, 'ticket_generator_tool');
+  const canImgToPdf = !isSuperAdmin && hasFeaturePermission(currentUser, 'img_to_pdf_tool');
+  const canImageToText = !isSuperAdmin && hasFeaturePermission(currentUser, 'image_to_text_tool');
+  const hasAnyTools = !isSuperAdmin && (canWhatsapp || canQr || canTicket || canImgToPdf || canImageToText);
 
   // Filter tabs according to the logged-in user's allowedTabs RBAC rules (Google Sheets exclusively for DNO Admin)
   const allowedNavItems = allNavItems.filter((item) => {
@@ -105,6 +109,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const getRoleLabel = (role?: string) => {
     if (!role) return 'Authorized User';
     switch (role.toLowerCase()) {
+      case 'super_admin':
+        return 'Super Admin';
       case 'dno':
         return 'DNO Admin';
       case 'counsellor':
@@ -127,22 +133,40 @@ export const Sidebar: React.FC<SidebarProps> = ({
         isCollapsed ? 'w-20' : 'w-64 lg:w-72'
       }`}
     >
+      {/* Top Brand Logo Header */}
+      <div className="pt-3.5 pb-3 px-3 border-b border-[#D9E1EA] bg-transparent flex items-center justify-between gap-1.5 shrink-0">
+        <div className={`flex items-center ${isCollapsed ? 'justify-center w-full' : 'gap-2 flex-1 min-w-0'}`}>
+          <img
+            id="sidebar-brand-logo"
+            src={APP_ASSETS.LOGO}
+            alt="State Common Entrance Test Cell, Maharashtra"
+            className={`${isCollapsed ? 'h-9 w-auto max-w-[60px]' : 'h-10 sm:h-12 w-auto max-w-[220px]'} object-contain block`}
+            referrerPolicy="no-referrer"
+          />
+        </div>
+        {onClose && !isCollapsed && (
+          <button
+            type="button"
+            id="sidebar-close-btn"
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-[#4B5563] hover:text-[#DC3545] hover:bg-[#DC3545]/10 active:scale-95 transition-all cursor-pointer shrink-0"
+            title="Hide / Close Sidebar"
+            aria-label="Hide sidebar"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
       {/* Top User Profile Section */}
-      <div className="pt-4 pb-4 px-3.5 border-b border-[#D9E1EA] bg-gradient-to-b from-[#FFFFFF]/90 to-transparent">
-        {onClose && (
-          <div className="flex items-center justify-between pb-2.5 mb-2 border-b border-[#D9E1EA]">
-            {!isCollapsed && (
-              <span className="text-[11px] font-bold text-[#003B73] tracking-wide uppercase">
-                Navigation Menu
-              </span>
-            )}
+      <div className="pt-3 pb-4 px-3.5 border-b border-[#D9E1EA] bg-gradient-to-b from-[#FFFFFF]/90 to-transparent">
+        {onClose && isCollapsed && (
+          <div className="flex items-center justify-center pb-2 mb-2 border-b border-[#D9E1EA]">
             <button
               type="button"
-              id="sidebar-close-btn"
+              id="sidebar-close-btn-collapsed"
               onClick={onClose}
-              className={`p-1.5 rounded-lg text-[#4B5563] hover:text-[#DC3545] hover:bg-[#DC3545]/10 active:scale-95 transition-all cursor-pointer ${
-                isCollapsed ? 'mx-auto' : 'ml-auto'
-              }`}
+              className="p-1.5 rounded-lg text-[#4B5563] hover:text-[#DC3545] hover:bg-[#DC3545]/10 active:scale-95 transition-all cursor-pointer"
               title="Hide / Close Sidebar"
               aria-label="Hide sidebar"
             >
@@ -277,6 +301,95 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           );
         })}
+
+        {/* Super Admin: User Management Tools Section */}
+        {isSuperAdmin && (
+          <div className="pt-2 pb-1">
+            <div className="my-2 border-t border-purple-200" />
+            {!isCollapsed && (
+              <div className="px-1 pb-1.5 flex items-center justify-between">
+                <span className="text-[10px] font-bold text-purple-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-purple-700" />
+                  User Mgmt Tools
+                </span>
+                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
+                  Super Admin
+                </span>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <button
+                type="button"
+                id="sidebar-superadmin-create-user"
+                onClick={() => {
+                  onSelectTab('user_management');
+                  setTimeout(() => {
+                    window.dispatchEvent(new CustomEvent('open-create-user-modal'));
+                  }, 50);
+                  if (onClose && window.innerWidth < 768) onClose();
+                }}
+                title={isCollapsed ? 'Add New User Profile' : undefined}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-purple-900 hover:text-white bg-purple-50 hover:bg-purple-700 border border-purple-200/80 hover:border-purple-700 transition-all cursor-pointer shadow-2xs group ${
+                  isCollapsed ? 'justify-center px-0 py-2.5' : ''
+                }`}
+              >
+                <div className="w-7 h-7 rounded-xl bg-white border border-purple-200 p-1 flex items-center justify-center shrink-0 shadow-2xs text-purple-700 group-hover:text-purple-700">
+                  <UserPlus className="w-4 h-4 text-purple-700" />
+                </div>
+                {!isCollapsed && (
+                  <span className="flex-1 text-left truncate font-bold">Add New User</span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                id="sidebar-superadmin-master-key"
+                onClick={() => {
+                  onSelectTab('user_management');
+                  setTimeout(() => {
+                    window.dispatchEvent(new CustomEvent('open-master-key-modal'));
+                  }, 50);
+                  if (onClose && window.innerWidth < 768) onClose();
+                }}
+                title={isCollapsed ? 'Master Gemini OCR Key' : undefined}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-indigo-900 hover:text-white bg-indigo-50 hover:bg-indigo-700 border border-indigo-200/80 hover:border-indigo-700 transition-all cursor-pointer shadow-2xs group ${
+                  isCollapsed ? 'justify-center px-0 py-2.5' : ''
+                }`}
+              >
+                <div className="w-7 h-7 rounded-xl bg-white border border-indigo-200 p-1 flex items-center justify-center shrink-0 shadow-2xs text-indigo-700">
+                  <Key className="w-4 h-4 text-indigo-700" />
+                </div>
+                {!isCollapsed && (
+                  <span className="flex-1 text-left truncate font-bold">Master Gemini Key</span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                id="sidebar-superadmin-export-users"
+                onClick={() => {
+                  onSelectTab('user_management');
+                  setTimeout(() => {
+                    window.dispatchEvent(new CustomEvent('export-users-directory'));
+                  }, 50);
+                  if (onClose && window.innerWidth < 768) onClose();
+                }}
+                title={isCollapsed ? 'Export User Directory' : undefined}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-800 hover:text-white bg-slate-100 hover:bg-slate-800 border border-slate-200 hover:border-slate-800 transition-all cursor-pointer shadow-2xs group ${
+                  isCollapsed ? 'justify-center px-0 py-2.5' : ''
+                }`}
+              >
+                <div className="w-7 h-7 rounded-xl bg-white border border-slate-200 p-1 flex items-center justify-center shrink-0 shadow-2xs text-slate-700">
+                  <Download className="w-4 h-4 text-slate-700" />
+                </div>
+                {!isCollapsed && (
+                  <span className="flex-1 text-left truncate font-bold">Export Directory</span>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Tools & Utilities Section (Shifted to Sidebar) */}
         {hasAnyTools && (

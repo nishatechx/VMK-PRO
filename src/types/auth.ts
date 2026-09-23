@@ -18,7 +18,7 @@ export type FeaturePermission =
   | 'add_visitor'
   | 'export_reports';
 
-export type UserRole = 'dno' | 'counsellor' | 'supporting_staff' | 'operator' | 'student';
+export type UserRole = 'super_admin' | 'dno' | 'counsellor' | 'supporting_staff' | 'operator' | 'student';
 
 export type TicketStatus = 'Open' | 'In Progress' | 'Resolved' | 'Closed';
 export type TicketType = 'candidate_ticket' | 'whatsapp_ticket';

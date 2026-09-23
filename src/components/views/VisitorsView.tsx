@@ -25,6 +25,8 @@ import {
   ExternalLink,
   RefreshCw,
   Zap,
+  MessageCircle,
+  ShieldCheck,
 } from 'lucide-react';
 import { VisitorRecord, VisitorType, UserProfile } from '../../types/auth';
 import {
@@ -69,6 +71,9 @@ export const VisitorsView: React.FC<VisitorsViewProps> = ({ currentUser, onNavig
   // Modal State for Quick Popup Entry / Edit
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingVisitor, setEditingVisitor] = useState<VisitorRecord | null>(null);
+
+  // Modal State for Printable Official Gate Pass Slip
+  const [passVisitor, setPassVisitor] = useState<VisitorRecord | null>(null);
 
   // Real-time Firestore visitors sync
   useEffect(() => {
@@ -289,6 +294,32 @@ export const VisitorsView: React.FC<VisitorsViewProps> = ({ currentUser, onNavig
     }
   };
 
+  const handleQuickReCheckIn = (id: string, visitorName: string) => {
+    const list = getVisitorRecords();
+    const idx = list.findIndex((v) => v.id === id);
+    if (idx >= 0) {
+      list[idx].status = 'In Premises';
+      list[idx].checkOutTime = undefined;
+      saveVisitorRecord(list[idx]);
+      refreshList();
+      autoSyncVisitorRow(list[idx]).then(() => {
+        setSheetsConfig(getSavedSheetsConfig());
+      });
+      setFeedback({
+        message: `Visitor "${visitorName}" marked as active inside center.`,
+        type: 'success',
+      });
+      setTimeout(() => setFeedback({ message: '', type: '' }), 3000);
+    }
+  };
+
+  const handleSendWhatsApp = (v: VisitorRecord) => {
+    const cleanPhone = v.mobile.replace(/\D/g, '');
+    const phoneWithCountry = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+    const text = `*GOVERNMENT OF MAHARASHTRA*\n*State CET Cell - Facilitation & Scrutiny Center (${v.district || currentUser?.district || 'Washim'})*\n\nNamaskar *${v.name}*,\nYour visitor registration at the center has been recorded successfully.\n\n📌 *Token / Sr. No.*: #${v.srNo}\n📅 *Date & Check-In*: ${v.date}, ${v.checkInTime}\n📋 *Purpose*: ${v.purpose}\n${v.candidateAppId ? `🎓 *Candidate App ID*: ${v.candidateAppId}\n` : ''}🏛️ *Center Code*: VMK-WSM\n\nPlease keep your original documents ready for scrutiny. Thank you!`;
+    window.open(`https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
   const handleDelete = (id: string, visitorName: string) => {
     if (window.confirm(`Delete visitor entry for "${visitorName}"?`)) {
       deleteVisitorRecord(id);
@@ -347,21 +378,21 @@ export const VisitorsView: React.FC<VisitorsViewProps> = ({ currentUser, onNavig
     window.print();
   };
 
+  const isSuperAdmin = currentUser?.role === 'super_admin' || currentUser?.username?.toLowerCase() === 'shrinath';
   const isDno = currentUser?.role === 'dno' || currentUser?.username?.toLowerCase() === 'dno';
+  const isSupportingStaff = currentUser?.role === 'supporting_staff' || currentUser?.role === 'operator';
   const currentDistrict = (currentUser?.district || 'Washim').trim().toLowerCase();
 
   // Scoped visitors:
-  // - DNO: only sees visitors logged in his assigned district
-  // - Counselor / Staff: only sees visitors logged by themselves
+  // - Super Admin: sees all state-wide visitors across all districts
+  // - DNO, Supporting Staff & Counsellors: see all visitors in their center / district
   const scopedVisitors = useMemo(() => {
     return visitors.filter((v) => {
-      if (isDno) {
-        const vDist = (v.district || 'Washim').trim().toLowerCase();
-        return vDist === currentDistrict;
-      }
-      return v.createdBy === currentUser?.username || v.createdBy === currentUser?.id;
+      if (isSuperAdmin) return true;
+      const vDist = (v.district || 'Washim').trim().toLowerCase();
+      return vDist === currentDistrict;
     });
-  }, [visitors, isDno, currentDistrict, currentUser]);
+  }, [visitors, isSuperAdmin, currentDistrict]);
 
   const filteredVisitors = scopedVisitors.filter((v) => {
     const matchesSearch =
@@ -388,10 +419,11 @@ export const VisitorsView: React.FC<VisitorsViewProps> = ({ currentUser, onNavig
   const instituteCount = scopedVisitors.filter((v) => v.visitorType === 'Institute').length;
   const otherCount = scopedVisitors.filter((v) => v.visitorType === 'Other').length;
 
-  const canAddVisitor = hasFeaturePermission(currentUser, 'add_visitor');
-  const canExport = hasFeaturePermission(currentUser, 'export_reports');
-  const canSheets = hasTabPermission(currentUser, 'google_sheets');
-  const isDnoAdmin = currentUser?.role === 'dno' || currentUser?.username?.toLowerCase() === 'dno';
+  // Supporting staff, DNO, and Super Admin always have visitor actions enabled
+  const canAddVisitor = isSuperAdmin || isDno || isSupportingStaff || hasFeaturePermission(currentUser, 'add_visitor');
+  const canExport = isSuperAdmin || isDno || isSupportingStaff || hasFeaturePermission(currentUser, 'export_reports');
+  const canSheets = isSuperAdmin || isDno || hasTabPermission(currentUser, 'google_sheets');
+  const isDnoAdmin = isSuperAdmin || isDno;
 
   const purposePresets = [
     'Document Verification & Scrutiny',
@@ -518,24 +550,34 @@ export const VisitorsView: React.FC<VisitorsViewProps> = ({ currentUser, onNavig
         </div>
       </div>
 
-      {/* District Scoping Banner */}
+      {/* District / Role Scoping Banner */}
       <div className={`p-3.5 rounded-2xl border flex flex-wrap items-center justify-between gap-3 text-xs shadow-2xs ${
-        isDno ? 'bg-sky-50 border-sky-200 text-sky-950' : 'bg-slate-50 border-slate-200 text-slate-800'
+        isSuperAdmin
+          ? 'bg-purple-50 border-purple-200 text-purple-950'
+          : isDno
+          ? 'bg-sky-50 border-sky-200 text-sky-950'
+          : 'bg-emerald-50 border-emerald-200 text-emerald-950'
       }`}>
         <div className="flex items-center gap-2">
-          {isDno ? (
+          {isSuperAdmin ? (
+            <ShieldCheck className="w-4 h-4 text-purple-600 shrink-0" />
+          ) : isDno ? (
             <MapPin className="w-4 h-4 text-sky-600 shrink-0" />
           ) : (
-            <Lock className="w-4 h-4 text-slate-500 shrink-0" />
+            <Users className="w-4 h-4 text-emerald-600 shrink-0" />
           )}
           <span>
-            {isDno ? (
+            {isSuperAdmin ? (
+              <>
+                Super Administrator Scope &bull; State-wide supervision active for all Maharashtra districts.
+              </>
+            ) : isDno ? (
               <>
                 DNO District Supervision &bull; Displaying visitor entries recorded under <strong>{currentUser?.district || 'Washim'} District</strong> facilitation desks.
               </>
             ) : (
               <>
-                Facilitation Desk &bull; Displaying visitors logged by you.
+                Supporting Staff Counter &bull; Full Visitor Directory active for <strong>{currentUser?.district || 'Washim'} Center</strong> with action buttons (Check In/Out, Edit, Delete, Pass Slip, WhatsApp).
               </>
             )}
           </span>
@@ -1191,9 +1233,18 @@ export const VisitorsView: React.FC<VisitorsViewProps> = ({ currentUser, onNavig
                           {/* Check-Out */}
                           <td className="py-3.5 px-3 font-mono">
                             {v.checkOutTime ? (
-                              <span className="bg-slate-50 px-2 py-0.5 rounded border border-slate-200 text-slate-600">
-                                {v.checkOutTime}
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="bg-slate-50 px-2 py-0.5 rounded border border-slate-200 text-slate-600 text-xs">
+                                  {v.checkOutTime}
+                                </span>
+                                <button
+                                  onClick={() => handleQuickReCheckIn(v.id, v.name)}
+                                  title="Visitor returned / Re-check in"
+                                  className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors cursor-pointer"
+                                >
+                                  <RotateCcw className="w-3 h-3" />
+                                </button>
+                              </div>
                             ) : (
                               <button
                                 onClick={() => handleQuickCheckOut(v.id, v.name)}
@@ -1227,25 +1278,52 @@ export const VisitorsView: React.FC<VisitorsViewProps> = ({ currentUser, onNavig
                           {/* Actions */}
                           <td className="py-3.5 px-4 text-right">
                             <div className="flex items-center justify-end gap-1.5">
+                              {/* WhatsApp Token Pass */}
+                              <button
+                                onClick={() => handleSendWhatsApp(v)}
+                                title="Send WhatsApp Token Slip"
+                                className="p-1.5 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 transition-colors cursor-pointer"
+                              >
+                                <MessageCircle className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Print Pass Slip Modal */}
+                              <button
+                                onClick={() => setPassVisitor(v)}
+                                title="Print Official Visitor Gate Pass"
+                                className="p-1.5 rounded-lg text-blue-600 hover:text-blue-700 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 transition-colors cursor-pointer"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Call Visitor */}
+                              <a
+                                href={`tel:${v.mobile}`}
+                                title={`Call ${v.name} (${v.mobile})`}
+                                className="p-1.5 rounded-lg text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 transition-colors inline-flex items-center"
+                              >
+                                <Phone className="w-3.5 h-3.5" />
+                              </a>
+
+                              {/* Edit Visitor */}
                               {canAddVisitor && (
                                 <button
                                   onClick={() => openEditModal(v)}
                                   title="Edit Visitor Entry"
-                                  className="p-1.5 rounded-lg text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 transition-colors cursor-pointer"
+                                  className="p-1.5 rounded-lg text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 transition-colors cursor-pointer"
                                 >
                                   <Edit2 className="w-3.5 h-3.5" />
                                 </button>
                               )}
 
-                              {isDnoAdmin && (
-                                <button
-                                  onClick={() => handleDelete(v.id, v.name)}
-                                  title="Delete Visitor Entry"
-                                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-200 hover:border-red-200 transition-colors cursor-pointer"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
+                              {/* Delete Visitor (Enabled for Supporting Staff, DNO, Super Admin) */}
+                              <button
+                                onClick={() => handleDelete(v.id, v.name)}
+                                title="Delete Visitor Entry"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-200 hover:border-red-300 transition-colors cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -1507,6 +1585,129 @@ export const VisitorsView: React.FC<VisitorsViewProps> = ({ currentUser, onNavig
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Official Visitor Gate Pass Slip Modal */}
+      {passVisitor && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Printable Pass Area */}
+            <div id="printable-visitor-pass" className="p-6 bg-white space-y-4">
+              {/* Header */}
+              <div className="border-b-2 border-slate-900 pb-3 text-center">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                  Government of Maharashtra &bull; State Common Entrance Test Cell
+                </p>
+                <h2 className="text-base font-black text-slate-900 tracking-tight mt-0.5">
+                  FACILITATION & SCRUTINY CENTER (SAC)
+                </h2>
+                <p className="text-xs font-semibold text-indigo-700 mt-0.5">
+                  District: {passVisitor.district || currentUser?.district || 'Washim'} | Center Code: VMK-WSM
+                </p>
+                <div className="inline-block mt-2 px-3 py-1 bg-slate-900 text-white font-mono font-bold text-xs rounded-full uppercase tracking-wider">
+                  Visitor Gate Pass & Token Slip
+                </div>
+              </div>
+
+              {/* Token Number & Status */}
+              <div className="flex items-center justify-between bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400">Token / Serial No</span>
+                  <p className="text-2xl font-black text-indigo-700 font-mono">#{passVisitor.srNo}</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] uppercase font-bold text-slate-400">Visitor Status</span>
+                  <p className="text-xs font-bold text-emerald-700 mt-0.5 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                    {passVisitor.status}
+                  </p>
+                </div>
+              </div>
+
+              {/* Details Grid */}
+              <div className="grid grid-cols-2 gap-2.5 text-xs">
+                <div className="bg-slate-50/70 p-2.5 rounded-xl border border-slate-200">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Visitor Name</span>
+                  <span className="font-bold text-slate-900 mt-0.5 block">{passVisitor.name}</span>
+                  <span className="text-[10px] text-indigo-600 font-medium">({passVisitor.visitorType})</span>
+                </div>
+
+                <div className="bg-slate-50/70 p-2.5 rounded-xl border border-slate-200">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Contact Phone</span>
+                  <span className="font-bold text-slate-900 mt-0.5 font-mono block">{passVisitor.mobile}</span>
+                </div>
+
+                <div className="col-span-2 bg-slate-50/70 p-2.5 rounded-xl border border-slate-200">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Purpose of Visit</span>
+                  <span className="font-semibold text-slate-800 mt-0.5 block">{passVisitor.purpose}</span>
+                </div>
+
+                {passVisitor.candidateAppId && (
+                  <div className="col-span-2 bg-indigo-50/70 p-2.5 rounded-xl border border-indigo-200">
+                    <span className="text-[10px] uppercase font-bold text-indigo-500 block">Candidate Application ID</span>
+                    <span className="font-mono font-bold text-indigo-900 mt-0.5 block">{passVisitor.candidateAppId}</span>
+                  </div>
+                )}
+
+                <div className="bg-slate-50/70 p-2.5 rounded-xl border border-slate-200">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Date & Arrival Time</span>
+                  <span className="font-medium text-slate-800 mt-0.5 block">{passVisitor.date}, {passVisitor.checkInTime}</span>
+                </div>
+
+                <div className="bg-slate-50/70 p-2.5 rounded-xl border border-slate-200">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Departure / Check-Out</span>
+                  <span className="font-medium text-slate-800 mt-0.5 block">{passVisitor.checkOutTime || 'Active in Center'}</span>
+                </div>
+
+                {passVisitor.remarks && (
+                  <div className="col-span-2 bg-slate-50/70 p-2 rounded-xl border border-slate-200 text-[11px] text-slate-600 italic">
+                    Desk Note: {passVisitor.remarks}
+                  </div>
+                )}
+              </div>
+
+              {/* Signature Box */}
+              <div className="pt-4 grid grid-cols-2 gap-4 text-center text-[10px] text-slate-500 border-t border-slate-200">
+                <div className="border-t border-dashed border-slate-300 pt-1.5">
+                  Visitor / Candidate Signature
+                </div>
+                <div className="border-t border-dashed border-slate-300 pt-1.5">
+                  Supporting Staff / Counter Stamp
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setPassVisitor(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+              >
+                Close Slip
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSendWhatsApp(passVisitor)}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  <span>WhatsApp Slip</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-600/20 cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print Official Slip</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

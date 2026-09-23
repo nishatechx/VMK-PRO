@@ -66,10 +66,10 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
   return (
     <header
       id="top-navbar"
-      className="w-full bg-white border-b border-[#D9E1EA] px-3 sm:px-6 py-2.5 flex items-center justify-between z-30 select-none shadow-xs"
+      className="w-full bg-white border-b border-[#D9E1EA] px-3 sm:px-6 py-2 flex items-center justify-between z-30 select-none shadow-xs min-h-[64px] sm:min-h-[72px]"
     >
       {/* Left: Hamburger & Government Portal Identity */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 sm:gap-4">
         <button
           id="mobile-menu-toggle"
           onClick={onToggleSidebar}
@@ -77,7 +77,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           title="Toggle Navigation Menu"
           aria-label="Toggle navigation menu"
         >
-          <Menu className="w-5 h-5" />
+          <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
         </button>
 
         <div className="flex items-center shrink-0">
@@ -85,7 +85,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
             id="top-navbar-brand-logo"
             src={APP_ASSETS.LOGO}
             alt="State Common Entrance Test Cell, Maharashtra"
-            className="h-9 sm:h-11 md:h-12 w-auto max-w-[190px] sm:max-w-[280px] md:max-w-[340px] object-contain block py-0.5"
+            className="h-12 sm:h-14 md:h-16 lg:h-18 w-auto max-w-[240px] sm:max-w-[360px] md:max-w-[480px] lg:max-w-[540px] object-contain block py-0.5 select-none"
             referrerPolicy="no-referrer"
           />
         </div>
@@ -180,7 +180,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
                     className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[#003B73] font-semibold hover:bg-[#EAF4FB] rounded-xl cursor-pointer transition-colors"
                   >
                     <ShieldCheck className="w-4 h-4 text-[#0056A6]" />
-                    <span>User Management (DNO)</span>
+                    <span>{currentUser?.role === 'super_admin' ? 'User Management (Super Admin)' : 'User Management (DNO)'}</span>
                   </button>
                 )}
 

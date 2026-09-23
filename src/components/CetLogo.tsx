@@ -1,4 +1,5 @@
 import React from 'react';
+import { APP_ASSETS } from '../constants/assets';
 
 interface CetLogoProps {
   className?: string;
@@ -7,18 +8,19 @@ interface CetLogoProps {
 
 export const CetLogo: React.FC<CetLogoProps> = ({ className = '', size = 'md' }) => {
   const sizeClasses = {
-    sm: 'w-8 h-8 text-xs',
-    md: 'w-11 h-11 text-sm',
-    lg: 'w-14 h-14 text-base',
+    sm: 'h-8 w-auto max-w-[80px]',
+    md: 'h-11 w-auto max-w-[120px]',
+    lg: 'h-14 w-auto max-w-[160px]',
   };
 
   return (
-    <div
+    <img
       id="cet-logo-badge"
-      className={`relative flex items-center justify-center rounded-full bg-gradient-to-br from-blue-700 via-blue-800 to-indigo-950 text-white font-extrabold shadow-sm border-2 border-blue-400/80 shrink-0 select-none ${sizeClasses[size]} ${className}`}
-    >
-      <div className="absolute inset-0.5 rounded-full border border-white/40 pointer-events-none" />
-      <span className="tracking-tight font-sans drop-shadow-xs font-black">CET</span>
-    </div>
+      src={APP_ASSETS.LOGO}
+      alt="State Common Entrance Test Cell, Maharashtra"
+      className={`object-contain shrink-0 select-none ${sizeClasses[size]} ${className}`}
+      referrerPolicy="no-referrer"
+    />
   );
 };
+

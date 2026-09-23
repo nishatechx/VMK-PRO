@@ -27,6 +27,9 @@ import {
   Settings2,
   X,
   MapPin,
+  Search,
+  Filter,
+  Download,
 } from 'lucide-react';
 import { UserProfile, TabPermission, FeaturePermission, UserRole } from '../../types/auth';
 import { MAHARASHTRA_DISTRICTS } from '../../constants/districts';
@@ -38,6 +41,7 @@ import {
   AVAILABLE_TABS,
   AVAILABLE_FEATURES,
   DNO_USER,
+  SUPER_ADMIN_USER,
 } from '../../services/authService';
 import {
   getMasterApiKey,
@@ -60,17 +64,24 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   onRefreshSession,
 }) => {
   const [users, setUsers] = useState<UserProfile[]>(() => getAllUsers());
-  const [roleFilter, setRoleFilter] = useState<'all' | 'dno' | 'counsellor' | 'supporting_staff' | 'student'>('all');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'super_admin' | 'dno' | 'counsellor' | 'supporting_staff' | 'student'>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedDistrict, setSelectedDistrict] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
 
-  const isDno = currentUser?.role === 'dno' || currentUser?.username?.toLowerCase() === 'dno';
+  const isSuperAdmin = currentUser?.role === 'super_admin' || currentUser?.username?.toLowerCase() === 'shrinath';
+  const isDno = !isSuperAdmin && (currentUser?.role === 'dno' || currentUser?.username?.toLowerCase() === 'dno');
   const currentDistrict = (currentUser?.district || 'Washim').trim().toLowerCase();
 
   // "show dno only his districts counselors data"
+  // For Super Admin: manage all users across all districts
   // For DNO: strictly isolate users to their assigned administrative district
   const scopedUsers = useMemo(() => {
     return users.filter((u) => {
+      if (isSuperAdmin) {
+        return true;
+      }
       // Always show this DNO's own profile
       if (u.id === currentUser.id || u.username.toLowerCase() === currentUser.username.toLowerCase()) {
         return true;
@@ -81,7 +92,47 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
       }
       return true;
     });
-  }, [users, isDno, currentDistrict, currentUser]);
+  }, [users, isSuperAdmin, isDno, currentDistrict, currentUser]);
+
+  // Filtered Users incorporating Search & District Filter Tools
+  const filteredUsers = useMemo(() => {
+    return scopedUsers.filter((u) => {
+      // Role filter
+      if (roleFilter !== 'all') {
+        if (roleFilter === 'super_admin') {
+          if (!(u.role === 'super_admin' || u.username.toLowerCase() === 'shrinath')) return false;
+        } else if (roleFilter === 'dno') {
+          if (!(u.role === 'dno' || u.username.toLowerCase() === 'dno')) return false;
+        } else if (roleFilter === 'supporting_staff') {
+          if (!(u.role === 'supporting_staff' || u.role === 'operator')) return false;
+        } else if (u.role !== roleFilter) {
+          return false;
+        }
+      }
+
+      // District filter (for Super Admin State-wide tool)
+      if (isSuperAdmin && selectedDistrict !== 'all') {
+        const uDist = (u.district || '').trim().toLowerCase();
+        if (uDist !== selectedDistrict.toLowerCase()) return false;
+      }
+
+      // Search query filter tool
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchUser = u.username.toLowerCase().includes(q);
+        const matchName = (u.fullName || '').toLowerCase().includes(q);
+        const matchPhone = (u.phone || '').toLowerCase().includes(q);
+        const matchEmail = (u.email || '').toLowerCase().includes(q);
+        const matchDesig = (u.designation || '').toLowerCase().includes(q);
+        const matchDistrict = (u.district || '').toLowerCase().includes(q);
+        if (!matchUser && !matchName && !matchPhone && !matchEmail && !matchDesig && !matchDistrict) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [scopedUsers, roleFilter, selectedDistrict, isSuperAdmin, searchQuery]);
 
   // Form State
   const [username, setUsername] = useState('');
@@ -159,6 +210,23 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
       unsubscribeKey();
     };
   }, []);
+
+  // Listen to Quick Tool triggers from Super Admin Sidebar / External Actions
+  useEffect(() => {
+    const handleOpenCreateModal = () => openCreateModal();
+    const handleOpenKeyModal = () => handleOpenApiKeyModal();
+    const handleExportUsers = () => exportUsersCsv();
+
+    window.addEventListener('open-create-user-modal', handleOpenCreateModal);
+    window.addEventListener('open-master-key-modal', handleOpenKeyModal);
+    window.addEventListener('export-users-directory', handleExportUsers);
+
+    return () => {
+      window.removeEventListener('open-create-user-modal', handleOpenCreateModal);
+      window.removeEventListener('open-master-key-modal', handleOpenKeyModal);
+      window.removeEventListener('export-users-directory', handleExportUsers);
+    };
+  });
 
   const refreshUsersList = () => {
     setUsers(getAllUsers());
@@ -241,6 +309,41 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
         setIsSavingKey(false);
       }
     }
+  };
+
+  // User Management Tool: Export Profiles Directory as CSV
+  const exportUsersCsv = () => {
+    const headers = [
+      'User ID / Username',
+      'Staff Name',
+      'Designation',
+      'Role',
+      'District',
+      'Phone',
+      'Email',
+      'Status',
+      'Gemini OCR Key Access',
+    ];
+    const rows = filteredUsers.map((u) => [
+      `"${u.username}"`,
+      `"${(u.fullName || '').replace(/"/g, '""')}"`,
+      `"${(u.designation || '').replace(/"/g, '""')}"`,
+      `"${u.role}"`,
+      `"${(u.district || 'State-wide').replace(/"/g, '""')}"`,
+      `"${u.phone || ''}"`,
+      `"${u.email || ''}"`,
+      `"${u.isActive !== false ? 'Active' : 'Inactive'}"`,
+      `"${u.canUseApiKey !== false ? 'Enabled' : 'Disabled'}"`,
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `user_management_directory_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const openCreateModal = () => {
@@ -335,8 +438,14 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   };
 
   const handleToggleTab = (tabId: TabPermission) => {
-    // If DNO editing themselves, keep user_management
-    if (editingUser?.id === DNO_USER.id && tabId === 'user_management') {
+    // If Super Admin or DNO editing themselves, keep user_management
+    if (
+      (editingUser?.id === SUPER_ADMIN_USER.id ||
+        editingUser?.id === 'super_admin_shrinath' ||
+        editingUser?.username?.toLowerCase() === 'shrinath' ||
+        editingUser?.id === DNO_USER.id) &&
+      tabId === 'user_management'
+    ) {
       return;
     }
     setAllowedTabs((prev) =>
@@ -358,9 +467,14 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     setAllowedTabs(['profile']);
   };
 
-  const handleRolePreset = (selectedRole: 'dno' | 'counsellor' | 'supporting_staff' | 'student') => {
+  const handleRolePreset = (selectedRole: 'super_admin' | 'dno' | 'counsellor' | 'supporting_staff' | 'student') => {
     setRole(selectedRole);
-    if (selectedRole === 'dno') {
+    if (selectedRole === 'super_admin') {
+      setDesignation('Super Administrator');
+      setAllowedTabs(['user_management', 'profile']);
+      setAllowedFeatures([]);
+      setCanUseApiKey(true);
+    } else if (selectedRole === 'dno') {
       setDesignation('District Nodal Officer (DNO)');
       setAllowedTabs(['dashboard', 'visitors', 'tickets', 'students', 'user_management', 'settings', 'profile', 'google_sheets']);
       setAllowedFeatures(['whatsapp_tool', 'qr_upload_tool', 'ticket_generator_tool', 'img_to_pdf_tool', 'image_to_text_tool', 'add_candidate', 'add_visitor', 'export_reports']);
@@ -372,7 +486,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     } else if (selectedRole === 'supporting_staff') {
       setDesignation('Supporting Staff');
       setAllowedTabs(['dashboard', 'visitors', 'students', 'profile']);
-      setAllowedFeatures(['whatsapp_tool', 'qr_upload_tool', 'ticket_generator_tool', 'add_candidate', 'add_visitor']);
+      setAllowedFeatures(['whatsapp_tool', 'qr_upload_tool', 'ticket_generator_tool', 'add_candidate', 'add_visitor', 'export_reports']);
     } else if (selectedRole === 'student') {
       setDesignation('Student / Candidate');
       setAllowedTabs(['dashboard', 'students', 'profile']);
@@ -449,6 +563,15 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   };
 
   const handleDelete = (userId: string, userName: string) => {
+    if (
+      userId === SUPER_ADMIN_USER.id ||
+      userId === 'super_admin_shrinath' ||
+      userName.toLowerCase() === 'shrinath'
+    ) {
+      alert('The Super Administrator profile cannot be deleted.');
+      return;
+    }
+
     if (userId === DNO_USER.id) {
       alert('The root DNO administrator profile cannot be deleted.');
       return;
@@ -469,16 +592,27 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
       {/* Header Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white/90 backdrop-blur-xs p-5 rounded-2xl border border-slate-200/80 shadow-2xs">
         <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-600/20 shrink-0">
+          <div className={`w-11 h-11 rounded-2xl flex items-center justify-center text-white shadow-md shrink-0 ${
+            isSuperAdmin ? 'bg-purple-700 shadow-purple-700/20' : 'bg-blue-600 shadow-blue-600/20'
+          }`}>
             <ShieldCheck className="w-6 h-6" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-bold text-slate-900">User Management</h2>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 uppercase tracking-wide">
-                DNO Admin
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ${
+                isSuperAdmin
+                  ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                  : 'bg-blue-100 text-blue-800 border border-blue-200'
+              }`}>
+                {isSuperAdmin ? 'Super Admin Mode' : 'DNO Admin'}
               </span>
             </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {isSuperAdmin
+                ? 'Super Administrator desk • Full control across all 36 Maharashtra districts'
+                : `Managing staff and candidate accounts in ${currentUser.district || 'Washim'} District`}
+            </p>
           </div>
         </div>
 
@@ -498,7 +632,15 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
         <div className="space-y-1">
           <p className="font-bold text-blue-900">Role-Based Access Control (RBAC) System</p>
           <p className="text-blue-800/90 leading-relaxed">
-            As the <b>District Nodal Officer (DNO)</b>, you can create staff profiles (Counsellor or Supporting Staff). Each user will only see the specific sidebar tabs and functional tool dialogs that you permit.
+            {isSuperAdmin ? (
+              <>
+                As the <b>Super Administrator</b>, you have master privileges across the state to manage, create, and supervise all accounts (DNOs, Counsellors, Scrutiny Staff, and Students) across all 36 districts of Maharashtra.
+              </>
+            ) : (
+              <>
+                As the <b>District Nodal Officer (DNO)</b>, you can create staff profiles (Counsellor or Supporting Staff). Each user will only see the specific sidebar tabs and functional tool dialogs that you permit.
+              </>
+            )}
           </p>
         </div>
       </div>
@@ -554,26 +696,103 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
         </div>
       </div>
 
-      {/* DNO District Scoping Banner */}
-      <div className="p-3.5 bg-sky-50 border border-sky-200/80 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs text-sky-950 shadow-2xs">
-        <div className="flex items-center gap-2.5">
-          <MapPin className="w-4 h-4 text-sky-700 shrink-0" />
-          <span>
-            DNO District Scope: <strong className="font-bold text-sky-900 text-sm">{currentUser.district || 'Washim'}</strong> &bull; Showing only counselors, staff and candidate accounts in <strong>{currentUser.district || 'Washim'} District</strong>.
+      {/* District Scoping / Super Admin Banner */}
+      {isSuperAdmin ? (
+        <div className="p-3.5 bg-purple-50 border border-purple-200/80 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs text-purple-950 shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <ShieldCheck className="w-4 h-4 text-purple-700 shrink-0" />
+            <span>
+              Super Administrator Scope: <strong className="font-bold text-purple-900 text-sm">All Maharashtra Districts</strong> &bull; Managing all user accounts, DNOs, counsellors, and scrutiny operators.
+            </span>
+          </div>
+          <span className="px-2.5 py-1 bg-white border border-purple-200 rounded-lg font-bold text-purple-800 text-[11px] shrink-0">
+            {users.length} Total Registered Users (State-wide)
           </span>
         </div>
-        <span className="px-2.5 py-1 bg-white border border-sky-200 rounded-lg font-bold text-sky-800 text-[11px] shrink-0">
-          {scopedUsers.filter((u) => u.username.toLowerCase() !== 'dno').length} Staff in District
-        </span>
-      </div>
+      ) : (
+        <div className="p-3.5 bg-sky-50 border border-sky-200/80 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs text-sky-950 shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <MapPin className="w-4 h-4 text-sky-700 shrink-0" />
+            <span>
+              DNO District Scope: <strong className="font-bold text-sky-900 text-sm">{currentUser.district || 'Washim'}</strong> &bull; Showing only counselors, staff and candidate accounts in <strong>{currentUser.district || 'Washim'} District</strong>.
+            </span>
+          </div>
+          <span className="px-2.5 py-1 bg-white border border-sky-200 rounded-lg font-bold text-sky-800 text-[11px] shrink-0">
+            {scopedUsers.filter((u) => u.username.toLowerCase() !== 'dno').length} Staff in District
+          </span>
+        </div>
+      )}
 
       {/* User Profiles Table */}
       <div className="bg-white/90 backdrop-blur-xs border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs">
+        {/* User Management Search & Quick Action Toolbar */}
+        <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/80">
+          <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[260px]">
+            {/* Search Input */}
+            <div className="relative flex-1 min-w-[200px] max-w-sm">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search user ID, staff name, mobile, district..."
+                className="w-full pl-8 pr-7 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* State-wide District Scoping Filter Tool (Super Admin) */}
+            {isSuperAdmin && (
+              <div className="flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                <select
+                  value={selectedDistrict}
+                  onChange={(e) => setSelectedDistrict(e.target.value)}
+                  className="py-1.5 px-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 cursor-pointer"
+                  title="Filter user list by Maharashtra district"
+                >
+                  <option value="all">All 36 Districts (State-wide)</option>
+                  {MAHARASHTRA_DISTRICTS.map((d) => (
+                    <option key={d} value={d}>
+                      {d} District
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          {/* Export Directory Tool & Active Count */}
+          <div className="flex items-center gap-2.5 shrink-0">
+            <span className="text-xs text-slate-500 font-medium hidden sm:inline">
+              Showing <strong className="text-slate-800 font-bold">{filteredUsers.length}</strong> of {scopedUsers.length} profiles
+            </span>
+            <button
+              type="button"
+              onClick={exportUsersCsv}
+              id="export-users-directory-btn"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-2xs active:scale-98"
+              title="Export filtered directory to CSV spreadsheet"
+            >
+              <Download className="w-3.5 h-3.5 text-slate-600" />
+              <span>Export CSV</span>
+            </button>
+          </div>
+        </div>
+
         {/* Category Filters Header */}
-        <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50">
+        <div className="px-5 py-2.5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/40">
           <div className="flex items-center gap-2">
             <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              Active Profiles ({scopedUsers.length})
+              Filter by Role:
             </h3>
           </div>
 
@@ -588,6 +807,17 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
               }`}
             >
               All ({scopedUsers.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setRoleFilter('super_admin')}
+              className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                roleFilter === 'super_admin'
+                  ? 'bg-purple-600 text-white shadow-xs'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              Super Admin ({scopedUsers.filter((u) => u.role === 'super_admin' || u.username.toLowerCase() === 'shrinath').length})
             </button>
             <button
               type="button"
@@ -651,15 +881,34 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {scopedUsers
-                .filter((u) => {
-                  if (roleFilter === 'all') return true;
-                  if (roleFilter === 'dno') return u.role === 'dno' || u.username.toLowerCase() === 'dno';
-                  if (roleFilter === 'supporting_staff') return u.role === 'supporting_staff' || u.role === 'operator';
-                  return u.role === roleFilter;
-                })
-                .map((u) => {
-                const isMasterDno = u.id === DNO_USER.id || u.username.toLowerCase() === 'dno';
+              {filteredUsers.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
+                    <Users className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                    <p className="text-sm font-semibold text-slate-700">No user profiles found</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {searchQuery
+                        ? `No accounts match "${searchQuery}"`
+                        : 'No accounts in this category or selected district.'}
+                    </p>
+                    {(searchQuery || selectedDistrict !== 'all') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchQuery('');
+                          setSelectedDistrict('all');
+                        }}
+                        className="mt-3 px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold cursor-pointer"
+                      >
+                        Reset Filters
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ) : (
+                filteredUsers.map((u) => {
+                const isSuperAdminUser = u.role === 'super_admin' || u.id === 'super_admin_shrinath' || u.username.toLowerCase() === 'shrinath';
+                const isMasterDno = !isSuperAdminUser && (u.id === DNO_USER.id || u.username.toLowerCase() === 'dno');
 
                 return (
                   <tr key={u.id} className="hover:bg-slate-50/80 transition-colors">
@@ -675,18 +924,25 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                         ) : (
                           <div
                             className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
-                              isMasterDno
+                              isSuperAdminUser
+                                ? 'bg-purple-700 text-white shadow-xs'
+                                : isMasterDno
                                 ? 'bg-blue-600 text-white shadow-xs'
                                 : 'bg-slate-100 text-slate-700 border border-slate-200'
                             }`}
                           >
-                            {isMasterDno ? 'D' : u.username.charAt(0).toUpperCase()}
+                            {isSuperAdminUser ? 'S' : isMasterDno ? 'D' : u.username.charAt(0).toUpperCase()}
                           </div>
                         )}
                         <div>
                           <p className="font-mono font-bold text-slate-900">{u.username}</p>
+                          {isSuperAdminUser && (
+                            <span className="text-[10px] font-semibold text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200">
+                              Super Admin
+                            </span>
+                          )}
                           {isMasterDno && (
-                            <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded">
+                            <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">
                               Root DNO
                             </span>
                           )}
@@ -700,7 +956,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                       <p className="text-[11px] text-slate-500">{u.designation || 'Staff'}</p>
                       <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 text-[10px] font-semibold border border-blue-200/80">
                         <MapPin className="w-2.5 h-2.5 text-blue-600" />
-                        <span>{u.district || 'Washim'}</span>
+                        <span>{u.district || (isSuperAdminUser ? 'All Maharashtra' : 'Washim')}</span>
                       </span>
                     </td>
 
@@ -715,14 +971,18 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                     <td className="py-3.5 px-4">
                       <span
                         className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wide border ${
-                          u.role === 'dno'
+                          u.role === 'super_admin'
+                            ? 'bg-purple-50 text-purple-800 border-purple-300'
+                            : u.role === 'dno'
                             ? 'bg-blue-50 text-blue-700 border-blue-200'
                             : u.role === 'counsellor'
-                            ? 'bg-purple-50 text-purple-700 border-purple-200'
+                            ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
                             : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                         }`}
                       >
-                        {u.role === 'dno'
+                        {u.role === 'super_admin'
+                          ? 'Super Admin'
+                          : u.role === 'dno'
                           ? 'DNO Admin'
                           : u.role === 'counsellor'
                           ? 'Counsellor'
@@ -752,7 +1012,12 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
 
                     {/* Gemini API Access */}
                     <td className="py-3.5 px-4">
-                      {isMasterDno ? (
+                      {isSuperAdminUser ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-purple-50 text-purple-900 border border-purple-200 shadow-2xs">
+                          <Key className="w-3 h-3 text-purple-600" />
+                          <span>Super Admin</span>
+                        </span>
+                      ) : isMasterDno ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-200 shadow-2xs">
                           <Key className="w-3 h-3 text-amber-600" />
                           <span>DNO (Root)</span>
@@ -818,7 +1083,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
 
-                        {!isMasterDno && (
+                        {!isMasterDno && !isSuperAdminUser && (
                           <button
                             onClick={() => handleDelete(u.id, u.username)}
                             title="Delete User Profile"
@@ -831,7 +1096,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                     </td>
                   </tr>
                 );
-              })}
+              }))}
             </tbody>
           </table>
         </div>
@@ -1012,8 +1277,17 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                 <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
                   Select Staff / User Role Category
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                <div className={`grid grid-cols-1 sm:grid-cols-2 ${isSuperAdmin ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-2.5`}>
                   {[
+                    ...(isSuperAdmin
+                      ? [
+                          {
+                            id: 'super_admin' as const,
+                            label: 'Super Admin',
+                            desc: 'Master State Administrator • All districts & full privileges',
+                          },
+                        ]
+                      : []),
                     {
                       id: 'dno' as const,
                       label: 'DNO (District Officer)',

@@ -30,7 +30,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   currentUser,
   onRefreshSession,
 }) => {
-  const isDno = currentUser?.role === 'dno' || currentUser?.username === 'dno';
+  const isSuperAdmin = currentUser?.role === 'super_admin' || currentUser?.username?.toLowerCase() === 'shrinath';
+  const isDno = !isSuperAdmin && (currentUser?.role === 'dno' || currentUser?.username === 'dno');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isUploading, setIsUploading] = useState(false);
@@ -151,13 +152,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </h2>
               <span
                 className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold w-fit mx-auto sm:mx-0 ${
-                  isDno
+                  isSuperAdmin
+                    ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                    : isDno
                     ? 'bg-blue-100 text-blue-800 border border-blue-200'
                     : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                 }`}
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
-                {isDno
+                {isSuperAdmin
+                  ? 'Super Administrator'
+                  : isDno
                   ? 'District Nodal Officer (DNO)'
                   : currentUser?.role === 'counsellor'
                   ? 'Counsellor'
@@ -165,15 +170,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </span>
             </div>
             <p className="text-xs text-[#4B5563] font-medium">
-              {currentUser?.designation || (currentUser?.role === 'counsellor' ? 'Student Guidance Counsellor' : 'Supporting Staff')}
+              {currentUser?.designation ||
+                (isSuperAdmin
+                  ? 'Super Administrator (All Districts)'
+                  : currentUser?.role === 'counsellor'
+                  ? 'Student Guidance Counsellor'
+                  : 'Supporting Staff')}
             </p>
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 pt-1 text-xs text-slate-400 font-mono">
-              <span>User ID: <strong className="text-slate-700">{currentUser?.username || 'dno'}</strong></span>
+              <span>User ID: <strong className="text-slate-700">{currentUser?.username || 'shrinath'}</strong></span>
               <span>•</span>
               <span>
                 Role:{' '}
                 <strong className="text-slate-700">
-                  {currentUser?.role === 'dno'
+                  {currentUser?.role === 'super_admin'
+                    ? 'SUPER ADMIN'
+                    : currentUser?.role === 'dno'
                     ? 'DNO ADMIN'
                     : currentUser?.role === 'counsellor'
                     ? 'COUNSELLOR'
@@ -241,11 +253,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="space-y-2.5 text-xs text-slate-600">
             <div className="flex items-center gap-2.5">
               <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
-              <span>Washim Scrutiny Center, Maharashtra</span>
+              <span>
+                {isSuperAdmin
+                  ? 'State Central Administration, Maharashtra (All Districts)'
+                  : `${currentUser?.district || 'Washim'} Scrutiny Center, Maharashtra`}
+              </span>
             </div>
             <div className="flex items-center gap-2.5">
               <Award className="w-4 h-4 text-slate-400 shrink-0" />
-              <span>Scrutiny & Verification Desk</span>
+              <span>
+                {isSuperAdmin ? 'State High-Level Super Admin Desk' : 'Scrutiny & Verification Desk'}
+              </span>
             </div>
             <div className="flex items-center gap-2.5">
               <Phone className="w-4 h-4 text-slate-400 shrink-0" />
@@ -253,7 +271,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
             <div className="flex items-center gap-2.5">
               <Mail className="w-4 h-4 text-slate-400 shrink-0" />
-              <span>{currentUser?.email || 'dno.washim@cetcell.mah.gov.in'}</span>
+              <span>
+                {currentUser?.email ||
+                  (isSuperAdmin ? 'superadmin@cetcell.mah.gov.in' : 'dno.washim@cetcell.mah.gov.in')}
+              </span>
             </div>
           </div>
         </div>

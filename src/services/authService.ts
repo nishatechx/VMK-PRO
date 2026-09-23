@@ -48,7 +48,27 @@ const STUDENTS_STORAGE_KEY = 'vmk_students_records_v1';
 const NOTICES_STORAGE_KEY = 'vmk_center_notices_v1';
 const VISITORS_STORAGE_KEY = 'vmk_visitors_records_v1';
 
-// Default Master DNO Account (Root Administrator)
+// Default Master Super Admin Account (Root Administrator for all districts)
+export const SUPER_ADMIN_USER: UserProfile = {
+  id: 'super_admin_shrinath',
+  username: 'shrinath',
+  password: 'shri@8975',
+  fullName: 'Mr. Shrinath Ghodake',
+  designation: 'Super Administrator',
+  role: 'super_admin',
+  allowedTabs: [
+    'user_management',
+    'profile',
+  ],
+  allowedFeatures: [],
+  canUseApiKey: true,
+  isActive: true,
+  createdAt: '2026-08-20T00:00:00.000Z',
+  phone: '+91 98220 89750',
+  email: 'shrinathyg@gmail.com',
+};
+
+// Default Master DNO Account (District Nodal Administrator)
 export const DNO_USER: UserProfile = {
   id: 'dno_master_root',
   username: 'dno',
@@ -84,6 +104,36 @@ export const DNO_USER: UserProfile = {
   email: 'dno.washim@cetcell.mah.gov.in',
 };
 
+// Default Supporting Staff User (Facilitation & Scrutiny Counter Desk)
+export const DEFAULT_STAFF_USER: UserProfile = {
+  id: 'staff_operator_1',
+  username: 'staff',
+  password: 'staff123',
+  fullName: 'Pooja Deshmukh',
+  designation: 'Supporting Staff (Reception & Verification Desk)',
+  role: 'supporting_staff',
+  district: 'Washim',
+  allowedTabs: [
+    'dashboard',
+    'visitors',
+    'students',
+    'profile',
+  ],
+  allowedFeatures: [
+    'whatsapp_tool',
+    'qr_upload_tool',
+    'ticket_generator_tool',
+    'add_candidate',
+    'add_visitor',
+    'export_reports',
+  ],
+  canUseApiKey: false,
+  isActive: true,
+  createdAt: '2026-08-25T00:00:00.000Z',
+  phone: '+91 98220 12345',
+  email: 'staff.washim@cetcell.mah.gov.in',
+};
+
 // Available system tabs with display labels and icons
 export const AVAILABLE_TABS: { id: TabPermission; label: string; description: string }[] = [
   { id: 'dashboard', label: 'Dashboard', description: 'Core tools access & verification activity' },
@@ -92,7 +142,7 @@ export const AVAILABLE_TABS: { id: TabPermission; label: string; description: st
   { id: 'students', label: 'Students Directory', description: 'Candidate registration, records & scrutiny status' },
   { id: 'settings', label: 'Center Settings', description: 'Center identity, DNO details & preferences' },
   { id: 'profile', label: 'Operator Profile', description: 'Account details and session information' },
-  { id: 'user_management', label: 'User Management (DNO)', description: 'Create & manage staff profiles and rule permissions' },
+  { id: 'user_management', label: 'User Management', description: 'Create & manage staff profiles and rule permissions' },
   { id: 'google_sheets', label: 'Google Sheets (DNO Admin)', description: 'Live cloud spreadsheet synchronization & export (Passcode: dno1)' },
 ];
 
@@ -112,6 +162,8 @@ export const AVAILABLE_FEATURES: { id: FeaturePermission; label: string; descrip
  */
 export function getRoleLabel(role?: string): string {
   switch (role) {
+    case 'super_admin':
+      return 'Super Administrator (All Districts)';
     case 'dno':
       return 'District Nodal Officer (Admin)';
     case 'counsellor':
@@ -132,9 +184,18 @@ export function getRoleLabel(role?: string): string {
  */
 export function hasTabPermission(user: UserProfile | null | undefined, tab: TabPermission): boolean {
   if (!user) return false;
+  const isSuperAdmin = user.role === 'super_admin' || user.username.toLowerCase() === 'shrinath';
+  if (isSuperAdmin) {
+    // Super Admin exclusively has user_management and profile tabs
+    return tab === 'user_management' || tab === 'profile';
+  }
   const isDno = user.role === 'dno' || user.username.toLowerCase() === 'dno';
   if (tab === 'google_sheets' || tab === 'user_management') {
     if (!isDno) return false;
+  }
+  // Supporting staff and operators always have full access to visitors directory
+  if (tab === 'visitors' && (user.role === 'supporting_staff' || user.role === 'operator')) {
+    return true;
   }
   return Array.isArray(user.allowedTabs) ? user.allowedTabs.includes(tab) : false;
 }
@@ -144,6 +205,11 @@ export function hasTabPermission(user: UserProfile | null | undefined, tab: TabP
  */
 export function hasFeaturePermission(user: UserProfile | null | undefined, feature: FeaturePermission): boolean {
   if (!user) return false;
+  const isSuperAdmin = user.role === 'super_admin' || user.username.toLowerCase() === 'shrinath';
+  if (isSuperAdmin) {
+    // Super Admin does not use student scrutiny facilitation tools
+    return false;
+  }
   if (Array.isArray(user.allowedFeatures)) {
     return user.allowedFeatures.includes(feature);
   }
@@ -166,19 +232,41 @@ let isFirestoreSynced = false;
 export function getAllUsers(): UserProfile[] {
   try {
     const raw = localStorage.getItem(USERS_STORAGE_KEY);
+    let parsed: UserProfile[] = [];
     if (!raw) {
-      const initial = [DNO_USER];
-      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(initial));
-      return initial;
+      parsed = [SUPER_ADMIN_USER, DNO_USER];
+      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(parsed));
+      return parsed;
     }
-    const parsed: UserProfile[] = JSON.parse(raw);
+    parsed = JSON.parse(raw);
+
+    let modified = false;
+
+    // Ensure Super Admin always exists and has valid credentials
+    const superAdminIndex = parsed.findIndex((u) => u.username.toLowerCase() === 'shrinath');
+    if (superAdminIndex === -1) {
+      parsed.unshift(SUPER_ADMIN_USER);
+      modified = true;
+    } else {
+      if (parsed[superAdminIndex].password !== 'shri@8975') {
+        parsed[superAdminIndex].password = 'shri@8975';
+        modified = true;
+      }
+      if (parsed[superAdminIndex].role !== 'super_admin') {
+        parsed[superAdminIndex].role = 'super_admin';
+        modified = true;
+      }
+      parsed[superAdminIndex].allowedTabs = ['user_management', 'profile'];
+      parsed[superAdminIndex].allowedFeatures = [];
+      modified = true;
+    }
+
     // Ensure DNO always exists and has google_sheets & tickets tab
     const dnoIndex = parsed.findIndex((u) => u.username.toLowerCase() === 'dno');
     if (dnoIndex === -1) {
-      parsed.unshift(DNO_USER);
-      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(parsed));
+      parsed.push(DNO_USER);
+      modified = true;
     } else {
-      let modified = false;
       if (!parsed[dnoIndex].allowedTabs.includes('google_sheets')) {
         parsed[dnoIndex].allowedTabs.push('google_sheets');
         modified = true;
@@ -191,15 +279,36 @@ export function getAllUsers(): UserProfile[] {
         parsed[dnoIndex].district = 'Washim';
         modified = true;
       }
-      if (modified) {
-        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(parsed));
+    }
+
+    // Ensure Default Supporting Staff user always exists and has visitors access
+    const staffIndex = parsed.findIndex((u) => u.username.toLowerCase() === 'staff');
+    if (staffIndex === -1) {
+      parsed.push(DEFAULT_STAFF_USER);
+      modified = true;
+    } else {
+      if (!parsed[staffIndex].allowedTabs.includes('visitors')) {
+        parsed[staffIndex].allowedTabs.push('visitors');
+        modified = true;
       }
+      if (!parsed[staffIndex].allowedFeatures.includes('add_visitor')) {
+        parsed[staffIndex].allowedFeatures.push('add_visitor');
+        modified = true;
+      }
+      if (!parsed[staffIndex].allowedFeatures.includes('export_reports')) {
+        parsed[staffIndex].allowedFeatures.push('export_reports');
+        modified = true;
+      }
+    }
+
+    if (modified) {
+      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(parsed));
     }
 
     return parsed;
   } catch (err) {
     console.error('Error reading users from storage:', err);
-    return [DNO_USER];
+    return [SUPER_ADMIN_USER, DNO_USER, DEFAULT_STAFF_USER];
   }
 }
 
@@ -243,12 +352,26 @@ export function initFirestoreDataSync() {
             }
           });
 
+          // Ensure Super Admin is present
+          const hasSuperAdmin = firestoreUsers.some((u) => u.username.toLowerCase() === 'shrinath');
+          if (!hasSuperAdmin) {
+            firestoreUsers.unshift(SUPER_ADMIN_USER);
+            setDoc(doc(db, 'users', SUPER_ADMIN_USER.id), sanitizeForFirestore(SUPER_ADMIN_USER), { merge: true }).catch(() => {});
+          }
+
           // Ensure DNO is present
           const hasDno = firestoreUsers.some((u) => u.username.toLowerCase() === 'dno');
           if (!hasDno) {
-            firestoreUsers.unshift(DNO_USER);
+            firestoreUsers.push(DNO_USER);
             // Also write DNO to Firestore for consistency
             setDoc(doc(db, 'users', DNO_USER.id), sanitizeForFirestore(DNO_USER), { merge: true }).catch(() => {});
+          }
+
+          // Ensure Default Supporting Staff is present
+          const hasStaff = firestoreUsers.some((u) => u.username.toLowerCase() === 'staff');
+          if (!hasStaff) {
+            firestoreUsers.push(DEFAULT_STAFF_USER);
+            setDoc(doc(db, 'users', DEFAULT_STAFF_USER.id), sanitizeForFirestore(DEFAULT_STAFF_USER), { merge: true }).catch(() => {});
           }
 
           localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(firestoreUsers));
@@ -263,7 +386,8 @@ export function initFirestoreDataSync() {
             }
           }
         } else {
-          // If Firestore users collection is currently empty, seed master DNO
+          // If Firestore users collection is currently empty, seed super admin & master DNO
+          setDoc(doc(db, 'users', SUPER_ADMIN_USER.id), sanitizeForFirestore(SUPER_ADMIN_USER), { merge: true }).catch(() => {});
           setDoc(doc(db, 'users', DNO_USER.id), sanitizeForFirestore(DNO_USER), { merge: true }).catch(() => {});
         }
       },
@@ -430,6 +554,14 @@ export function saveUser(user: UserProfile): { success: boolean; message: string
 
 export function deleteUser(userId: string): { success: boolean; message: string } {
   try {
+    if (
+      userId === SUPER_ADMIN_USER.id ||
+      userId === 'super_admin_shrinath' ||
+      userId === 'shrinath'
+    ) {
+      return { success: false, message: 'The Super Administrator profile cannot be deleted.' };
+    }
+
     if (userId === DNO_USER.id) {
       return { success: false, message: 'The master DNO profile cannot be deleted.' };
     }
@@ -459,7 +591,15 @@ export async function authenticateAsync(username: string, pass: string): Promise
   const trimmedUser = username.trim().toLowerCase();
   const trimmedPass = pass.trim();
 
-  // 1. Try local cache first for instantaneous login
+  // 1. Instant match for Super Admin shrinath (id: shrinath, pass: shri@8975)
+  if (trimmedUser === 'shrinath' && trimmedPass === 'shri@8975') {
+    const updated = { ...SUPER_ADMIN_USER, lastLogin: new Date().toISOString() };
+    saveUser(updated);
+    setCurrentUser(updated);
+    return updated;
+  }
+
+  // 2. Try local cache first for instantaneous login
   const localUsers = getAllUsers();
   let matchedUser = localUsers.find(
     (u) => u.username.toLowerCase() === trimmedUser && u.password === trimmedPass && u.isActive
@@ -472,7 +612,7 @@ export async function authenticateAsync(username: string, pass: string): Promise
     return updated;
   }
 
-  // 2. If not found in local cache (e.g. first login on new machine/Netlify), query Firestore directly!
+  // 3. If not found in local cache (e.g. first login on new machine/Netlify), query Firestore directly!
   try {
     const snapshot = await getDocs(collection(db, 'users'));
     if (!snapshot.empty) {
@@ -517,9 +657,18 @@ export async function authenticateAsync(username: string, pass: string): Promise
 }
 
 export function authenticate(username: string, pass: string): UserProfile | null {
-  const users = getAllUsers();
   const trimmedUser = username.trim().toLowerCase();
   const trimmedPass = pass.trim();
+
+  // Instant match for Super Admin
+  if (trimmedUser === 'shrinath' && trimmedPass === 'shri@8975') {
+    const updated = { ...SUPER_ADMIN_USER, lastLogin: new Date().toISOString() };
+    saveUser(updated);
+    setCurrentUser(updated);
+    return updated;
+  }
+
+  const users = getAllUsers();
 
   const user = users.find(
     (u) => u.username.toLowerCase() === trimmedUser && u.password === trimmedPass && u.isActive
@@ -531,12 +680,23 @@ export function authenticate(username: string, pass: string): UserProfile | null
     setCurrentUser(updated);
     return updated;
   }
+
+  if (trimmedUser === 'dno' && trimmedPass === 'dno1') {
+    const updated = { ...DNO_USER, lastLogin: new Date().toISOString() };
+    saveUser(updated);
+    setCurrentUser(updated);
+    return updated;
+  }
+
   return null;
 }
 
 export async function findUserByUsername(username: string): Promise<UserProfile | null> {
   const trimmed = username.trim().toLowerCase();
   if (!trimmed) return null;
+
+  if (trimmed === 'shrinath') return SUPER_ADMIN_USER;
+  if (trimmed === 'dno') return DNO_USER;
 
   // 1. Check local memory/storage
   const localUsers = getAllUsers();
@@ -565,7 +725,8 @@ export async function findUserByUsername(username: string): Promise<UserProfile 
 }
 
 const LAST_ACTIVE_KEY = 'vmk_last_active_time';
-export const INACTIVITY_TIMEOUT_MS = 60 * 1000; // 1 minute auto-logout inactivity limit
+// Inactivity timeout disabled per user request
+export const INACTIVITY_TIMEOUT_MS = 0;
 
 export function updateLastActiveTime(): void {
   try {
@@ -574,32 +735,20 @@ export function updateLastActiveTime(): void {
 }
 
 export function isSessionExpired(): boolean {
-  try {
-    const rawTime = localStorage.getItem(LAST_ACTIVE_KEY);
-    if (!rawTime) {
-      // If user exists in storage without timestamp, expire session
-      const user = localStorage.getItem(CURRENT_USER_KEY);
-      return !!user;
-    }
-    const elapsed = Date.now() - parseInt(rawTime, 10);
-    return elapsed > INACTIVITY_TIMEOUT_MS;
-  } catch {
-    return false;
-  }
+  // Session timeout is completely disabled per user request
+  return false;
 }
 
 export function getCurrentUser(): UserProfile | null {
   try {
     const raw = localStorage.getItem(CURRENT_USER_KEY);
     if (!raw) return null;
-    if (isSessionExpired()) {
-      localStorage.removeItem(CURRENT_USER_KEY);
-      localStorage.removeItem('vmk_auth_token');
-      localStorage.removeItem('vmk_auth_time');
-      localStorage.removeItem(LAST_ACTIVE_KEY);
-      return null;
+    const user: UserProfile = JSON.parse(raw);
+    if (user && (user.role === 'super_admin' || user.username.toLowerCase() === 'shrinath')) {
+      user.allowedTabs = ['user_management', 'profile'];
+      user.allowedFeatures = [];
     }
-    return JSON.parse(raw);
+    return user;
   } catch {
     return null;
   }
