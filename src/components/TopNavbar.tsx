@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Menu, ChevronDown, LogOut, Settings, UserCheck, ShieldCheck, Building2, Phone, Clock, ExternalLink } from 'lucide-react';
+import { Menu, ChevronDown, LogOut, Settings, UserCheck, ShieldCheck, Building2, Phone, Clock, ExternalLink, Radio } from 'lucide-react';
 import { NavTab } from './Sidebar';
 import { UserProfile } from '../types/auth';
 import { hasTabPermission } from '../services/authService';
@@ -12,6 +12,7 @@ interface TopNavbarProps {
   onOpenImgToPdf?: () => void;
   onOpenImageToText?: () => void;
   onOpenExternalPortal?: () => void;
+  onOpenBroadcastModal?: () => void;
   unreadCount?: number;
   currentUser?: UserProfile | null;
 }
@@ -23,6 +24,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
   onOpenImgToPdf,
   onOpenImageToText,
   onOpenExternalPortal,
+  onOpenBroadcastModal,
   currentUser,
 }) => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -66,7 +68,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
   return (
     <header
       id="top-navbar"
-      className="w-full bg-white border-b border-[#D9E1EA] px-3 sm:px-6 py-2 flex items-center justify-between z-30 select-none shadow-xs min-h-[64px] sm:min-h-[72px]"
+      className="w-full bg-white border-b border-[#D9E1EA] px-3 sm:px-6 py-2 flex items-center justify-between z-30 select-none shadow-xs min-h-[72px] sm:min-h-[84px]"
     >
       {/* Left: Hamburger & Government Portal Identity */}
       <div className="flex items-center gap-3 sm:gap-4">
@@ -85,7 +87,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
             id="top-navbar-brand-logo"
             src={APP_ASSETS.LOGO}
             alt="State Common Entrance Test Cell, Maharashtra"
-            className="h-12 sm:h-14 md:h-16 lg:h-18 w-auto max-w-[240px] sm:max-w-[360px] md:max-w-[480px] lg:max-w-[540px] object-contain block py-0.5 select-none"
+            className="h-14 sm:h-16 md:h-20 lg:h-22 w-auto max-w-[280px] sm:max-w-[420px] md:max-w-[540px] lg:max-w-[620px] object-contain block py-0.5 select-none rounded-xl"
             referrerPolicy="no-referrer"
           />
         </div>
@@ -110,6 +112,23 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
             Vault
           </span>
         </button>
+
+        {/* Broadcast Action for Super Admin & DNO */}
+        {(currentUser?.role === 'super_admin' ||
+          currentUser?.role === 'dno' ||
+          currentUser?.username?.toLowerCase() === 'shrinath' ||
+          currentUser?.username?.toLowerCase() === 'dno') &&
+          onOpenBroadcastModal && (
+            <button
+              type="button"
+              onClick={onOpenBroadcastModal}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-2xs transition-all cursor-pointer border border-amber-600 active:scale-95"
+              title="Broadcast notification to counsellors & supporting staff"
+            >
+              <Radio className="w-3.5 h-3.5 animate-pulse text-slate-950" />
+              <span>Broadcast</span>
+            </button>
+          )}
 
         {/* Live Clock Strip */}
         <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#F7F9FC] border border-[#D9E1EA] text-xs text-[#003B73]">
@@ -196,6 +215,23 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
                     <span>Center Settings</span>
                   </button>
                 )}
+
+                {(currentUser?.role === 'super_admin' ||
+                  currentUser?.role === 'dno' ||
+                  currentUser?.username?.toLowerCase() === 'shrinath' ||
+                  currentUser?.username?.toLowerCase() === 'dno') &&
+                  onOpenBroadcastModal && (
+                    <button
+                      onClick={() => {
+                        setIsProfileOpen(false);
+                        onOpenBroadcastModal();
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-amber-800 font-bold hover:bg-amber-50 rounded-xl cursor-pointer transition-colors"
+                    >
+                      <Radio className="w-4 h-4 text-amber-600" />
+                      <span>Broadcast to Staff</span>
+                    </button>
+                  )}
               </div>
 
               <div className="pt-1 border-t border-[#D9E1EA]">

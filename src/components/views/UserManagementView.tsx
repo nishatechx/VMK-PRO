@@ -30,6 +30,7 @@ import {
   Search,
   Filter,
   Download,
+  Power,
 } from 'lucide-react';
 import { UserProfile, TabPermission, FeaturePermission, UserRole } from '../../types/auth';
 import { MAHARASHTRA_DISTRICTS } from '../../constants/districts';
@@ -37,7 +38,9 @@ import {
   getAllUsers,
   subscribeToUsers,
   saveUserAsync,
-  deleteUser,
+  deleteUserAsync,
+  toggleUserStatusAsync,
+  syncUsersFromServer,
   AVAILABLE_TABS,
   AVAILABLE_FEATURES,
   DNO_USER,
@@ -173,12 +176,27 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   const [tempMasterKey, setTempMasterKey] = useState<string>('');
   const [showMasterKeyInput, setShowMasterKeyInput] = useState<boolean>(false);
   const [isSavingKey, setIsSavingKey] = useState<boolean>(false);
+  const [confirmDeleteMasterKey, setConfirmDeleteMasterKey] = useState<boolean>(false);
   const [keyActionFeedback, setKeyActionFeedback] = useState<{ message: string; type: 'success' | 'error' | '' }>({
     message: '',
     type: '',
   });
 
   const [feedback, setFeedback] = useState<{ message: string; type: 'success' | 'error' | '' }>({
+    message: '',
+    type: '',
+  });
+
+  // User Deletion State (In-app confirmation modal, zero blocked alerts)
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; username: string; fullName: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+
+  // Quick Password Reset State & Handlers
+  const [resetPasswordTarget, setResetPasswordTarget] = useState<UserProfile | null>(null);
+  const [newPasswordInput, setNewPasswordInput] = useState<string>('');
+  const [showNewPassword, setShowNewPassword] = useState<boolean>(false);
+  const [isResettingPassword, setIsResettingPassword] = useState<boolean>(false);
+  const [resetFeedback, setResetFeedback] = useState<{ message: string; type: 'success' | 'error' | '' }>({
     message: '',
     type: '',
   });
@@ -199,6 +217,13 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   });
 
   useEffect(() => {
+    // Initial sync from persistent server
+    syncUsersFromServer().then((latest) => {
+      if (Array.isArray(latest) && latest.length > 0) {
+        setUsers(latest);
+      }
+    }).catch(() => {});
+
     const unsubscribeUsers = subscribeToUsers((updatedUsers) => {
       setUsers(updatedUsers);
     });
@@ -226,7 +251,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
       window.removeEventListener('open-master-key-modal', handleOpenKeyModal);
       window.removeEventListener('export-users-directory', handleExportUsers);
     };
-  });
+  }, []);
 
   const refreshUsersList = () => {
     setUsers(getAllUsers());
@@ -250,6 +275,73 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     }
   };
 
+  const handleToggleUserStatus = async (user: UserProfile) => {
+    if (user.username?.toLowerCase() === 'shrinath') {
+      setFeedback({
+        message: 'The Super Administrator account is protected and cannot be disabled.',
+        type: 'error',
+      });
+      return;
+    }
+    const newStatus = !user.isActive;
+    const res = await toggleUserStatusAsync(user.id, newStatus);
+    if (res.success) {
+      setFeedback({
+        message: res.message,
+        type: 'success',
+      });
+      setTimeout(() => setFeedback({ message: '', type: '' }), 3000);
+      refreshUsersList();
+    } else {
+      setFeedback({
+        message: res.message,
+        type: 'error',
+      });
+    }
+  };
+
+  const handleOpenResetPassword = (u: UserProfile) => {
+    setResetPasswordTarget(u);
+    setNewPasswordInput('');
+    setShowNewPassword(false);
+    setResetFeedback({ message: '', type: '' });
+  };
+
+  const handleExecuteResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetPasswordTarget) return;
+    const cleanPass = newPasswordInput.trim();
+    if (cleanPass.length < 4) {
+      setResetFeedback({ message: 'Password must be at least 4 characters long.', type: 'error' });
+      return;
+    }
+
+    setIsResettingPassword(true);
+    setResetFeedback({ message: '', type: '' });
+    try {
+      const updatedUser: UserProfile = {
+        ...resetPasswordTarget,
+        password: cleanPass,
+      };
+      const res = await saveUserAsync(updatedUser);
+      if (res.success) {
+        setResetFeedback({
+          message: `Password for @${resetPasswordTarget.username} updated successfully!`,
+          type: 'success',
+        });
+        setTimeout(() => {
+          setResetPasswordTarget(null);
+          setResetFeedback({ message: '', type: '' });
+          refreshUsersList();
+        }, 1200);
+      } else {
+        setResetFeedback({ message: res.message || 'Failed to update password.', type: 'error' });
+      }
+    } finally {
+      setIsResettingPassword(false);
+    }
+  };
+
   const handleGrantAllStaff = async () => {
     const res = await grantApiKeyToAllUsers();
     if (res.success) {
@@ -265,6 +357,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   const handleOpenApiKeyModal = () => {
     setTempMasterKey(masterApiKey);
     setShowMasterKeyInput(false);
+    setConfirmDeleteMasterKey(false);
     setKeyActionFeedback({ message: '', type: '' });
     setIsApiKeyModalOpen(true);
   };
@@ -293,21 +386,20 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     }
   };
 
-  const handleDeleteMasterKey = async () => {
-    if (window.confirm('Are you sure you want to remove the center Master Gemini API key? Staff users will no longer be able to run OCR without entering their own key.')) {
-      setIsSavingKey(true);
-      try {
-        const res = await deleteMasterApiKey();
-        setKeyActionFeedback({ message: res.message, type: res.success ? 'success' : 'error' });
-        setTempMasterKey('');
-        if (res.success) {
-          setTimeout(() => {
-            setIsApiKeyModalOpen(false);
-          }, 1200);
-        }
-      } finally {
-        setIsSavingKey(false);
+  const executeDeleteMasterKey = async () => {
+    setIsSavingKey(true);
+    try {
+      const res = await deleteMasterApiKey();
+      setKeyActionFeedback({ message: res.message, type: res.success ? 'success' : 'error' });
+      setTempMasterKey('');
+      setConfirmDeleteMasterKey(false);
+      if (res.success) {
+        setTimeout(() => {
+          setIsApiKeyModalOpen(false);
+        }, 1200);
       }
+    } finally {
+      setIsSavingKey(false);
     }
   };
 
@@ -505,7 +597,12 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     if (allowedTabs.length === 0) missing.push('At least 1 Tab Permission');
 
     if (phone.trim()) {
-      const cleanPhone = phone.replace(/\D/g, '');
+      let cleanPhone = phone.replace(/\D/g, '');
+      if (cleanPhone.startsWith('91') && cleanPhone.length === 12) {
+        cleanPhone = cleanPhone.slice(2);
+      } else if (cleanPhone.startsWith('0') && cleanPhone.length === 11) {
+        cleanPhone = cleanPhone.slice(1);
+      }
       if (cleanPhone.length !== 10 || !/^[6-9]\d{9}$/.test(cleanPhone)) {
         extra.push('Phone number must be a valid 10-digit Indian phone number.');
       }
@@ -562,28 +659,68 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     setIsModalOpen(false);
   };
 
-  const handleDelete = (userId: string, userName: string) => {
+  const handleDeleteClick = (u: UserProfile) => {
     if (
-      userId === SUPER_ADMIN_USER.id ||
-      userId === 'super_admin_shrinath' ||
-      userName.toLowerCase() === 'shrinath'
+      u.id === SUPER_ADMIN_USER.id ||
+      u.id === 'super_admin_shrinath' ||
+      u.username?.toLowerCase() === 'shrinath'
     ) {
-      alert('The Super Administrator profile cannot be deleted.');
+      setFeedback({
+        message: 'The Super Administrator profile is protected and cannot be deleted.',
+        type: 'error',
+      });
       return;
     }
 
-    if (userId === DNO_USER.id) {
-      alert('The root DNO administrator profile cannot be deleted.');
+    if (!isSuperAdmin && (u.id === DNO_USER.id || u.username?.toLowerCase() === 'dno')) {
+      setFeedback({
+        message: 'The root DNO administrator profile is protected and cannot be deleted by standard administrators.',
+        type: 'error',
+      });
       return;
     }
 
-    if (window.confirm(`Are you sure you want to remove user profile "${userName}"?`)) {
-      const res = deleteUser(userId);
-      if (!res.success) {
-        alert(res.message);
-      } else {
+    setDeleteTarget({
+      id: u.id,
+      username: u.username,
+      fullName: u.fullName || u.username,
+    });
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      const res = await deleteUserAsync(deleteTarget.id);
+      if (res.success) {
+        setFeedback({
+          message: res.message || `User profile "${deleteTarget.username}" deleted successfully.`,
+          type: 'success',
+        });
+        setTimeout(() => setFeedback({ message: '', type: '' }), 3500);
+        setUsers((prev) =>
+          prev.filter(
+            (u) =>
+              u.id !== deleteTarget.id &&
+              u.username.toLowerCase() !== deleteTarget.username.toLowerCase()
+          )
+        );
+        setDeleteTarget(null);
         refreshUsersList();
+        if (onRefreshSession) onRefreshSession();
+      } else {
+        setFeedback({
+          message: res.message || 'Failed to delete user profile.',
+          type: 'error',
+        });
       }
+    } catch (err: any) {
+      setFeedback({
+        message: err?.message || 'Failed to delete user profile.',
+        type: 'error',
+      });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -1056,37 +1193,73 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
 
                     {/* Status */}
                     <td className="py-3.5 px-4">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                      <button
+                        type="button"
+                        onClick={() => handleToggleUserStatus(u)}
+                        disabled={u.username?.toLowerCase() === 'shrinath'}
+                        title={
+                          u.username?.toLowerCase() === 'shrinath'
+                            ? 'Super Administrator account cannot be disabled'
+                            : u.isActive
+                            ? 'Click to disable this account'
+                            : 'Click to activate this account'
+                        }
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
                           u.isActive
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : 'bg-red-50 text-red-700 border border-red-200'
-                        }`}
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                            : 'bg-red-50 text-red-700 border border-red-200 hover:bg-red-100'
+                        } ${u.username?.toLowerCase() === 'shrinath' ? 'cursor-not-allowed opacity-90' : ''}`}
                       >
                         <span
                           className={`w-1.5 h-1.5 rounded-full ${
                             u.isActive ? 'bg-emerald-500' : 'bg-red-500'
                           }`}
                         />
-                        {u.isActive ? 'Active' : 'Disabled'}
-                      </span>
+                        <span>{u.isActive ? 'Active' : 'Disabled'}</span>
+                      </button>
                     </td>
 
                     {/* Actions */}
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         <button
+                          type="button"
                           onClick={() => openEditModal(u)}
-                          title="Edit Rules & Credentials"
+                          title="Edit Rules & Permissions"
                           className="p-1.5 rounded-lg text-slate-600 hover:text-blue-600 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 transition-colors cursor-pointer"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
 
-                        {!isMasterDno && !isSuperAdminUser && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenResetPassword(u)}
+                          title={`Reset Password for @${u.username}`}
+                          className="p-1.5 rounded-lg text-slate-600 hover:text-amber-600 hover:bg-amber-50 border border-slate-200 hover:border-amber-300 transition-colors cursor-pointer"
+                        >
+                          <Key className="w-3.5 h-3.5" />
+                        </button>
+
+                        {u.username?.toLowerCase() !== 'shrinath' && (
                           <button
-                            onClick={() => handleDelete(u.id, u.username)}
-                            title="Delete User Profile"
+                            type="button"
+                            onClick={() => handleToggleUserStatus(u)}
+                            title={u.isActive ? 'Disable User Profile' : 'Activate User Profile'}
+                            className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+                              u.isActive
+                                ? 'text-slate-400 hover:text-amber-600 hover:bg-amber-50 border-slate-200 hover:border-amber-300'
+                                : 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border-emerald-200'
+                            }`}
+                          >
+                            <Power className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
+                        {!isSuperAdminUser && (isSuperAdmin || !isMasterDno) && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteClick(u)}
+                            title={`Delete User Profile @${u.username}`}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-200 hover:border-red-300 transition-colors cursor-pointer"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1706,15 +1879,36 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
 
               <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
                 {masterApiKey ? (
-                  <button
-                    type="button"
-                    onClick={handleDeleteMasterKey}
-                    disabled={isSavingKey}
-                    className="px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-xl border border-red-200 transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                  >
-                    <Trash className="w-3.5 h-3.5" />
-                    <span>Remove Key</span>
-                  </button>
+                  confirmDeleteMasterKey ? (
+                    <div className="flex items-center gap-2 p-1.5 bg-red-50 border border-red-200 rounded-xl">
+                      <span className="text-[11px] text-red-700 font-semibold">Remove Key?</span>
+                      <button
+                        type="button"
+                        onClick={executeDeleteMasterKey}
+                        disabled={isSavingKey}
+                        className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-[11px] font-bold cursor-pointer"
+                      >
+                        Confirm Remove
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteMasterKey(false)}
+                        className="px-2 py-1 bg-white text-slate-700 hover:bg-slate-100 rounded-lg text-[11px] font-medium border border-slate-200 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteMasterKey(true)}
+                      disabled={isSavingKey}
+                      className="px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-xl border border-red-200 transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      <Trash className="w-3.5 h-3.5" />
+                      <span>Remove Key</span>
+                    </button>
+                  )
                 ) : (
                   <div />
                 )}
@@ -1745,6 +1939,156 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                     )}
                   </button>
                 </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete User Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Delete User Profile</h3>
+                <p className="text-xs text-slate-500">Permanent action</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-red-50/70 border border-red-100 rounded-xl space-y-1.5 text-xs text-slate-700">
+              <p>
+                Are you sure you want to permanently delete profile <span className="font-bold text-red-700 font-mono">@{deleteTarget.username}</span> ({deleteTarget.fullName})?
+              </p>
+              <p className="text-[11px] text-red-600">
+                This user will immediately lose access and be unable to log in on any laptop or device.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setDeleteTarget(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={confirmDeleteUser}
+                className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-red-600/20 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Yes, Delete Profile</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Password Reset Modal */}
+      {resetPasswordTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                  <Key className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Reset User Password</h3>
+                  <p className="text-xs text-slate-500 font-mono">@{resetPasswordTarget.username}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setResetPasswordTarget(null)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {resetFeedback.message && (
+              <div
+                className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
+                  resetFeedback.type === 'success'
+                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                    : 'bg-red-50 text-red-800 border border-red-200'
+                }`}
+              >
+                {resetFeedback.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                )}
+                <span>{resetFeedback.message}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleExecuteResetPassword} className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  New Password for {resetPasswordTarget.fullName || resetPasswordTarget.username}:
+                </label>
+                <div className="relative">
+                  <input
+                    type={showNewPassword ? 'text' : 'password'}
+                    value={newPasswordInput}
+                    onChange={(e) => setNewPasswordInput(e.target.value)}
+                    placeholder="Enter new password (min 4 characters)..."
+                    required
+                    minLength={4}
+                    className="w-full pl-3 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono focus:outline-none focus:border-blue-600 focus:bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                  >
+                    {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setResetPasswordTarget(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isResettingPassword || !newPasswordInput.trim()}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-600/20 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {isResettingPassword ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Update Password</span>
+                    </>
+                  )}
+                </button>
               </div>
             </form>
           </div>

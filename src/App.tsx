@@ -20,11 +20,19 @@ import { MobileQrUploadView } from './components/MobileQrUploadView';
 import { ExternalWebsiteAssistantModal } from './components/ExternalWebsiteAssistantModal';
 import { VaultFilePickerModal } from './components/VaultFilePickerModal';
 import { LoginScreen } from './components/LoginScreen';
-import { WelcomeModal } from './components/WelcomeModal';
+import { BroadcastComposerModal } from './components/BroadcastComposerModal';
+import { BroadcastPopupModal } from './components/BroadcastPopupModal';
+import { BroadcastNotification } from './types/broadcast';
+import {
+  getUnreadBroadcastsForUser,
+  subscribeToBroadcasts,
+  markBroadcastAsRead,
+} from './services/broadcastService';
 import {
   getCurrentUser,
   setCurrentUser,
   subscribeToUsers,
+  syncUsersFromServer,
   DNO_USER,
   hasTabPermission,
   hasFeaturePermission,
@@ -54,6 +62,48 @@ export default function App() {
   const [isQrUploadModalOpen, setIsQrUploadModalOpen] = useState<boolean>(false);
   const [isImgToPdfOpen, setIsImgToPdfOpen] = useState<boolean>(false);
   const [isImageToTextOpen, setIsImageToTextOpen] = useState<boolean>(false);
+
+  // Broadcast Notifications System
+  const [isBroadcastComposerOpen, setIsBroadcastComposerOpen] = useState<boolean>(false);
+  const [activeBroadcastPopup, setActiveBroadcastPopup] = useState<BroadcastNotification | null>(null);
+
+  const handleAcknowledgeBroadcast = (broadcastId: string) => {
+    if (currentUser) {
+      markBroadcastAsRead(broadcastId, currentUser.id || currentUser.username);
+      const remaining = getUnreadBroadcastsForUser(currentUser);
+      if (remaining.length > 0) {
+        setActiveBroadcastPopup(remaining[0]);
+      } else {
+        setActiveBroadcastPopup(null);
+      }
+    } else {
+      setActiveBroadcastPopup(null);
+    }
+  };
+
+  // Monitor unread broadcasts for logged-in counsellors & supporting staff
+  useEffect(() => {
+    if (!currentUser) {
+      setActiveBroadcastPopup(null);
+      return;
+    }
+
+    // Check upon login / user change
+    const initialUnread = getUnreadBroadcastsForUser(currentUser);
+    if (initialUnread.length > 0) {
+      setActiveBroadcastPopup(initialUnread[0]);
+    }
+
+    // Real-time listener for incoming broadcasts
+    const unsubscribe = subscribeToBroadcasts(() => {
+      const freshUnread = getUnreadBroadcastsForUser(currentUser);
+      if (freshUnread.length > 0) {
+        setActiveBroadcastPopup((prev) => prev || freshUnread[0]);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [currentUser]);
 
   const handleOpenWhatsappWithData = (data: WhatsappInitialData) => {
     if (hasFeaturePermission(currentUser, 'whatsapp_tool')) {
@@ -129,7 +179,6 @@ export default function App() {
   };
 
   const [qrSessionParam, setQrSessionParam] = useState<string | null>(null);
-  const [welcomeUser, setWelcomeUser] = useState<UserProfile | null>(null);
   const [isExternalAssistantOpen, setIsExternalAssistantOpen] = useState<boolean>(false);
   const [vaultPickerParam, setVaultPickerParam] = useState<boolean>(false);
   const [vaultPickerAccept, setVaultPickerAccept] = useState<string[]>(['.pdf', '.jpg', '.jpeg', '.png']);
@@ -137,7 +186,6 @@ export default function App() {
   const handleLoginSuccess = (user: UserProfile) => {
     setCurUser(user);
     setIsAuthenticated(true);
-    setWelcomeUser(user);
     if (user.role === 'super_admin' || user.username?.toLowerCase() === 'shrinath') {
       setActiveTab('user_management');
       return;
@@ -155,7 +203,6 @@ export default function App() {
     setCurrentUser(null);
     setCurUser(null);
     setIsAuthenticated(false);
-    setWelcomeUser(null);
   };
 
   const handleRefreshSession = () => {
@@ -234,6 +281,8 @@ export default function App() {
         }
       }
     }
+
+    syncUsersFromServer().catch(() => {});
 
     // Subscribe to live user updates to keep avatar & profile synced
     const unsubscribe = subscribeToUsers((users) => {
@@ -371,6 +420,7 @@ export default function App() {
           onOpenImgToPdf={hasFeaturePermission(currentUser, 'img_to_pdf_tool') ? handleOpenImgToPdf : undefined}
           onOpenImageToText={hasFeaturePermission(currentUser, 'image_to_text_tool') ? handleOpenImageToText : undefined}
           onOpenExternalPortal={() => setIsExternalAssistantOpen(true)}
+          onOpenBroadcastModal={() => setIsBroadcastComposerOpen(true)}
           currentUser={currentUser}
         />
 
@@ -390,9 +440,11 @@ export default function App() {
                   onOpenWhatsappTool={handleOpenWhatsappGeneral}
                   onOpenQrTool={handleOpenQrUpload}
                   onOpenTicketTool={handleOpenTicketGenerator}
+                  onOpenTicketWithData={handleOpenTicketWithData}
                   onOpenImgToPdfTool={handleOpenImgToPdf}
                   onOpenImageToTextTool={handleOpenImageToText}
                   onOpenExternalPortal={() => setIsExternalAssistantOpen(true)}
+                  onOpenBroadcastModal={() => setIsBroadcastComposerOpen(true)}
                   onNavigateTab={navigateToTab}
                   currentUser={currentUser}
                 />
@@ -409,6 +461,7 @@ export default function App() {
                 <TicketsView
                   currentUser={currentUser}
                   onOpenTicketTool={handleOpenTicketGenerator}
+                  onOpenTicketWithData={handleOpenTicketWithData}
                   onOpenWhatsappTool={handleOpenWhatsappGeneral}
                   onOpenWhatsappWithData={handleOpenWhatsappWithData}
                   onOpenExternalPortal={() => setIsExternalAssistantOpen(true)}
@@ -523,17 +576,25 @@ export default function App() {
         onSendToTicketGenerator={handleOpenTicketWithData}
       />
 
-      {welcomeUser && (
-        <WelcomeModal
-          user={welcomeUser}
-          onClose={() => setWelcomeUser(null)}
-        />
-      )}
-
       {/* External Target Website (MHCET Tickets) Vault Integration Assistant & Simulator */}
       <ExternalWebsiteAssistantModal
         isOpen={isExternalAssistantOpen}
         onClose={() => setIsExternalAssistantOpen(false)}
+      />
+
+      {/* Broadcast Notification Popup for Counsellors & Supporting Staff upon Login */}
+      <BroadcastPopupModal
+        isOpen={!!activeBroadcastPopup}
+        broadcast={activeBroadcastPopup}
+        onAcknowledge={handleAcknowledgeBroadcast}
+        onClose={() => setActiveBroadcastPopup(null)}
+      />
+
+      {/* Broadcast Composer Modal for Super Admin & DNO */}
+      <BroadcastComposerModal
+        isOpen={isBroadcastComposerOpen}
+        onClose={() => setIsBroadcastComposerOpen(false)}
+        currentUser={currentUser}
       />
     </div>
   );

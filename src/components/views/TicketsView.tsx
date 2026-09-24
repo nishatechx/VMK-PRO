@@ -47,6 +47,7 @@ import { WhatsappInitialData } from '../WhatsappTicketModal';
 interface TicketsViewProps {
   currentUser?: UserProfile | null;
   onOpenTicketTool: () => void;
+  onOpenTicketWithData?: (data: any) => void;
   onOpenWhatsappTool: () => void;
   onOpenWhatsappWithData?: (data: WhatsappInitialData) => void;
   onOpenExternalPortal?: () => void;
@@ -55,6 +56,7 @@ interface TicketsViewProps {
 export const TicketsView: React.FC<TicketsViewProps> = ({
   currentUser,
   onOpenTicketTool,
+  onOpenTicketWithData,
   onOpenWhatsappTool,
   onOpenWhatsappWithData,
   onOpenExternalPortal,
@@ -89,21 +91,62 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
     return () => unsubscribe();
   }, []);
 
+  const isSuperAdmin = currentUser?.role === 'super_admin' || currentUser?.username?.toLowerCase() === 'shrinath';
   const isDno = currentUser?.role === 'dno' || currentUser?.username?.toLowerCase() === 'dno';
   const currentDistrict = (currentUser?.district || 'Washim').trim().toLowerCase();
 
   // Scoped tickets base:
+  // - Super Admin: shows ALL tickets
   // - DNO: shows ONLY tickets from counselors belonging to his assigned district
-  // - Counselor / Staff: shows ONLY tickets created by this counselor/staff member
+  // - Counsellor / Staff: shows ONLY tickets created by this user (strictly not other users)
   const scopedTickets = useMemo(() => {
     return tickets.filter((t) => {
+      if (isSuperAdmin) {
+        return true;
+      }
       if (isDno) {
         const ticketDist = (t.district || 'Washim').trim().toLowerCase();
         return ticketDist === currentDistrict;
       }
-      return t.createdBy === currentUser?.username || t.createdBy === currentUser?.id;
+      // For counsellor and non-admin users: strictly only tickets created by them!
+      const userUname = currentUser?.username?.trim().toLowerCase();
+      const userId = currentUser?.id?.trim().toLowerCase();
+      const createdBy = (t.createdBy || '').trim().toLowerCase();
+      const creatorName = (t.creatorName || '').trim().toLowerCase();
+      const userFullName = (currentUser?.fullName || '').trim().toLowerCase();
+
+      return Boolean(
+        (userUname && createdBy === userUname) ||
+        (userId && createdBy === userId) ||
+        (userFullName && creatorName === userFullName)
+      );
     });
-  }, [tickets, isDno, currentDistrict, currentUser]);
+  }, [tickets, isSuperAdmin, isDno, currentDistrict, currentUser]);
+
+  const handleEditInSac = (ticket: TicketRecord) => {
+    if (onOpenTicketWithData) {
+      onOpenTicketWithData({
+        editingTicketId: ticket.id,
+        ticketNo: ticket.ticketNo,
+        cetNo: ticket.cetNo,
+        capId: ticket.capId,
+        candidateName: ticket.candidateName,
+        dob: ticket.dob,
+        mobile: ticket.mobile,
+        email: ticket.email,
+        course: ticket.course,
+        query: ticket.query,
+        status: ticket.status,
+        createdBy: ticket.createdBy,
+        creatorName: ticket.creatorName,
+        creatorRole: ticket.creatorRole,
+        district: ticket.district,
+        createdAt: ticket.createdAt,
+      });
+    } else {
+      onOpenTicketTool();
+    }
+  };
 
   // Filter & Search Tickets
   const filteredTickets = useMemo(() => {
@@ -840,6 +883,15 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       <MessageCircle className="w-4 h-4" />
                     </button>
 
+                    <button
+                      onClick={() => handleEditInSac(ticket)}
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#EAF4FB] hover:bg-[#0056A6] text-[#0056A6] hover:text-white border border-[#0056A6]/25 transition-all cursor-pointer flex items-center gap-1 active:scale-95"
+                      title="Edit in SAC Ticket Generator"
+                    >
+                      <Edit3 className="w-3 h-3" />
+                      <span>Edit in SAC</span>
+                    </button>
+
                     {onOpenWhatsappWithData && (
                       <button
                         onClick={() => {
@@ -1001,6 +1053,13 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                             <Eye className="w-4 h-4" />
                           </button>
                           <button
+                            onClick={() => handleEditInSac(ticket)}
+                            className="p-1 text-[#0056A6] hover:text-[#003B73] hover:bg-[#EAF4FB] rounded transition-colors"
+                            title="Edit in SAC Ticket Generator"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button
                             onClick={() => handlePrintSlip(ticket)}
                             className="p-1 text-slate-600 hover:text-[#0056A6]"
                             title="Print Slip"
@@ -1122,6 +1181,17 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               </button>
 
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setIsDetailModalOpen(false);
+                    handleEditInSac(selectedTicket);
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-[#EAF4FB] text-[#0056A6] hover:bg-[#0056A6] hover:text-white border border-[#0056A6]/30 flex items-center gap-1.5 transition-all cursor-pointer"
+                  title="Edit ticket in SAC Ticket Generator"
+                >
+                  <Edit3 className="w-4 h-4" />
+                  <span>Edit in SAC</span>
+                </button>
                 <button
                   onClick={() => handleCopyText(selectedTicket.formattedText || selectedTicket.ticketNo, selectedTicket.id)}
                   className="px-4 py-2 rounded-xl text-xs font-bold bg-[#0056A6] text-white hover:bg-[#003B73] flex items-center gap-1.5"

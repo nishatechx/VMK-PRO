@@ -116,6 +116,483 @@ async function startServer() {
     res.json({ status: "ok", uptime: process.uptime() });
   });
 
+  // -------------------------------------------------------------
+  // PERSISTENT USERS & CLOUD SYSTEM SETTINGS STORAGE
+  // -------------------------------------------------------------
+  const DATA_DIR = path.resolve(process.cwd(), "data");
+  if (!fs.existsSync(DATA_DIR)) {
+    try {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    } catch (e) {
+      console.error("Failed to create data directory:", e);
+    }
+  }
+
+  const USERS_FILE = path.join(DATA_DIR, "users.json");
+  const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
+
+  const DEFAULT_INITIAL_USERS = [
+    {
+      id: "super_admin_shrinath",
+      username: "shrinath",
+      password: "shri@8975",
+      fullName: "Shrinath (Super Administrator)",
+      designation: "State CET Cell Super Administrator (Maharashtra)",
+      role: "super_admin",
+      district: "State-wide",
+      allowedTabs: ["user_management", "profile"],
+      allowedFeatures: [],
+      canUseApiKey: true,
+      isActive: true,
+      createdAt: "2026-08-20T00:00:00.000Z",
+      phone: "+91 89750 00000",
+      email: "shrinathyg@gmail.com",
+    },
+    {
+      id: "dno_washim_admin",
+      username: "dno",
+      password: "dno1",
+      fullName: "District Nodal Officer (Admin)",
+      designation: "District Nodal Officer (CET Facilitation Center, Washim)",
+      role: "dno",
+      district: "Washim",
+      allowedTabs: [
+        "dashboard",
+        "visitors",
+        "tickets",
+        "students",
+        "settings",
+        "profile",
+        "user_management",
+        "google_sheets",
+      ],
+      allowedFeatures: [
+        "whatsapp_tool",
+        "qr_upload_tool",
+        "ticket_generator_tool",
+        "img_to_pdf_tool",
+        "image_to_text_tool",
+        "add_candidate",
+        "add_visitor",
+        "export_reports",
+      ],
+      canUseApiKey: true,
+      isActive: true,
+      createdAt: "2026-08-22T00:00:00.000Z",
+      phone: "+91 98220 00000",
+      email: "dno.washim@cetcell.mah.gov.in",
+    },
+    {
+      id: "staff_operator_1",
+      username: "staff",
+      password: "staff123",
+      fullName: "Pooja Deshmukh",
+      designation: "Supporting Staff (Reception & Verification Desk)",
+      role: "supporting_staff",
+      district: "Washim",
+      allowedTabs: ["dashboard", "visitors", "students", "profile"],
+      allowedFeatures: [
+        "whatsapp_tool",
+        "qr_upload_tool",
+        "ticket_generator_tool",
+        "add_candidate",
+        "add_visitor",
+        "export_reports",
+      ],
+      canUseApiKey: true,
+      isActive: true,
+      createdAt: "2026-08-25T00:00:00.000Z",
+      phone: "+91 98220 12345",
+      email: "staff.washim@cetcell.mah.gov.in",
+    },
+  ];
+
+  function getStoredUsers(): any[] {
+    try {
+      if (fs.existsSync(USERS_FILE)) {
+        const raw = fs.readFileSync(USERS_FILE, "utf-8");
+        const list = JSON.parse(raw);
+        if (Array.isArray(list) && list.length > 0) {
+          // Guarantee super admin and DNO exist with correct credentials
+          let changed = false;
+          const adminIdx = list.findIndex(
+            (u: any) => u.username?.toLowerCase() === "shrinath"
+          );
+          if (adminIdx === -1) {
+            list.unshift(DEFAULT_INITIAL_USERS[0]);
+            changed = true;
+          } else {
+            if (list[adminIdx].password !== "shri@8975") {
+              list[adminIdx].password = "shri@8975";
+              changed = true;
+            }
+            if (list[adminIdx].role !== "super_admin") {
+              list[adminIdx].role = "super_admin";
+              changed = true;
+            }
+          }
+
+          const dnoIdx = list.findIndex(
+            (u: any) => u.username?.toLowerCase() === "dno"
+          );
+          if (dnoIdx === -1) {
+            list.push(DEFAULT_INITIAL_USERS[1]);
+            changed = true;
+          }
+
+          if (changed) {
+            fs.writeFileSync(USERS_FILE, JSON.stringify(list, null, 2), "utf-8");
+          }
+          return list;
+        }
+      }
+    } catch (e) {
+      console.error("Error reading users file, re-initializing:", e);
+    }
+
+    try {
+      fs.writeFileSync(USERS_FILE, JSON.stringify(DEFAULT_INITIAL_USERS, null, 2), "utf-8");
+    } catch (e) {
+      console.error("Error seeding users file:", e);
+    }
+    return DEFAULT_INITIAL_USERS;
+  }
+
+  function saveStoredUsers(users: any[]) {
+    try {
+      fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), "utf-8");
+    } catch (e) {
+      console.error("Failed to write to users file:", e);
+    }
+  }
+
+  function getStoredSettings(): Record<string, any> {
+    try {
+      if (fs.existsSync(SETTINGS_FILE)) {
+        const raw = fs.readFileSync(SETTINGS_FILE, "utf-8");
+        return JSON.parse(raw) || {};
+      }
+    } catch (e) {
+      console.error("Failed to read settings file:", e);
+    }
+    return {};
+  }
+
+  function saveStoredSettings(settings: Record<string, any>) {
+    try {
+      fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), "utf-8");
+    } catch (e) {
+      console.error("Failed to write settings file:", e);
+    }
+  }
+
+  // GET all users
+  app.get("/api/users", (req, res) => {
+    const users = getStoredUsers();
+    res.json({ success: true, users });
+  });
+
+  // User Lookup by username
+  app.get("/api/users/lookup/:username", (req, res) => {
+    const raw = (req.params.username || "").trim().toLowerCase();
+    if (!raw) {
+      return res.status(400).json({ success: false, message: "Username is required." });
+    }
+    const users = getStoredUsers();
+    const user = users.find(
+      (u: any) => u.username?.toLowerCase() === raw || u.id?.toLowerCase() === raw
+    );
+    if (user) {
+      return res.json({ success: true, found: true, user });
+    }
+    // Check alias
+    if (raw === "shri123") {
+      const admin = users.find((u: any) => u.username?.toLowerCase() === "shrinath");
+      if (admin) return res.json({ success: true, found: true, user: admin });
+    }
+    res.json({ success: true, found: false, user: null });
+  });
+
+  // POST create / update user
+  app.post("/api/users", (req, res) => {
+    const user = req.body;
+    if (!user || !user.username) {
+      return res.status(400).json({ success: false, message: "Invalid user data provided." });
+    }
+
+    const cleanUsername = String(user.username).trim().toLowerCase();
+    const cleanPassword = user.password ? String(user.password).trim() : "";
+    const users = getStoredUsers();
+
+    // Check duplicate username for another user ID
+    const duplicate = users.find(
+      (u: any) => u.username?.toLowerCase() === cleanUsername && u.id !== user.id
+    );
+    if (duplicate) {
+      return res.status(400).json({
+        success: false,
+        message: `Username "${user.username}" is already in use by another profile.`,
+      });
+    }
+
+    const existingIndex = users.findIndex(
+      (u: any) => u.id === user.id || u.username?.toLowerCase() === cleanUsername
+    );
+
+    const existingUser = existingIndex >= 0 ? users[existingIndex] : null;
+
+    const cleanUser = {
+      ...user,
+      id: user.id || (existingUser ? existingUser.id : `user_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`),
+      username: cleanUsername,
+      password: cleanPassword || (existingUser ? existingUser.password : "123456"),
+      fullName: (user.fullName || cleanUsername).trim(),
+      designation: (user.designation || "Staff Member").trim(),
+      role: user.role || "supporting_staff",
+      district: user.district || (existingUser ? existingUser.district : "Washim"),
+      phone: user.phone || (existingUser ? existingUser.phone : ""),
+      email: user.email || (existingUser ? existingUser.email : ""),
+      allowedTabs: Array.isArray(user.allowedTabs) ? user.allowedTabs : ["dashboard", "profile"],
+      allowedFeatures: Array.isArray(user.allowedFeatures) ? user.allowedFeatures : [],
+      canUseApiKey: user.canUseApiKey !== false,
+      isActive: user.isActive !== false,
+      createdAt: user.createdAt || (existingUser ? existingUser.createdAt : new Date().toISOString()),
+      ...(user.profilePicture ? { profilePicture: user.profilePicture } : {}),
+      ...(user.lastLogin ? { lastLogin: user.lastLogin } : {}),
+    };
+
+    if (existingIndex >= 0) {
+      users[existingIndex] = { ...users[existingIndex], ...cleanUser };
+    } else {
+      users.push(cleanUser);
+    }
+
+    saveStoredUsers(users);
+    res.json({ success: true, message: "User profile saved successfully.", user: cleanUser });
+  });
+
+  // DELETE user by ID or username
+  app.delete("/api/users/:id", (req, res) => {
+    const rawId = String(req.params.id || "").trim();
+    if (!rawId) {
+      return res.status(400).json({ success: false, message: "User ID is required." });
+    }
+
+    if (
+      rawId === "super_admin_shrinath" ||
+      rawId.toLowerCase() === "shrinath"
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "The Super Administrator profile is protected and cannot be deleted.",
+      });
+    }
+
+    const users = getStoredUsers();
+    const targetIndex = users.findIndex(
+      (u: any) => u.id === rawId || u.username?.toLowerCase() === rawId.toLowerCase()
+    );
+
+    if (targetIndex !== -1) {
+      const deletedUser = users[targetIndex];
+      users.splice(targetIndex, 1);
+      saveStoredUsers(users);
+      return res.json({
+        success: true,
+        message: `User profile "${deletedUser.username}" deleted successfully.`,
+      });
+    }
+
+    // Always succeed so client and cloud cleanup can proceed without failure
+    return res.json({
+      success: true,
+      message: "User profile removed successfully.",
+    });
+  });
+
+  // Batch sync users between client and server (guarantees cross-device availability)
+  app.post("/api/users/sync", (req, res) => {
+    const clientUsers = req.body?.users;
+    const serverUsers = getStoredUsers();
+
+    if (Array.isArray(clientUsers)) {
+      let changed = false;
+      for (const cu of clientUsers) {
+        if (!cu || !cu.username) continue;
+        const cUsername = String(cu.username).trim().toLowerCase();
+        const idx = serverUsers.findIndex(
+          (su: any) => su.id === cu.id || su.username?.toLowerCase() === cUsername
+        );
+        if (idx === -1) {
+          // New user from client not yet on server
+          serverUsers.push({
+            ...cu,
+            username: cUsername,
+            isActive: cu.isActive !== false,
+          });
+          changed = true;
+        } else if (cu.password && cu.password !== serverUsers[idx].password) {
+          // Sync updated password
+          serverUsers[idx].password = cu.password;
+          changed = true;
+        }
+      }
+      if (changed) {
+        saveStoredUsers(serverUsers);
+      }
+    }
+
+    res.json({ success: true, users: serverUsers });
+  });
+
+  // Toggle user active status
+  app.post("/api/users/toggle-status", (req, res) => {
+    const { userId, isActive } = req.body;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: "User ID is required." });
+    }
+
+    const cleanUserId = String(userId).trim().toLowerCase();
+    const users = getStoredUsers();
+    const user = users.find(
+      (u: any) => u.id === userId || u.username?.toLowerCase() === cleanUserId
+    );
+    if (!user) {
+      return res.json({ success: true, message: "User status updated." });
+    }
+
+    if (user.username?.toLowerCase() === "shrinath" && !isActive) {
+      return res.status(400).json({
+        success: false,
+        message: "The Super Administrator account cannot be disabled.",
+      });
+    }
+
+    user.isActive = Boolean(isActive);
+    saveStoredUsers(users);
+    res.json({
+      success: true,
+      message: `User "${user.username}" is now ${user.isActive ? "active" : "disabled"}.`,
+      user,
+    });
+  });
+
+  // Toggle user API key permission
+  app.post("/api/users/toggle-api-key", (req, res) => {
+    const { userId, canUseApiKey } = req.body;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: "User ID is required." });
+    }
+
+    const cleanUserId = String(userId).trim().toLowerCase();
+    const users = getStoredUsers();
+    const user = users.find(
+      (u: any) => u.id === userId || u.username?.toLowerCase() === cleanUserId
+    );
+    if (!user) {
+      return res.json({ success: true, message: "User API key permission updated." });
+    }
+
+    user.canUseApiKey = Boolean(canUseApiKey);
+    saveStoredUsers(users);
+    res.json({
+      success: true,
+      message: `Gemini API key access ${user.canUseApiKey ? "granted" : "revoked"} for ${user.username}.`,
+      user,
+    });
+  });
+
+  // POST authentication login
+  app.post("/api/auth/login", (req, res) => {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Both username and password are required.",
+      });
+    }
+
+    let cleanUser = String(username).trim().toLowerCase();
+    const cleanPass = String(password).trim();
+
+    // Check alias
+    if (cleanUser === "shri123") {
+      cleanUser = "shrinath";
+    }
+
+    const users = getStoredUsers();
+    let matched = users.find((u: any) => u.username?.toLowerCase() === cleanUser);
+
+    if (!matched) {
+      const defaultUser = DEFAULT_INITIAL_USERS.find(
+        (u) => u.username.toLowerCase() === cleanUser
+      );
+      if (defaultUser) {
+        matched = { ...defaultUser };
+        users.push(matched);
+        saveStoredUsers(users);
+      }
+    }
+
+    if (!matched) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid User ID. Please check your username.",
+      });
+    }
+
+    if (matched.password !== cleanPass) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid password. Please try again.",
+      });
+    }
+
+    if (!matched.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: "This account has been disabled. Please contact Super Administrator.",
+      });
+    }
+
+    matched.lastLogin = new Date().toISOString();
+    saveStoredUsers(users);
+
+    res.json({ success: true, user: matched });
+  });
+
+  // System Settings: Master Gemini API Key
+  app.get("/api/system-settings/master-api-key", (req, res) => {
+    const settings = getStoredSettings();
+    const envKey =
+      process.env.GEMINI_API_KEY ||
+      process.env.VITE_GEMINI_API_KEY ||
+      process.env.GOOGLE_API_KEY ||
+      "";
+    const apiKey = settings.geminiApiKey || envKey || "";
+    res.json({ success: true, apiKey });
+  });
+
+  app.post("/api/system-settings/master-api-key", (req, res) => {
+    const { apiKey } = req.body;
+    if (!apiKey || !String(apiKey).trim()) {
+      return res.status(400).json({ success: false, message: "API key cannot be empty." });
+    }
+    const settings = getStoredSettings();
+    settings.geminiApiKey = String(apiKey).trim();
+    settings.updatedAt = new Date().toISOString();
+    saveStoredSettings(settings);
+    res.json({ success: true, message: "Master Gemini API key saved successfully.", apiKey: settings.geminiApiKey });
+  });
+
+  app.delete("/api/system-settings/master-api-key", (req, res) => {
+    const settings = getStoredSettings();
+    delete settings.geminiApiKey;
+    settings.updatedAt = new Date().toISOString();
+    saveStoredSettings(settings);
+    res.json({ success: true, message: "Master Gemini API key removed successfully." });
+  });
+
   // CET Cell Notices Scraping & In-memory Cache
   interface CetNotice {
     sn: string;

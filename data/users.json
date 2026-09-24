@@ -1,0 +1,83 @@
+[
+  {
+    "id": "super_admin_shrinath",
+    "username": "shrinath",
+    "password": "shri@8975",
+    "fullName": "Shrinath (Super Administrator)",
+    "designation": "State CET Cell Super Administrator (Maharashtra)",
+    "role": "super_admin",
+    "district": "State-wide",
+    "allowedTabs": [
+      "user_management",
+      "profile"
+    ],
+    "allowedFeatures": [],
+    "canUseApiKey": true,
+    "isActive": true,
+    "createdAt": "2026-08-20T00:00:00.000Z",
+    "phone": "+91 89750 00000",
+    "email": "shrinathyg@gmail.com"
+  },
+  {
+    "id": "dno_washim_admin",
+    "username": "dno",
+    "password": "dno1",
+    "fullName": "District Nodal Officer (Admin)",
+    "designation": "District Nodal Officer (CET Facilitation Center, Washim)",
+    "role": "dno",
+    "district": "Washim",
+    "allowedTabs": [
+      "dashboard",
+      "visitors",
+      "tickets",
+      "students",
+      "settings",
+      "profile",
+      "user_management",
+      "google_sheets"
+    ],
+    "allowedFeatures": [
+      "whatsapp_tool",
+      "qr_upload_tool",
+      "ticket_generator_tool",
+      "img_to_pdf_tool",
+      "image_to_text_tool",
+      "add_candidate",
+      "add_visitor",
+      "export_reports"
+    ],
+    "canUseApiKey": true,
+    "isActive": true,
+    "createdAt": "2026-08-22T00:00:00.000Z",
+    "phone": "+91 98220 00000",
+    "email": "dno.washim@cetcell.mah.gov.in"
+  },
+  {
+    "id": "staff_operator_1",
+    "username": "staff",
+    "password": "staff123",
+    "fullName": "Pooja Deshmukh",
+    "designation": "Supporting Staff (Reception & Verification Desk)",
+    "role": "supporting_staff",
+    "district": "Washim",
+    "allowedTabs": [
+      "dashboard",
+      "visitors",
+      "students",
+      "profile"
+    ],
+    "allowedFeatures": [
+      "whatsapp_tool",
+      "qr_upload_tool",
+      "ticket_generator_tool",
+      "add_candidate",
+      "add_visitor",
+      "export_reports"
+    ],
+    "canUseApiKey": true,
+    "isActive": true,
+    "createdAt": "2026-08-25T00:00:00.000Z",
+    "phone": "+91 98220 12345",
+    "email": "staff.washim@cetcell.mah.gov.in"
+  }
+]

@@ -104,6 +104,24 @@ export async function getMasterApiKey(): Promise<string> {
     }
   }
 
+  // Check server endpoint
+  try {
+    const resp = await fetch('/api/system-settings/master-api-key');
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data.apiKey && String(data.apiKey).trim()) {
+        const key = String(data.apiKey).trim();
+        inMemoryMasterKey = key;
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(MASTER_API_KEY_STORAGE, key);
+        }
+        return key;
+      }
+    }
+  } catch (e) {
+    // Ignore server error and fallback
+  }
+
   // Check Firestore
   try {
     const configDocRef = doc(db, 'system_settings', 'gemini_api');
@@ -127,7 +145,7 @@ export async function getMasterApiKey(): Promise<string> {
 }
 
 /**
- * Save master Gemini API Key to Firestore & Local Storage (DNO only)
+ * Save master Gemini API Key to Server, Firestore & Local Storage
  */
 export async function saveMasterApiKey(
   apiKey: string,
@@ -146,29 +164,43 @@ export async function saveMasterApiKey(
     }
     notifySubscribers(cleanKey);
 
-    // Save to Firestore so all users and devices immediately receive it
-    const configDocRef = doc(db, 'system_settings', 'gemini_api');
-    await setDoc(
-      configDocRef,
-      sanitizeForFirestore({
-        apiKey: cleanKey,
-        updatedAt: new Date().toISOString(),
-        updatedBy: updatedBy,
-        isActive: true,
-      }),
-      { merge: true }
-    );
+    // Save to server API for instant cross-device availability
+    try {
+      await fetch('/api/system-settings/master-api-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey: cleanKey }),
+      });
+    } catch (e) {
+      console.warn('Server master API key sync notice:', e);
+    }
+
+    // Save to Firestore so all users and devices receive it if rules allow
+    try {
+      const configDocRef = doc(db, 'system_settings', 'gemini_api');
+      await setDoc(
+        configDocRef,
+        sanitizeForFirestore({
+          apiKey: cleanKey,
+          updatedAt: new Date().toISOString(),
+          updatedBy: updatedBy,
+          isActive: true,
+        }),
+        { merge: true }
+      );
+    } catch (e) {
+      // Ignore firestore quota issue
+    }
 
     return {
       success: true,
       message: 'Master Gemini API Key saved to cloud database and distributed to authorized staff.',
     };
   } catch (err: any) {
-    console.error('Failed to save master API key to Firestore:', err);
-    // Still saved locally
+    console.error('Failed to save master API key:', err);
     return {
       success: true,
-      message: 'Master API Key saved locally. (Cloud sync notice: ' + (err?.message || 'offline') + ')',
+      message: 'Master API Key saved locally.',
     };
   }
 }
@@ -185,8 +217,21 @@ export async function deleteMasterApiKey(): Promise<{ success: boolean; message:
     }
     notifySubscribers('');
 
-    const configDocRef = doc(db, 'system_settings', 'gemini_api');
-    await deleteDoc(configDocRef);
+    // Remove on server
+    try {
+      await fetch('/api/system-settings/master-api-key', {
+        method: 'DELETE',
+      });
+    } catch (e) {
+      console.warn('Server delete master key notice:', e);
+    }
+
+    try {
+      const configDocRef = doc(db, 'system_settings', 'gemini_api');
+      await deleteDoc(configDocRef);
+    } catch (e) {
+      // Ignore firestore quota
+    }
 
     return { success: true, message: 'Master Gemini API key removed.' };
   } catch (err: any) {

@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   authenticateAsync,
+  authenticateWithResultAsync,
   findUserByUsername,
   getAllUsers,
+  syncUsersFromServer,
   SUPER_ADMIN_USER,
 } from "../services/authService";
 import { UserProfile } from "../types/auth";
@@ -50,6 +52,11 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
   const userIdInputRef = useRef<HTMLInputElement>(null);
   const passwordInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync users from persistent server on mount so logins created on other laptops are instantly available
+  useEffect(() => {
+    syncUsersFromServer().catch(() => {});
+  }, []);
 
   // Auto-focus input when transitioning between steps
   useEffect(() => {
@@ -128,13 +135,13 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         authId = "shrinath";
       }
 
-      const user = await authenticateAsync(authId, cleanPass);
-      if (user) {
+      const result = await authenticateWithResultAsync(authId, cleanPass);
+      if (result.user) {
         if (onLoginSuccess) {
-          onLoginSuccess(user);
+          onLoginSuccess(result.user);
         }
       } else {
-        setErrorMsg("Invalid password. Please try again.");
+        setErrorMsg(result.error || "Invalid password. Please try again.");
         setIsLoading(false);
       }
     } catch (err) {
@@ -159,27 +166,35 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       style={{
         backgroundImage: `url("${BACKGROUND_IMAGE_URL}")`,
       }}
-      className="relative w-screen h-screen min-h-screen bg-cover bg-center bg-no-repeat overflow-hidden flex items-center justify-center lg:justify-end px-5 sm:px-10 lg:pr-[12%] xl:pr-[16%] text-white select-none"
+      className="relative w-screen h-screen min-h-screen bg-cover bg-center bg-no-repeat overflow-hidden flex flex-col justify-between text-white select-none"
     >
       {/* Subtle overlay only on small mobile viewports for enhanced contrast without a card */}
       <div className="absolute inset-0 bg-slate-950/20 lg:bg-transparent pointer-events-none" />
 
-      {/* LOGIN UI: Natural, unboxed interface directly over the background */}
-      <div className="relative z-10 w-full max-w-[420px] min-h-[380px] flex flex-col justify-center">
-        {/* Brand Logo on top above login form */}
-        <div className="mb-5 flex justify-center lg:justify-start">
-          <img
-            id="login-page-brand-logo"
-            src={APP_ASSETS.LOGO}
-            alt="State Common Entrance Test Cell, Maharashtra"
-            className="h-14 sm:h-16 md:h-20 w-auto max-w-[320px] sm:max-w-[400px] object-contain block drop-shadow-md select-none transition-transform hover:scale-[1.02]"
-            referrerPolicy="no-referrer"
-          />
+      {/* Top Header with Logo Touching Header Top & Left Edge with Radius */}
+      <header
+        id="login-screen-header"
+        className="relative z-20 w-full p-0 flex items-start justify-between shrink-0"
+      >
+        <div className="flex items-start">
+          <div className="bg-white/95 backdrop-blur-xs shadow-xl rounded-br-2xl sm:rounded-br-3xl border-b border-r border-slate-200/90 p-1.5 sm:p-2 overflow-hidden transition-all flex items-center justify-center">
+            <img
+              id="login-page-brand-logo"
+              src={APP_ASSETS.LOGO}
+              alt="State Common Entrance Test Cell, Maharashtra"
+              className="h-12 sm:h-14 md:h-16 lg:h-18 w-auto max-w-[240px] sm:max-w-[320px] md:max-w-[380px] object-contain block select-none rounded-br-xl sm:rounded-br-2xl transition-transform hover:scale-[1.01]"
+              referrerPolicy="no-referrer"
+            />
+          </div>
         </div>
+      </header>
 
-        {/* ========================================================================= */}
-        {/* STEP 1: USER ID                                                           */}
-        {/* ========================================================================= */}
+      {/* LOGIN UI: Form in vertical middle, positioned on the right side of the page */}
+      <div className="relative z-10 flex-1 flex items-center justify-center md:justify-end px-6 sm:px-12 md:pr-16 lg:pr-24 xl:pr-32 py-4">
+        <div className="w-full max-w-[420px] flex flex-col justify-center">
+          {/* ========================================================================= */}
+          {/* STEP 1: USER ID                                                           */}
+          {/* ========================================================================= */}
         {step === 1 && (
           <div
             key="step-1"
@@ -257,15 +272,11 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             key="step-2"
             className="w-full space-y-6 transition-all duration-300 ease-out animate-in fade-in slide-in-from-bottom-3"
           >
-            {/* Heading: White 'Welcome back, ' with bold yellow user name ahead of hand 👋 */}
-            <div className="space-y-1.5">
-              <h1 className="text-3xl sm:text-4xl font-black tracking-tight drop-shadow-md leading-tight">
-                <span className="text-white">Welcome back, </span>
-                <span className="text-yellow-400 font-black">{displayName}</span> 👋
+            {/* Heading: Welcome back line with white text, yellow user name, and hi emoji */}
+            <div className="space-y-1">
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight drop-shadow-md leading-tight text-white">
+                Welcome back, <span className="text-yellow-400 font-black">{displayName}</span> 👋
               </h1>
-              <p className="text-sm font-semibold text-white/90 drop-shadow-xs">
-                Good to see you again.
-              </p>
             </div>
 
             {/* Inline Error Message */}
@@ -354,6 +365,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             </form>
           </div>
         )}
+        </div>
       </div>
     </main>
   );

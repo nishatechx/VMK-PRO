@@ -92,13 +92,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const isSuperAdmin = currentUser?.role === 'super_admin' || currentUser?.username?.toLowerCase() === 'shrinath';
   const isDnoAdmin = currentUser?.role === 'dno' || currentUser?.username?.toLowerCase() === 'dno';
 
-  // Tool permissions for active facilitation utilities (hidden for Super Admin)
-  const canWhatsapp = !isSuperAdmin && hasFeaturePermission(currentUser, 'whatsapp_tool');
-  const canQr = !isSuperAdmin && hasFeaturePermission(currentUser, 'qr_upload_tool');
-  const canTicket = !isSuperAdmin && hasFeaturePermission(currentUser, 'ticket_generator_tool');
-  const canImgToPdf = !isSuperAdmin && hasFeaturePermission(currentUser, 'img_to_pdf_tool');
-  const canImageToText = !isSuperAdmin && hasFeaturePermission(currentUser, 'image_to_text_tool');
-  const hasAnyTools = !isSuperAdmin && (canWhatsapp || canQr || canTicket || canImgToPdf || canImageToText);
+  // Tool permissions for active facilitation utilities
+  const canWhatsapp = hasFeaturePermission(currentUser, 'whatsapp_tool');
+  const canQr = hasFeaturePermission(currentUser, 'qr_upload_tool');
+  const canTicket = hasFeaturePermission(currentUser, 'ticket_generator_tool');
+  const canImgToPdf = hasFeaturePermission(currentUser, 'img_to_pdf_tool');
+  const canImageToText = hasFeaturePermission(currentUser, 'image_to_text_tool');
+  const hasAnyTools = canWhatsapp || canQr || canTicket || canImgToPdf || canImageToText;
 
   // Filter tabs according to the logged-in user's allowedTabs RBAC rules (Google Sheets exclusively for DNO Admin)
   const allowedNavItems = allNavItems.filter((item) => {

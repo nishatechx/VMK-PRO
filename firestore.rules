@@ -21,6 +21,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Official broadcast notifications pushed by DNO / Super Admin
+    match /broadcasts/{broadcastId} {
+      allow read, write: if true;
+    }
+
     // Public read and write for admission scrutiny terminal and QR mobile scanner
     match /qr_uploads/{uploadId} {
       allow read, write: if true;

@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { getStudentRecords, getCurrentUser } from '../services/authService';
 import { saveTicketRecord } from '../services/ticketService';
-import { UserProfile, TicketRecord } from '../types/auth';
+import { UserProfile, TicketRecord, TicketStatus } from '../types/auth';
 import { WhatsappInitialData } from './WhatsappTicketModal';
 import { DEPARTMENT_COURSES, DEFAULT_COURSE } from '../data/courses';
 import { FormValidationErrorModal } from './FormValidationErrorModal';
@@ -119,8 +119,73 @@ export const TicketGeneratorModal: React.FC<TicketGeneratorModalProps> = ({
     type: 'neutral',
   });
   const [ticketCopied, setTicketCopied] = useState<boolean>(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const [generatedTicketNo, setGeneratedTicketNo] = useState<string>('');
+  const [editingTicketInfo, setEditingTicketInfo] = useState<{
+    id: string;
+    ticketNo: string;
+    status?: TicketStatus;
+    createdAt?: string;
+    createdBy?: string;
+    creatorName?: string;
+    creatorRole?: string;
+    district?: string;
+  } | null>(null);
   const [isSavedToDb, setIsSavedToDb] = useState<boolean>(false);
+
+  const handleCopyField = async (fieldKey: string, value: string) => {
+    try {
+      const textToCopy = value !== undefined && value !== null ? String(value).trim() : '';
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(textToCopy);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = textToCopy;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+      setCopiedField(fieldKey);
+      setTimeout(() => {
+        setCopiedField((curr) => (curr === fieldKey ? null : curr));
+      }, 1500);
+    } catch (err) {
+      console.error('Failed to copy field value:', err);
+    }
+  };
+
+  const renderFieldCopyBtn = (fieldKey: string, value: string, fieldLabel: string) => {
+    const isCopied = copiedField === fieldKey;
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          handleCopyField(fieldKey, value);
+        }}
+        title={`Copy ${fieldLabel}`}
+        className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold rounded-md border transition-all cursor-pointer active:scale-95 select-none ${
+          isCopied
+            ? 'bg-emerald-50 text-emerald-700 border-emerald-300 ring-1 ring-emerald-400/20'
+            : 'bg-white hover:bg-[#EAF4FB] text-slate-600 hover:text-[#0056A6] border-slate-200 hover:border-[#0056A6]/40 shadow-2xs'
+        }`}
+      >
+        {isCopied ? (
+          <>
+            <Check className="w-3 h-3 text-emerald-600 shrink-0" />
+            <span className="text-[10px] text-emerald-700">Copied</span>
+          </>
+        ) : (
+          <>
+            <Copy className="w-3 h-3 text-slate-400 shrink-0" />
+            <span className="text-[10px]">Copy</span>
+          </>
+        )}
+      </button>
+    );
+  };
 
   // Validation Popup Modal State
   const [validationPopup, setValidationPopup] = useState<{
@@ -225,17 +290,40 @@ export const TicketGeneratorModal: React.FC<TicketGeneratorModalProps> = ({
           '';
 
         // Robust DOB resolution
-        const rawDob =
+        let rawDob =
           initialCandidate.dob ||
           initialCandidate.birthDate ||
           initialCandidate.dateOfBirth ||
           '';
+
+        // If DOB is in DD/MM/YYYY format, convert to YYYY-MM-DD for date input compatibility
+        if (rawDob && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(rawDob.trim())) {
+          const [d, m, y] = rawDob.trim().split('/');
+          rawDob = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        }
 
         // Robust Query resolution
         const rawQuery =
           initialCandidate.query ||
           initialCandidate.grievance ||
           '';
+
+        const isEditingTicket = Boolean(initialCandidate.editingTicketId || initialCandidate.ticketNo);
+        if (isEditingTicket) {
+          setEditingTicketInfo({
+            id: initialCandidate.editingTicketId || initialCandidate.id || initialCandidate.ticketNo,
+            ticketNo: initialCandidate.ticketNo,
+            status: initialCandidate.status,
+            createdAt: initialCandidate.createdAt,
+            createdBy: initialCandidate.createdBy,
+            creatorName: initialCandidate.creatorName,
+            creatorRole: initialCandidate.creatorRole,
+            district: initialCandidate.district,
+          });
+          setGeneratedTicketNo(initialCandidate.ticketNo);
+        } else {
+          setEditingTicketInfo(null);
+        }
 
         setTicketForm({
           cetNo: finalCetNo.toUpperCase().trim(),
@@ -248,7 +336,12 @@ export const TicketGeneratorModal: React.FC<TicketGeneratorModalProps> = ({
           query: rawQuery,
         });
 
-        if (
+        if (isEditingTicket) {
+          setTicketStatus({
+            message: `Loaded ticket ${initialCandidate.ticketNo} for editing. Modify any of the 8 fields and click 'Update Ticket Note'.`,
+            type: 'ok',
+          });
+        } else if (
           finalCandidateName ||
           finalCetNo ||
           finalCapId ||
@@ -263,6 +356,8 @@ export const TicketGeneratorModal: React.FC<TicketGeneratorModalProps> = ({
             type: 'ok',
           });
         }
+      } else {
+        setEditingTicketInfo(null);
       }
     }
   }, [isOpen, initialCandidate]);
@@ -364,10 +459,15 @@ export const TicketGeneratorModal: React.FC<TicketGeneratorModalProps> = ({
     }
 
     // Format Ticket Number
-    const timestamp = new Date();
-    const dateStr = timestamp.toISOString().slice(0, 10).replace(/-/g, '');
-    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-    const ticketNo = `TC-FC1102-${dateStr}-${randomSuffix}`;
+    let ticketNo = editingTicketInfo?.ticketNo;
+    let recordId = editingTicketInfo?.id;
+    if (!ticketNo) {
+      const timestamp = new Date();
+      const dateStr = timestamp.toISOString().slice(0, 10).replace(/-/g, '');
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+      ticketNo = `TC-FC1102-${dateStr}-${randomSuffix}`;
+      recordId = ticketNo;
+    }
     setGeneratedTicketNo(ticketNo);
 
     // Format DOB for display
@@ -395,7 +495,7 @@ Query: ${query.trim()}`;
     // Save ticket to Database (Firestore + LocalStorage)
     const activeUser = currentUser || getCurrentUser();
     const newRecord: TicketRecord = {
-      id: ticketNo,
+      id: recordId || ticketNo,
       ticketNo,
       ticketType: 'candidate_ticket',
       candidateName: candidateName.trim(),
@@ -407,12 +507,13 @@ Query: ${query.trim()}`;
       course: course.trim(),
       query: query.trim(),
       formattedText: outputText,
-      status: 'Open',
-      createdBy: activeUser?.username || 'counsellor',
-      creatorName: activeUser?.fullName || activeUser?.username || 'Counsellor Officer',
-      creatorRole: activeUser?.role || 'counsellor',
-      district: activeUser?.district || 'Washim',
-      createdAt: new Date().toISOString(),
+      status: editingTicketInfo?.status || 'Open',
+      createdBy: editingTicketInfo?.createdBy || activeUser?.username || 'counsellor',
+      creatorName: editingTicketInfo?.creatorName || activeUser?.fullName || activeUser?.username || 'Counsellor Officer',
+      creatorRole: editingTicketInfo?.creatorRole || activeUser?.role || 'counsellor',
+      district: editingTicketInfo?.district || activeUser?.district || 'Washim',
+      createdAt: editingTicketInfo?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
 
     saveTicketRecord(newRecord);
@@ -431,7 +532,9 @@ Query: ${query.trim()}`;
     });
 
     setTicketStatus({
-      message: `Ticket ${ticketNo} generated & saved to database successfully.`,
+      message: editingTicketInfo
+        ? `Ticket ${ticketNo} updated & saved to database successfully.`
+        : `Ticket ${ticketNo} generated & saved to database successfully.`,
       type: 'ok',
     });
   };
@@ -460,6 +563,7 @@ Query: ${query.trim()}`;
     });
     setTicketOutput('');
     setGeneratedTicketNo('');
+    setEditingTicketInfo(null);
     setTicketStatus({
       message: 'Fill all 8 mandatory fields to generate an official candidate ticket note.',
       type: 'neutral',
@@ -553,8 +657,13 @@ Query: ${query.trim()}`;
                   <img src={APP_ASSETS.SAC_TICKET_GENERATOR} alt="SAC Ticket" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                 </div>
                 <div>
-                  <h1 className="text-base sm:text-lg font-bold text-white tracking-wide leading-tight">
-                    SAC Ticket Generator
+                  <h1 className="text-base sm:text-lg font-bold text-white tracking-wide leading-tight flex items-center gap-2">
+                    <span>SAC Ticket Generator</span>
+                    {editingTicketInfo && (
+                      <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-900 border border-amber-300">
+                        Editing: {editingTicketInfo.ticketNo}
+                      </span>
+                    )}
                   </h1>
                 </div>
               </div>
@@ -611,11 +720,14 @@ Query: ${query.trim()}`;
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {/* 1. CET Application Number */}
                         <div className="flex flex-col gap-1.5">
-                          <label htmlFor="cetNo" className="text-xs font-bold text-slate-800 flex items-center gap-1">
-                            <Hash className="w-3.5 h-3.5 text-[#0056A6]" />
-                            <span>CET Application Number</span>
-                            <span className="text-rose-600">*</span>
-                          </label>
+                          <div className="flex items-center justify-between">
+                            <label htmlFor="cetNo" className="text-xs font-bold text-slate-800 flex items-center gap-1 cursor-pointer">
+                              <Hash className="w-3.5 h-3.5 text-[#0056A6]" />
+                              <span>CET Application Number</span>
+                              <span className="text-rose-600">*</span>
+                            </label>
+                            {renderFieldCopyBtn('cetNo', ticketForm.cetNo, 'CET Application Number')}
+                          </div>
                           <input
                             id="cetNo"
                             name="cetNo"
@@ -630,11 +742,14 @@ Query: ${query.trim()}`;
 
                         {/* 2. CAP Application Number (Optional) */}
                         <div className="flex flex-col gap-1.5">
-                          <label htmlFor="capId" className="text-xs font-bold text-slate-800 flex items-center gap-1">
-                            <Hash className="w-3.5 h-3.5 text-[#0056A6]" />
-                            <span>CAP Application Number</span>
-                            <span className="text-slate-400 text-[11px] font-normal">(Optional)</span>
-                          </label>
+                          <div className="flex items-center justify-between">
+                            <label htmlFor="capId" className="text-xs font-bold text-slate-800 flex items-center gap-1 cursor-pointer">
+                              <Hash className="w-3.5 h-3.5 text-[#0056A6]" />
+                              <span>CAP Application Number</span>
+                              <span className="text-slate-400 text-[11px] font-normal">(Optional)</span>
+                            </label>
+                            {renderFieldCopyBtn('capId', ticketForm.capId, 'CAP Application Number')}
+                          </div>
                           <input
                             id="capId"
                             name="capId"
@@ -648,10 +763,13 @@ Query: ${query.trim()}`;
 
                         {/* 3. Candidate Name */}
                         <div className="flex flex-col gap-1.5 sm:col-span-2">
-                          <label htmlFor="candidateName" className="text-xs font-bold text-slate-800 flex items-center gap-1">
-                            <span>Candidate Name</span>
-                            <span className="text-rose-600">*</span>
-                          </label>
+                          <div className="flex items-center justify-between">
+                            <label htmlFor="candidateName" className="text-xs font-bold text-slate-800 flex items-center gap-1 cursor-pointer">
+                              <span>Candidate Name</span>
+                              <span className="text-rose-600">*</span>
+                            </label>
+                            {renderFieldCopyBtn('candidateName', ticketForm.candidateName, 'Candidate Name')}
+                          </div>
                           <input
                             id="candidateName"
                             name="candidateName"
@@ -666,11 +784,14 @@ Query: ${query.trim()}`;
 
                         {/* 4. DOB (Date of Birth) */}
                         <div className="flex flex-col gap-1.5">
-                          <label htmlFor="dob" className="text-xs font-bold text-slate-800 flex items-center gap-1">
-                            <Calendar className="w-3.5 h-3.5 text-[#0056A6]" />
-                            <span>DOB (Date of Birth)</span>
-                            <span className="text-rose-600">*</span>
-                          </label>
+                          <div className="flex items-center justify-between">
+                            <label htmlFor="dob" className="text-xs font-bold text-slate-800 flex items-center gap-1 cursor-pointer">
+                              <Calendar className="w-3.5 h-3.5 text-[#0056A6]" />
+                              <span>DOB (Date of Birth)</span>
+                              <span className="text-rose-600">*</span>
+                            </label>
+                            {renderFieldCopyBtn('dob', ticketForm.dob, 'Date of Birth')}
+                          </div>
                           <input
                             id="dob"
                             name="dob"
@@ -684,11 +805,14 @@ Query: ${query.trim()}`;
 
                         {/* 5. Mobile Number */}
                         <div className="flex flex-col gap-1.5">
-                          <label htmlFor="mobile" className="text-xs font-bold text-slate-800 flex items-center gap-1">
-                            <Phone className="w-3.5 h-3.5 text-[#0056A6]" />
-                            <span>Mobile Number (10 digits)</span>
-                            <span className="text-rose-600">*</span>
-                          </label>
+                          <div className="flex items-center justify-between">
+                            <label htmlFor="mobile" className="text-xs font-bold text-slate-800 flex items-center gap-1 cursor-pointer">
+                              <Phone className="w-3.5 h-3.5 text-[#0056A6]" />
+                              <span>Mobile Number (10 digits)</span>
+                              <span className="text-rose-600">*</span>
+                            </label>
+                            {renderFieldCopyBtn('mobile', ticketForm.mobile, 'Mobile Number')}
+                          </div>
                           <div className="relative">
                             <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-500">
                               +91
@@ -709,11 +833,14 @@ Query: ${query.trim()}`;
 
                         {/* 6. Email ID */}
                         <div className="flex flex-col gap-1.5">
-                          <label htmlFor="email" className="text-xs font-bold text-slate-800 flex items-center gap-1">
-                            <Mail className="w-3.5 h-3.5 text-[#0056A6]" />
-                            <span>Email ID</span>
-                            <span className="text-rose-600">*</span>
-                          </label>
+                          <div className="flex items-center justify-between">
+                            <label htmlFor="email" className="text-xs font-bold text-slate-800 flex items-center gap-1 cursor-pointer">
+                              <Mail className="w-3.5 h-3.5 text-[#0056A6]" />
+                              <span>Email ID</span>
+                              <span className="text-rose-600">*</span>
+                            </label>
+                            {renderFieldCopyBtn('email', ticketForm.email, 'Email ID')}
+                          </div>
                           <input
                             id="email"
                             name="email"
@@ -728,11 +855,14 @@ Query: ${query.trim()}`;
 
                         {/* 7. Course Name - Organized Department-wise */}
                         <div className="flex flex-col gap-1.5">
-                          <label htmlFor="course" className="text-xs font-bold text-slate-800 flex items-center gap-1">
-                            <GraduationCap className="w-3.5 h-3.5 text-[#0056A6]" />
-                            <span>Course Name (Department-wise)</span>
-                            <span className="text-rose-600">*</span>
-                          </label>
+                          <div className="flex items-center justify-between">
+                            <label htmlFor="course" className="text-xs font-bold text-slate-800 flex items-center gap-1 cursor-pointer">
+                              <GraduationCap className="w-3.5 h-3.5 text-[#0056A6]" />
+                              <span>Course Name (Department-wise)</span>
+                              <span className="text-rose-600">*</span>
+                            </label>
+                            {renderFieldCopyBtn('course', ticketForm.course, 'Course Name')}
+                          </div>
                           <select
                             id="course"
                             name="course"
@@ -758,15 +888,13 @@ Query: ${query.trim()}`;
 
                         {/* 8. Query */}
                         <div className="flex flex-col gap-1.5 sm:col-span-2">
-                          <label htmlFor="query" className="text-xs font-bold text-slate-800 flex items-center justify-between">
-                            <span className="flex items-center gap-1">
+                          <div className="flex items-center justify-between">
+                            <label htmlFor="query" className="text-xs font-bold text-slate-800 flex items-center gap-1 cursor-pointer">
                               <span>Query / Grievance Details</span>
                               <span className="text-rose-600">*</span>
-                            </span>
-                            <span className="text-[11px] font-normal text-slate-500">
-                              Describe the query or discrepancy in detail
-                            </span>
-                          </label>
+                            </label>
+                            {renderFieldCopyBtn('query', ticketForm.query, 'Query / Grievance Details')}
+                          </div>
                           <textarea
                             id="query"
                             name="query"
@@ -790,7 +918,7 @@ Query: ${query.trim()}`;
                       className="px-6 py-2.5 rounded-xl font-bold text-xs sm:text-sm bg-[#0056A6] hover:bg-[#003B73] text-white shadow-sm transition-all cursor-pointer flex items-center gap-2 active:scale-95"
                     >
                       <Sparkles className="w-4 h-4 text-amber-300" />
-                      <span>Generate Ticket Note</span>
+                      <span>{editingTicketInfo ? 'Update Ticket Note' : 'Generate Ticket Note'}</span>
                     </button>
 
                     {onOpenWhatsappWithData && (
