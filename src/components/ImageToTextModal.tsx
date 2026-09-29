@@ -46,6 +46,7 @@ import {
 } from '../services/apiConfigService';
 import { qrUploadService, QrUploadedFile } from '../services/qrUploadService';
 import { captureTicketDetailsFromText, CapturedTicketDetails } from '../utils/ticketExtractor';
+import { safeStorage } from '../utils/safeStorage';
 
 export interface UploadedImagePage {
   id: string;
@@ -93,7 +94,7 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
   const [showGuidanceInput, setShowGuidanceInput] = useState<boolean>(false);
   const [apiKey, setApiKey] = useState<string>(() => {
     return (
-      localStorage.getItem('vmk_gemini_api_key') ||
+      safeStorage.getItem('vmk_gemini_api_key') ||
       (import.meta as any).env?.VITE_GEMINI_API_KEY ||
       ''
     );
@@ -136,7 +137,7 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
     }
     return (
       apiKey.trim() ||
-      localStorage.getItem('vmk_gemini_api_key')?.trim() ||
+      safeStorage.getItem('vmk_gemini_api_key')?.trim() ||
       (import.meta as any).env?.VITE_GEMINI_API_KEY?.trim() ||
       ''
     );
@@ -479,7 +480,7 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
   const handleSaveApiKey = (keyToSave: string) => {
     const cleanKey = keyToSave.trim();
     if (!cleanKey) return;
-    localStorage.setItem('vmk_gemini_api_key', cleanKey);
+    safeStorage.setItem('vmk_gemini_api_key', cleanKey);
     setApiKey(cleanKey);
     setKeySavedMessage('API Key saved successfully!');
     setTimeout(() => {
@@ -496,7 +497,7 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
   };
 
   const handleRemoveApiKey = () => {
-    localStorage.removeItem('vmk_gemini_api_key');
+    safeStorage.removeItem('vmk_gemini_api_key');
     setApiKey('');
     setTempApiKey('');
     setKeySavedMessage('API Key removed.');

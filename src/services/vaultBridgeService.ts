@@ -2,6 +2,7 @@ import { QrUploadedFile } from '../types/qrUpload';
 import { db } from '../lib/firebase';
 import { sanitizeForFirestore } from './authService';
 import { collection, doc, setDoc } from 'firebase/firestore';
+import { safeStorage } from '../utils/safeStorage';
 
 export interface VaultAttachmentAuditLog {
   id: string;
@@ -252,11 +253,11 @@ export async function logVaultAttachmentAudit(
 
   // 1. Save to local storage
   try {
-    const existing = localStorage.getItem(AUDIT_LOGS_STORAGE_KEY);
+    const existing = safeStorage.getItem(AUDIT_LOGS_STORAGE_KEY);
     const list: VaultAttachmentAuditLog[] = existing ? JSON.parse(existing) : [];
     list.unshift(newLog);
-    if (list.length > 100) list.pop();
-    localStorage.setItem(AUDIT_LOGS_STORAGE_KEY, JSON.stringify(list));
+    if (list.length > 50) list.pop();
+    safeStorage.setItem(AUDIT_LOGS_STORAGE_KEY, JSON.stringify(list));
   } catch (e) {
     console.warn('Could not save audit log locally:', e);
   }

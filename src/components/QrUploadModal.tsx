@@ -566,17 +566,17 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
               } bg-slate-100 text-slate-800 rounded-3xl shadow-2xl border border-slate-300/80 overflow-hidden my-auto max-h-[96vh] flex flex-col transition-all duration-200`}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Header Switcher: Upload Options vs Software Vault (Switcher default: upload) */}
-              <div className="bg-[#002B54] text-white px-4 py-2.5 flex items-center justify-between border-b border-[#003B73] shrink-0 text-xs">
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center bg-[#001D3D] p-1 rounded-xl border border-blue-900">
+              {/* Header Switcher: Upload Options vs Software Vault (Google Files Material 3) */}
+              <div className="bg-white text-[#1F1F1F] px-4 sm:px-6 py-3 flex items-center justify-between border-b border-[#E0E2EC] shrink-0 text-xs font-sans">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center bg-[#F1F3F4] p-1 rounded-full border border-transparent">
                     <button
                       id="upload-switcher-upload-tab"
                       onClick={() => setActiveTab('upload')}
-                      className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
                         activeTab === 'upload'
-                          ? 'bg-[#0056A6] text-white shadow-xs'
-                          : 'text-blue-300 hover:text-white'
+                          ? 'bg-[#C2E7FF] text-[#001D35] shadow-none'
+                          : 'text-[#444746] hover:text-[#1F1F1F]'
                       }`}
                     >
                       <QrCode className="w-3.5 h-3.5" />
@@ -585,25 +585,25 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                     <button
                       id="upload-switcher-vault-tab"
                       onClick={() => setActiveTab('vault')}
-                      className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
                         activeTab === 'vault'
-                          ? 'bg-[#0056A6] text-white shadow-xs'
-                          : 'text-blue-300 hover:text-white'
+                          ? 'bg-[#C2E7FF] text-[#001D35] shadow-none'
+                          : 'text-[#444746] hover:text-[#1F1F1F]'
                       }`}
                     >
                       <UploadCloud className="w-3.5 h-3.5" />
                       <span>Software Vault</span>
-                      <span className="px-1.5 py-0.2 rounded text-[10px] font-mono bg-blue-950/80 text-blue-200 border border-blue-800">
+                      <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-white text-[#001D35] border border-[#C4C7C5]">
                         {vaultFiles.length}
                       </span>
                     </button>
                     <button
                       id="upload-switcher-dual-tab"
                       onClick={() => setActiveTab('dual')}
-                      className={`hidden md:flex px-2.5 py-1.5 rounded-lg font-medium transition-all cursor-pointer items-center gap-1 ${
+                      className={`hidden md:flex px-3 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer items-center gap-1 ${
                         activeTab === 'dual'
-                          ? 'bg-[#0056A6] text-white shadow-xs font-bold'
-                          : 'text-blue-400 hover:text-white'
+                          ? 'bg-[#C2E7FF] text-[#001D35] shadow-none'
+                          : 'text-[#444746] hover:text-[#1F1F1F]'
                       }`}
                       title="Side-by-side split view"
                     >
@@ -613,24 +613,24 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1.5 text-blue-200 text-xs font-mono">
-                    <span className="hidden sm:inline text-blue-300">Session:</span>
-                    <span className="bg-[#0056A6]/40 px-2 py-0.5 rounded border border-blue-400/30 text-white font-bold">
+                  <div className="flex items-center gap-1.5 text-[#444746] text-xs font-mono">
+                    <span className="hidden sm:inline text-[#747775]">Session:</span>
+                    <span className="bg-[#F1F3F4] px-2.5 py-0.5 rounded-full border border-[#E0E2EC] text-[#1F1F1F] font-bold">
                       #{sessionId}
                     </span>
                     <button
                       onClick={handleCopySessionId}
-                      className="p-1 rounded text-blue-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                      className="p-1 rounded-full text-[#444746] hover:text-[#1F1F1F] hover:bg-[#F1F3F4] transition-colors cursor-pointer"
                       title="Copy Session ID"
                     >
-                      {copiedSession ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      {copiedSession ? <Check className="w-3.5 h-3.5 text-[#0B57D0]" /> : <Copy className="w-3.5 h-3.5" />}
                     </button>
                   </div>
 
                   <button
                     onClick={onClose}
-                    className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer ml-1"
-                    title="Close (Esc)"
+                    className="w-8 h-8 rounded-full hover:bg-[#F1F3F4] text-[#444746] hover:text-[#1F1F1F] flex items-center justify-center transition-colors cursor-pointer ml-1"
+                    title="Close"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -699,23 +699,26 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                   }`}
                 >
                   {/* ========================================================= */}
-                  {/* UPLOAD OPTIONS PANEL                                      */}
+                  {/* UPLOAD OPTIONS PANEL (Google Files Material 3)            */}
                   {/* ========================================================= */}
                   {(activeTab === 'upload' || activeTab === 'dual') && (
                     <div
                       id="upload-options-panel"
-                      className="bg-white rounded-2xl border border-slate-300 shadow-sm flex flex-col overflow-hidden"
+                      className="bg-white rounded-3xl border border-[#E0E2EC] shadow-2xs flex flex-col overflow-hidden font-sans"
                     >
-                      {/* Deep Blue Header */}
-                      <div className="bg-gradient-to-r from-[#0056A6] to-[#003B73] px-5 sm:px-6 py-3.5 text-white flex items-center justify-between shrink-0 select-none">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-9 h-9 rounded-xl bg-white p-1 flex items-center justify-center shrink-0 shadow-md border border-white/40 overflow-hidden">
-                            <img src={APP_ASSETS.FILES_BY_QR} alt="Files by QR" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                      {/* Google Files Section Header */}
+                      <div className="bg-white px-5 sm:px-6 py-4 border-b border-[#E0E2EC] flex items-center justify-between shrink-0 select-none">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-[#E8F0FE] text-[#0B57D0] flex items-center justify-center shrink-0">
+                            <QrCode className="w-5 h-5 text-[#0B57D0]" />
                           </div>
                           <div>
-                            <h2 className="text-base font-bold text-white tracking-wide leading-tight">
-                              Files by QR
+                            <h2 className="text-base font-medium text-[#1F1F1F] tracking-tight">
+                              Upload &amp; Scan Files
                             </h2>
+                            <p className="text-xs text-[#747775]">
+                              Scan with camera, upload from device, or connect phone via QR
+                            </p>
                           </div>
                         </div>
 
@@ -723,25 +726,20 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                           <button
                             type="button"
                             onClick={onClose}
-                            className="w-7 h-7 rounded-lg bg-white/15 hover:bg-white/25 border border-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
-                            title="Close (Esc)"
+                            className="w-8 h-8 rounded-full hover:bg-[#F1F3F4] text-[#444746] hover:text-[#1F1F1F] flex items-center justify-center transition-colors cursor-pointer"
+                            title="Close"
                           >
                             <X className="w-4 h-4" />
                           </button>
                         )}
                       </div>
 
-                      {/* Content Body: Pure Options, no unwanted instructions or marketing fluff */}
-                      <div className="p-4 sm:p-5 space-y-4 flex-1 flex flex-col">
-                        {/* Option 1: Mobile Camera QR Code */}
-                        <div className="bg-slate-50/90 rounded-2xl border border-slate-200 p-4 flex flex-col sm:flex-row items-center justify-center gap-5">
-                          {/* QR Code with Camera Focus Corners */}
-                          <div className="relative p-3.5 bg-white rounded-2xl border border-slate-200 shadow-2xs shrink-0">
-                            <span className="absolute -top-2 -left-2 w-5 h-5 border-t-3 border-l-3 border-[#0056A6] rounded-tl-lg pointer-events-none" />
-                            <span className="absolute -top-2 -right-2 w-5 h-5 border-t-3 border-r-3 border-[#0056A6] rounded-tr-lg pointer-events-none" />
-                            <span className="absolute -bottom-2 -left-2 w-5 h-5 border-b-3 border-l-3 border-[#0056A6] rounded-bl-lg pointer-events-none" />
-                            <span className="absolute -bottom-2 -right-2 w-5 h-5 border-b-3 border-r-3 border-[#0056A6] rounded-br-lg pointer-events-none" />
-
+                      {/* Content Body: Google Files Cards */}
+                      <div className="p-4 sm:p-6 space-y-4 flex-1 flex flex-col bg-[#F8F9FA]">
+                        {/* Option 1: Mobile Camera QR Code (Quick Share Style) */}
+                        <div className="bg-white rounded-2xl border border-[#E0E2EC] p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-center gap-5 shadow-2xs">
+                          {/* QR Code Container */}
+                          <div className="relative p-3 bg-white rounded-2xl border border-[#E0E2EC] shadow-2xs shrink-0">
                             <div className="relative w-36 h-36 flex items-center justify-center">
                               <QRCodeSVG
                                 value={uploadUrl}
@@ -751,34 +749,34 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                                 className="w-full h-full"
                               />
                               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                <div className="w-9 h-9 bg-[#0056A6] rounded-xl flex items-center justify-center border-2 border-white shadow-md text-white">
-                                  <UploadCloud className="w-5 h-5 text-white" />
+                                <div className="w-9 h-9 bg-[#0B57D0] rounded-full flex items-center justify-center border-2 border-white shadow-sm text-white">
+                                  <UploadCloud className="w-4 h-4 text-white" />
                                 </div>
                               </div>
                             </div>
                           </div>
 
                           <div className="space-y-2 text-center sm:text-left flex-1 min-w-0">
-                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-100 text-[#0056A6] text-xs font-bold">
-                              <Smartphone className="w-3.5 h-3.5" />
-                              <span>Scan with Mobile Camera</span>
+                            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#E8F0FE] text-[#001D35] text-xs font-medium">
+                              <Smartphone className="w-3.5 h-3.5 text-[#0B57D0]" />
+                              <span>Connect Mobile Device</span>
                             </div>
-                            <p className="text-xs text-slate-600 leading-relaxed font-medium">
-                              Scan this QR code with any phone camera to upload documents directly into the software.
+                            <p className="text-xs text-[#444746] leading-relaxed">
+                              Scan this QR code with your phone camera to take photos and upload documents directly.
                             </p>
-                            <div className="flex items-center gap-2 pt-0.5 justify-center sm:justify-start">
-                              <span className="text-[11px] text-slate-400 font-mono">Session ID:</span>
-                              <span className="font-mono font-bold text-xs text-[#003B73] bg-white px-2 py-0.5 rounded border border-slate-200">
+                            <div className="flex items-center gap-2 pt-1 justify-center sm:justify-start">
+                              <span className="text-[11px] text-[#747775]">Session:</span>
+                              <span className="font-mono font-medium text-xs text-[#1F1F1F] bg-[#F1F3F4] px-2.5 py-0.5 rounded-full border border-[#E0E2EC]">
                                 #{sessionId}
                               </span>
                               <button
                                 type="button"
                                 onClick={handleCopySessionId}
-                                className="p-1 rounded text-slate-500 hover:text-slate-800 hover:bg-slate-200 transition-colors cursor-pointer"
+                                className="p-1 rounded-full text-[#747775] hover:text-[#1F1F1F] hover:bg-[#F1F3F4] transition-colors cursor-pointer"
                                 title="Copy Session ID"
                               >
                                 {copiedSession ? (
-                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                  <Check className="w-3.5 h-3.5 text-[#0B57D0]" />
                                 ) : (
                                   <Copy className="w-3.5 h-3.5" />
                                 )}
@@ -787,25 +785,25 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                           </div>
                         </div>
 
-                        {/* Auto-Crop & Perspective Correction Option Toggle */}
-                        <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+                        {/* Google Material Switch for Auto-Crop */}
+                        <div className="bg-white border border-[#E0E2EC] rounded-2xl px-4 py-3 flex items-center justify-between gap-3 shadow-2xs">
                           <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-8 h-8 rounded-lg bg-blue-100 text-[#0056A6] flex items-center justify-center shrink-0">
-                              <Crop className="w-4 h-4" />
+                            <div className="w-9 h-9 rounded-full bg-[#E8F0FE] text-[#0B57D0] flex items-center justify-center shrink-0">
+                              <Crop className="w-4 h-4 text-[#0B57D0]" />
                             </div>
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold text-slate-800">Auto-crop & perspective correction</span>
-                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
+                                <span className="text-xs font-medium text-[#1F1F1F]">Auto-crop &amp; straighten</span>
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
                                   autoCropOnUpload 
-                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-200' 
-                                    : 'bg-slate-200 text-slate-600 border-slate-300'
+                                    ? 'bg-[#C2E7FF] text-[#001D35]' 
+                                    : 'bg-[#F1F3F4] text-[#747775]'
                                 }`}>
-                                  {autoCropOnUpload ? 'Enabled' : 'Disabled'}
+                                  {autoCropOnUpload ? 'On' : 'Off'}
                                 </span>
                               </div>
-                              <p className="text-[11px] text-slate-500 truncate">
-                                Automatically detect borders, straighten perspective, and optimize images before storing in Vault.
+                              <p className="text-[11px] text-[#747775] truncate">
+                                Automatically detects borders, aligns perspective, and cleans scanned documents.
                               </p>
                             </div>
                           </div>
@@ -816,180 +814,120 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                               onChange={(e) => setAutoCropOnUpload(e.target.checked)}
                               className="sr-only peer"
                             />
-                            <div className="w-9 h-5 bg-slate-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0056A6]"></div>
+                            <div className="w-10 h-6 bg-[#C4C7C5] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#0B57D0]"></div>
                           </label>
                         </div>
 
                         {/* Real-time processing progress bar */}
                         {isProcessingAutoCrop && (
-                          <div className="bg-blue-50 border border-blue-200 text-[#003B73] px-4 py-3 rounded-xl flex items-center gap-3 text-xs font-semibold animate-pulse shadow-2xs">
-                            <RotateCw className="w-4 h-4 animate-spin text-[#0056A6] shrink-0" />
+                          <div className="bg-[#E8F0FE] border border-[#C2E7FF] text-[#001D35] px-4 py-3 rounded-2xl flex items-center gap-3 text-xs font-medium animate-pulse shadow-2xs">
+                            <RotateCw className="w-4 h-4 animate-spin text-[#0B57D0] shrink-0" />
                             <span className="flex-1 truncate">
                               {autoCropProgressText || 'Detecting document borders and applying perspective correction...'}
                             </span>
                           </div>
                         )}
 
-                        {/* Options Buttons Grid */}
+                        {/* Google Files Action Cards Grid */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {/* Option: Scan & Auto-Crop Document */}
+                          {/* Option 1: Scan with Camera */}
                           <button
                             type="button"
                             id="upload-opt-scan-crop-btn"
                             onClick={() => setShowScanChoiceModal(true)}
-                            className="bg-gradient-to-br from-blue-50/80 to-indigo-50/40 hover:bg-blue-100/60 border-2 border-blue-300 hover:border-[#0056A6] rounded-2xl p-3.5 flex items-center justify-between transition-all cursor-pointer group shadow-2xs text-left"
+                            className="bg-white hover:bg-[#F1F3F4] border border-[#E0E2EC] hover:border-[#C4C7C5] rounded-2xl p-4 flex items-center justify-between transition-all cursor-pointer group shadow-2xs text-left"
                           >
                             <div className="flex items-center gap-3 min-w-0">
-                              <div className="w-10 h-10 rounded-xl bg-[#0056A6] text-white flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-xs">
-                                <Crop className="w-5 h-5 text-white" />
+                              <div className="w-10 h-10 rounded-full bg-[#E8F0FE] text-[#0B57D0] flex items-center justify-center shrink-0">
+                                <Camera className="w-5 h-5 text-[#0B57D0]" />
                               </div>
                               <div className="min-w-0">
-                                <div className="flex items-center gap-1.5">
-                                  <h4 className="font-bold text-slate-900 text-xs sm:text-sm leading-tight truncate">
-                                    Scan & Auto-Crop Document
-                                  </h4>
-                                </div>
-                                <p className="text-[11px] text-slate-500 leading-snug mt-0.5 truncate">
-                                  Live camera or image with real-time border detection
-                                </p>
-                              </div>
-                            </div>
-                            <div className="w-8 h-8 rounded-xl border border-blue-200 bg-white text-[#0056A6] flex items-center justify-center shrink-0 shadow-2xs group-hover:bg-blue-50">
-                              <Sparkles className="w-4 h-4 text-[#0056A6]" />
-                            </div>
-                          </button>
-
-                          {/* Option: Make Images to PDF Tool (USER EXPLICIT REQUEST) */}
-                          <button
-                            type="button"
-                            id="upload-opt-make-pdf-btn"
-                            onClick={() => {
-                              if (onOpenImgToPdf) onOpenImgToPdf();
-                            }}
-                            className="bg-gradient-to-br from-[#0056A6]/10 to-[#003B73]/10 border-2 border-[#0056A6]/40 hover:border-[#0056A6] rounded-2xl p-3.5 flex items-center justify-between transition-all cursor-pointer group shadow-2xs text-left"
-                          >
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="w-10 h-10 rounded-xl bg-[#0056A6] text-white flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-xs">
-                                <FileImage className="w-5 h-5 text-white" />
-                              </div>
-                              <div className="min-w-0">
-                                <h4 className="font-bold text-slate-900 text-xs sm:text-sm leading-tight truncate">
-                                  Make Images to PDF
+                                <h4 className="font-medium text-[#1F1F1F] text-xs sm:text-sm leading-tight truncate">
+                                  Scan document
                                 </h4>
-                                <p className="text-[11px] text-slate-500 leading-snug mt-0.5 truncate">
-                                  Convert images into a single PDF
+                                <p className="text-[11px] text-[#747775] leading-snug mt-0.5 truncate">
+                                  Use camera or select photo to crop
                                 </p>
                               </div>
                             </div>
-                            <div className="w-8 h-8 rounded-xl border border-blue-300 bg-white text-[#0056A6] flex items-center justify-center shrink-0 shadow-2xs group-hover:bg-blue-50">
-                              <ExternalLink className="w-3.5 h-3.5" />
-                            </div>
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-medium bg-[#E8F0FE] text-[#001D35] shrink-0">
+                              Scan
+                            </span>
                           </button>
 
-                          {/* Option: Send Image to Text Tool (USER EXPLICIT REQUEST) */}
-                          {onOpenImageToText && (
-                            <button
-                              type="button"
-                              id="upload-opt-send-img-to-text-btn"
-                              onClick={() => onOpenImageToText()}
-                              className="bg-gradient-to-br from-indigo-500/10 to-violet-600/10 border-2 border-indigo-500/40 hover:border-indigo-600 rounded-2xl p-3.5 flex items-center justify-between transition-all cursor-pointer group shadow-2xs text-left"
-                            >
-                              <div className="flex items-center gap-3 min-w-0">
-                                <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-xs">
-                                  <FileText className="w-5 h-5 text-white" />
-                                </div>
-                                <div className="min-w-0">
-                                  <h4 className="font-bold text-slate-900 text-xs sm:text-sm leading-tight truncate">
-                                    Send Img to Text
-                                  </h4>
-                                  <p className="text-[11px] text-slate-500 leading-snug mt-0.5 truncate">
-                                    Extract candidate details & text with AI
-                                  </p>
-                                </div>
-                              </div>
-                              <div className="w-8 h-8 rounded-xl border border-indigo-300 bg-white text-indigo-600 flex items-center justify-center shrink-0 shadow-2xs group-hover:bg-indigo-50">
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </div>
-                            </button>
-                          )}
-
-                          {/* Option: Upload from Computer */}
+                          {/* Option 2: Upload from Device */}
                           <button
                             type="button"
                             id="upload-opt-from-pc-btn"
                             onClick={() => localFileInputRef.current?.click()}
-                            className="bg-slate-50 hover:bg-blue-50/50 border border-slate-200 hover:border-blue-300 rounded-2xl p-3.5 flex items-center justify-between transition-all cursor-pointer group shadow-2xs text-left"
+                            className="bg-white hover:bg-[#F1F3F4] border border-[#E0E2EC] hover:border-[#C4C7C5] rounded-2xl p-4 flex items-center justify-between transition-all cursor-pointer group shadow-2xs text-left"
                           >
                             <div className="flex items-center gap-3 min-w-0">
-                              <div className="w-10 h-10 rounded-xl bg-blue-100 text-[#0056A6] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                                <UploadCloud className="w-5 h-5 text-[#0056A6]" />
+                              <div className="w-10 h-10 rounded-full bg-[#F1F3F4] text-[#1F1F1F] flex items-center justify-center shrink-0">
+                                <UploadCloud className="w-5 h-5 text-[#444746]" />
                               </div>
                               <div className="min-w-0">
-                                <h4 className="font-bold text-slate-900 text-xs sm:text-sm leading-tight truncate">
-                                  Upload from Computer
+                                <h4 className="font-medium text-[#1F1F1F] text-xs sm:text-sm leading-tight truncate">
+                                  Browse device
                                 </h4>
-                                <p className="text-[11px] text-slate-500 leading-snug mt-0.5 truncate">
-                                  Select PDF, JPG, or PNG files
+                                <p className="text-[11px] text-[#747775] leading-snug mt-0.5 truncate">
+                                  Choose PDF, JPG, or PNG files
                                 </p>
                               </div>
                             </div>
-                            <div className="w-8 h-8 rounded-xl border border-slate-200 bg-white text-slate-600 flex items-center justify-center shrink-0 shadow-2xs group-hover:bg-blue-50">
+                            <span className="w-7 h-7 rounded-full bg-[#F1F3F4] flex items-center justify-center text-[#444746] shrink-0">
                               <Plus className="w-4 h-4" />
-                            </div>
+                            </span>
                           </button>
 
-                          {/* Option: Open on Mobile */}
+                          {/* Option 3: Open on Mobile */}
                           <button
                             type="button"
                             id="upload-opt-open-mobile-btn"
                             onClick={handleOpenOnMobile}
-                            className="bg-slate-50 hover:bg-blue-50/50 border border-slate-200 hover:border-blue-300 rounded-2xl p-3.5 flex items-center justify-between transition-all cursor-pointer group shadow-2xs text-left"
+                            className="bg-white hover:bg-[#F1F3F4] border border-[#E0E2EC] hover:border-[#C4C7C5] rounded-2xl p-4 flex items-center justify-between transition-all cursor-pointer group shadow-2xs text-left"
                           >
                             <div className="flex items-center gap-3 min-w-0">
-                              <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                                <Smartphone className="w-5 h-5 text-slate-700" />
+                              <div className="w-10 h-10 rounded-full bg-[#F1F3F4] text-[#1F1F1F] flex items-center justify-center shrink-0">
+                                <Smartphone className="w-5 h-5 text-[#444746]" />
                               </div>
                               <div className="min-w-0">
-                                <h4 className="font-bold text-slate-900 text-xs sm:text-sm leading-tight truncate">
-                                  Open on Mobile
+                                <h4 className="font-medium text-[#1F1F1F] text-xs sm:text-sm leading-tight truncate">
+                                  Open in browser
                                 </h4>
-                                <p className="text-[11px] text-slate-500 leading-snug mt-0.5 truncate">
-                                  Open upload page in browser
+                                <p className="text-[11px] text-[#747775] leading-snug mt-0.5 truncate">
+                                  Open mobile upload link
                                 </p>
                               </div>
                             </div>
-                            <div className="w-8 h-8 rounded-xl border border-slate-200 bg-white text-slate-600 flex items-center justify-center shrink-0 shadow-2xs group-hover:bg-blue-50">
-                              <ExternalLink className="w-3.5 h-3.5" />
-                            </div>
+                            <ExternalLink className="w-4 h-4 text-[#747775] shrink-0" />
                           </button>
 
-                          {/* Option: Copy Upload Link */}
+                          {/* Option 4: Copy Link */}
                           <button
                             type="button"
                             id="upload-opt-copy-link-btn"
                             onClick={handleCopyLink}
-                            className="bg-slate-50 hover:bg-emerald-50/50 border border-slate-200 hover:border-emerald-300 rounded-2xl p-3.5 flex items-center justify-between transition-all cursor-pointer group shadow-2xs text-left"
+                            className="bg-white hover:bg-[#F1F3F4] border border-[#E0E2EC] hover:border-[#C4C7C5] rounded-2xl p-4 flex items-center justify-between transition-all cursor-pointer group shadow-2xs text-left"
                           >
                             <div className="flex items-center gap-3 min-w-0">
-                              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                                <LinkIcon className="w-5 h-5 text-emerald-700" />
+                              <div className="w-10 h-10 rounded-full bg-[#E6F4EA] text-[#137333] flex items-center justify-center shrink-0">
+                                <LinkIcon className="w-5 h-5 text-[#137333]" />
                               </div>
                               <div className="min-w-0">
-                                <h4 className="font-bold text-slate-900 text-xs sm:text-sm leading-tight truncate">
-                                  Copy Upload Link
+                                <h4 className="font-medium text-[#1F1F1F] text-xs sm:text-sm leading-tight truncate">
+                                  Copy link
                                 </h4>
-                                <p className="text-[11px] text-slate-500 leading-snug mt-0.5 truncate">
-                                  {copiedLink ? 'Link copied to clipboard!' : 'Share link to mobile or WhatsApp'}
+                                <p className="text-[11px] text-[#747775] leading-snug mt-0.5 truncate">
+                                  {copiedLink ? 'Copied to clipboard' : 'Share upload link'}
                                 </p>
                               </div>
                             </div>
-                            <div className="w-8 h-8 rounded-xl border border-slate-200 bg-white text-slate-600 flex items-center justify-center shrink-0 shadow-2xs group-hover:bg-emerald-50">
-                              {copiedLink ? (
-                                <Check className="w-3.5 h-3.5 text-emerald-600" />
-                              ) : (
-                                <Copy className="w-3.5 h-3.5" />
-                              )}
-                            </div>
+                            {copiedLink ? (
+                              <Check className="w-4 h-4 text-[#0B57D0] shrink-0" />
+                            ) : (
+                              <Copy className="w-4 h-4 text-[#747775] shrink-0" />
+                            )}
                           </button>
                         </div>
 
@@ -1000,15 +938,15 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                               type="button"
                               id="upload-opt-goto-vault-btn"
                               onClick={() => setActiveTab('vault')}
-                              className="w-full bg-[#003B73]/5 hover:bg-[#003B73]/10 border border-[#003B73]/20 rounded-2xl p-3 flex items-center justify-between transition-all cursor-pointer text-left"
+                              className="w-full bg-white hover:bg-[#F1F3F4] border border-[#E0E2EC] rounded-2xl p-3.5 flex items-center justify-between transition-all cursor-pointer text-left shadow-2xs"
                             >
                               <div className="flex items-center gap-2.5">
-                                <UploadCloud className="w-4 h-4 text-[#0056A6]" />
-                                <span className="text-xs font-bold text-[#003B73]">
+                                <UploadCloud className="w-4 h-4 text-[#0B57D0]" />
+                                <span className="text-xs font-medium text-[#1F1F1F]">
                                   Open Software Vault
                                 </span>
                               </div>
-                              <span className="text-xs font-bold text-[#0056A6] bg-white px-2.5 py-0.5 rounded-lg border border-[#0056A6]/20">
+                              <span className="text-xs font-medium text-[#0B57D0] bg-[#E8F0FE] px-3 py-1 rounded-full">
                                 {vaultFiles.length} files available →
                               </span>
                             </button>
@@ -1048,30 +986,6 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                         </div>
 
                         <div className="flex items-center gap-2">
-                          {onOpenImageToText && (
-                            <button
-                              type="button"
-                              id="vault-header-send-img-to-text-btn"
-                              onClick={() => onOpenImageToText()}
-                              className="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 border border-white/25 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                              title="Send to Image to Text"
-                            >
-                              <FileText className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline">Send Img to Text</span>
-                            </button>
-                          )}
-                          {onOpenImgToPdf && (
-                            <button
-                              type="button"
-                              id="vault-header-make-pdf-btn"
-                              onClick={onOpenImgToPdf}
-                              className="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 border border-white/25 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                              title="Make Images to PDF"
-                            >
-                              <FileImage className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline">Make Images to PDF</span>
-                            </button>
-                          )}
                           {activeTab !== 'dual' && (
                             <button
                               type="button"
@@ -1337,25 +1251,14 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                                   {!isPdf && (
                                     <button
                                       onClick={() => setCropTargetFile(file)}
-                                      className="px-2.5 sm:px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50/70 hover:bg-blue-100 text-[#0056A6] text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
-                                      title="AI Document Scanner & Auto-Crop"
+                                      className="px-2.5 sm:px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-700 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                                      title="Crop & Scan Document"
                                     >
-                                      <Sparkles className="w-3.5 h-3.5" />
-                                      <span className="hidden sm:inline">AI Crop</span>
+                                      <Crop className="w-3.5 h-3.5 text-slate-600" />
+                                      <span className="hidden sm:inline">Crop</span>
                                     </button>
                                   )}
 
-                                  {/* Send Image to Text Button */}
-                                  {!isPdf && onOpenImageToText && (
-                                    <button
-                                      onClick={() => onOpenImageToText(file)}
-                                      className="px-2.5 sm:px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50/70 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
-                                      title="Send Image to Text (OCR)"
-                                    >
-                                      <FileText className="w-3.5 h-3.5 text-indigo-600" />
-                                      <span className="hidden sm:inline">Img to Text</span>
-                                    </button>
-                                  )}
 
                                   {/* Download Button */}
                                   <button
@@ -1412,20 +1315,8 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                                             }}
                                             className="w-full text-left px-3 py-1.5 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
                                           >
-                                            <Sparkles className="w-3.5 h-3.5 text-[#0056A6]" />
-                                            <span>AI Scanner & Crop</span>
-                                          </button>
-                                        )}
-                                        {!isPdf && onOpenImageToText && (
-                                          <button
-                                            onClick={() => {
-                                              onOpenImageToText(file);
-                                              setActiveDropdownId(null);
-                                            }}
-                                            className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 flex items-center gap-2 text-indigo-700"
-                                          >
-                                            <FileText className="w-3.5 h-3.5 text-indigo-600" />
-                                            <span>Send to Img to Text</span>
+                                            <Crop className="w-3.5 h-3.5 text-slate-600" />
+                                            <span>Crop &amp; Rotate</span>
                                           </button>
                                         )}
                                         <button
@@ -1508,20 +1399,10 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                                         <button
                                           onClick={() => setCropTargetFile(file)}
                                           className="text-[11px] font-semibold text-slate-600 hover:text-[#0056A6] flex items-center gap-0.5 cursor-pointer"
-                                          title="AI Document Scanner & Auto-Crop"
+                                          title="Crop & Rotate"
                                         >
-                                          <Sparkles className="w-3 h-3 text-[#0056A6]" />
-                                          <span>AI Crop</span>
-                                        </button>
-                                      )}
-                                      {!isPdf && onOpenImageToText && (
-                                        <button
-                                          onClick={() => onOpenImageToText(file)}
-                                          className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5 cursor-pointer"
-                                          title="Send Image to Text (OCR)"
-                                        >
-                                          <FileText className="w-3 h-3 text-indigo-600" />
-                                          <span>Img to Text</span>
+                                          <Crop className="w-3 h-3 text-slate-500" />
+                                          <span>Crop</span>
                                         </button>
                                       )}
                                     </div>
@@ -1560,31 +1441,6 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                             <span>Scan & Crop</span>
                           </button>
 
-                          {onOpenImageToText && (
-                            <button
-                              type="button"
-                              id="vault-footer-send-img-to-text-btn"
-                              onClick={() => onOpenImageToText()}
-                              className="px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs sm:text-sm flex items-center gap-1.5 border border-indigo-200 transition-all cursor-pointer"
-                              title="Send to Image to Text"
-                            >
-                              <FileText className="w-4 h-4 text-indigo-600" />
-                              <span>Send Img to Text</span>
-                            </button>
-                          )}
-
-                          {onOpenImgToPdf && (
-                            <button
-                              type="button"
-                              id="vault-footer-make-pdf-btn"
-                              onClick={onOpenImgToPdf}
-                              className="px-3.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#0056A6] font-bold text-xs sm:text-sm flex items-center gap-1.5 border border-blue-200 transition-all cursor-pointer"
-                              title="Convert images to PDF"
-                            >
-                              <FileImage className="w-4 h-4" />
-                              <span>Make Images to PDF</span>
-                            </button>
-                          )}
                           <button
                             type="button"
                             onClick={() => {
@@ -1615,7 +1471,6 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
           allFiles={vaultFiles}
           onClose={() => setPreviewFile(null)}
           onSelectFile={(f) => setPreviewFile(f)}
-          onOpenImageToText={onOpenImageToText}
         />
       )}
 
@@ -1653,51 +1508,46 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
         />
       )}
 
-      {/* Scan & Auto-Crop Choice Dialog */}
+      {/* Scan & Auto-Crop Choice Dialog (Google Files Material 3) */}
       {showScanChoiceModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-[#0056A6] text-white flex items-center justify-center shadow-2xs">
-                  <Crop className="w-4 h-4" />
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#E0E2EC] space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#F0F2F5]">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-[#E8F0FE] text-[#0B57D0] flex items-center justify-center">
+                  <Crop className="w-5 h-5 text-[#0B57D0]" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">Scan & Auto-Crop Document</h3>
-                  <p className="text-[11px] text-slate-500">Real-time computer vision document boundary detection</p>
+                  <h3 className="text-base font-medium text-[#1F1F1F]">Scan document</h3>
+                  <p className="text-xs text-[#444746]">Choose how to capture your document</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowScanChoiceModal(false)}
-                className="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors cursor-pointer"
+                className="w-8 h-8 rounded-full hover:bg-[#F2F2F2] text-[#444746] flex items-center justify-center transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="mt-4 space-y-3">
-              {/* Option 1: Live Camera Scanner */}
+            <div className="space-y-3">
+              {/* Option 1: Scan with Camera */}
               <button
                 type="button"
                 onClick={() => {
                   setShowScanChoiceModal(false);
                   setShowLiveCameraModal(true);
                 }}
-                className="w-full text-left p-3.5 rounded-xl border border-slate-200 hover:border-[#0056A6] hover:bg-blue-50/40 transition-all cursor-pointer group flex items-start gap-3"
+                className="w-full text-left p-4 rounded-2xl border border-[#E0E2EC] hover:border-[#0B57D0] hover:bg-[#F7FAFE] transition-all cursor-pointer group flex items-start gap-3.5"
               >
-                <div className="w-10 h-10 rounded-xl bg-blue-100 text-[#0056A6] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                  <Camera className="w-5 h-5 text-[#0056A6]" />
+                <div className="w-11 h-11 rounded-full bg-[#E8F0FE] text-[#0B57D0] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <Camera className="w-5 h-5 text-[#0B57D0]" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-bold text-xs sm:text-sm text-slate-900">Live Camera Scanner</span>
-                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-[#0056A6]">
-                      Real-Time
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                    Use your camera with real-time border detection, corner tracking, and automatic capture.
+                  <span className="font-medium text-sm text-[#1F1F1F] group-hover:text-[#0B57D0] transition-colors">Camera scanner</span>
+                  <p className="text-xs text-[#444746] mt-0.5 leading-snug">
+                    Real-time document edge detection and auto-capture.
                   </p>
                 </div>
               </button>
@@ -1709,30 +1559,25 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                   setShowScanChoiceModal(false);
                   singleScanFileInputRef.current?.click();
                 }}
-                className="w-full text-left p-3.5 rounded-xl border border-slate-200 hover:border-[#0056A6] hover:bg-blue-50/40 transition-all cursor-pointer group flex items-start gap-3"
+                className="w-full text-left p-4 rounded-2xl border border-[#E0E2EC] hover:border-[#0B57D0] hover:bg-[#F7FAFE] transition-all cursor-pointer group flex items-start gap-3.5"
               >
-                <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                  <UploadCloud className="w-5 h-5 text-slate-700" />
+                <div className="w-11 h-11 rounded-full bg-[#F2F2F2] text-[#444746] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <UploadCloud className="w-5 h-5 text-[#444746]" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-bold text-xs sm:text-sm text-slate-900">Select Image File</span>
-                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-700">
-                      Auto-Detect & Tweak
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                    Choose an image file, view auto-detected corners, adjust corners if needed, and save to Vault.
+                  <span className="font-medium text-sm text-[#1F1F1F] group-hover:text-[#0B57D0] transition-colors">Upload photo or document</span>
+                  <p className="text-xs text-[#444746] mt-0.5 leading-snug">
+                    Import existing image to crop, straighten, and scan.
                   </p>
                 </div>
               </button>
             </div>
 
-            <div className="mt-4 pt-3 border-t border-slate-100 flex justify-end">
+            <div className="pt-2 flex justify-end">
               <button
                 type="button"
                 onClick={() => setShowScanChoiceModal(false)}
-                className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors cursor-pointer"
+                className="px-5 py-2 rounded-full text-xs font-medium text-[#444746] hover:bg-[#F2F2F2] transition-colors cursor-pointer"
               >
                 Cancel
               </button>

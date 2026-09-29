@@ -35,7 +35,6 @@ export const InSoftwareDocumentViewer: React.FC<InSoftwareDocumentViewerProps> =
   allFiles = [],
   onClose,
   onSelectFile,
-  onOpenImageToText,
 }) => {
   const [currentFile, setCurrentFile] = useState<QrUploadedFile | null>(initialFile);
   const [zoom, setZoom] = useState<number>(100);
@@ -221,30 +220,15 @@ export const InSoftwareDocumentViewer: React.FC<InSoftwareDocumentViewerProps> =
                 </div>
               )}
 
-              {/* Smart Crop for Images */}
+              {/* Crop & Scan for Images */}
               {!isPdf && (
                 <button
                   onClick={() => setShowCropModal(true)}
-                  className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs border border-blue-400/40 cursor-pointer"
-                  title="AI Document Scanner & Auto-Crop"
+                  className="px-3 py-1.5 rounded-xl bg-[#0056A6] hover:bg-[#004687] text-white text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Crop & Scan Document"
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">AI Scanner & Crop</span>
-                </button>
-              )}
-
-              {/* Send to Image to Text OCR for Images */}
-              {!isPdf && onOpenImageToText && (
-                <button
-                  onClick={() => {
-                    onOpenImageToText(file);
-                    onClose();
-                  }}
-                  className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs border border-indigo-400/40 cursor-pointer"
-                  title="Send to Image to Text (OCR)"
-                >
-                  <FileText className="w-3.5 h-3.5 text-indigo-200" />
-                  <span className="hidden sm:inline">Img to Text</span>
+                  <Crop className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Crop &amp; Scan</span>
                 </button>
               )}
 

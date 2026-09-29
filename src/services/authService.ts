@@ -16,6 +16,7 @@ import {
   onSnapshot,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { safeStorage } from '../utils/safeStorage';
 
 /**
  * Recursively removes any properties with `undefined` values from objects and arrays,
@@ -239,11 +240,11 @@ let isFirestoreSynced = false;
 
 export function getAllUsers(): UserProfile[] {
   try {
-    const raw = localStorage.getItem(USERS_STORAGE_KEY);
+    const raw = safeStorage.getItem(USERS_STORAGE_KEY);
     let parsed: UserProfile[] = [];
     if (!raw) {
       parsed = [SUPER_ADMIN_USER, DNO_USER];
-      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(parsed));
+      safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(parsed));
       return parsed;
     }
     parsed = JSON.parse(raw);
@@ -310,7 +311,7 @@ export function getAllUsers(): UserProfile[] {
     }
 
     if (modified) {
-      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(parsed));
+      safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(parsed));
     }
 
     return parsed;
@@ -382,7 +383,7 @@ export function initFirestoreDataSync() {
             setDoc(doc(db, 'users', DEFAULT_STAFF_USER.id), sanitizeForFirestore(DEFAULT_STAFF_USER), { merge: true }).catch(() => {});
           }
 
-          localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(firestoreUsers));
+          safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(firestoreUsers));
           notifyUserSubscribers(firestoreUsers);
 
           // Update current active user session if modified
@@ -411,7 +412,7 @@ export function initFirestoreDataSync() {
         if (!snapshot.empty) {
           const list: StudentRecord[] = [];
           snapshot.forEach((d) => list.push({ ...d.data(), id: d.id } as StudentRecord));
-          localStorage.setItem(STUDENTS_STORAGE_KEY, JSON.stringify(list));
+          safeStorage.setItem(STUDENTS_STORAGE_KEY, JSON.stringify(list));
           studentSubscribers.forEach((cb) => cb(list));
         }
       },
@@ -425,7 +426,7 @@ export function initFirestoreDataSync() {
         if (!snapshot.empty) {
           const list: VisitorRecord[] = [];
           snapshot.forEach((d) => list.push({ ...d.data(), id: d.id } as VisitorRecord));
-          localStorage.setItem(VISITORS_STORAGE_KEY, JSON.stringify(list));
+          safeStorage.setItem(VISITORS_STORAGE_KEY, JSON.stringify(list));
           visitorSubscribers.forEach((cb) => cb(list));
         }
       },
@@ -439,7 +440,7 @@ export function initFirestoreDataSync() {
         if (!snapshot.empty) {
           const list: CenterNotice[] = [];
           snapshot.forEach((d) => list.push({ ...d.data(), id: d.id } as CenterNotice));
-          localStorage.setItem(NOTICES_STORAGE_KEY, JSON.stringify(list));
+          safeStorage.setItem(NOTICES_STORAGE_KEY, JSON.stringify(list));
           noticeSubscribers.forEach((cb) => cb(list));
         }
       },
@@ -473,7 +474,7 @@ export async function syncUsersFromServer(): Promise<UserProfile[]> {
     if (res.ok) {
       const data = await res.json();
       if (data.success && Array.isArray(data.users) && data.users.length > 0) {
-        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(data.users));
+        safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(data.users));
         notifyUserSubscribers(data.users);
         return data.users;
       }
@@ -485,7 +486,7 @@ export async function syncUsersFromServer(): Promise<UserProfile[]> {
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.users) && data.users.length > 0) {
-          localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(data.users));
+          safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(data.users));
           notifyUserSubscribers(data.users);
           return data.users;
         }
@@ -544,7 +545,7 @@ export async function saveUserAsync(user: UserProfile): Promise<{ success: boole
     } else {
       users.push(cleanUser);
     }
-    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+    safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
     notifyUserSubscribers(users);
 
     // Update current session if the edited user is currently logged in
@@ -600,7 +601,7 @@ export function saveUser(user: UserProfile): { success: boolean; message: string
     }
 
     // Save to local storage
-    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+    safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
     notifyUserSubscribers(users);
 
     // Update current session if the edited user is currently logged in
@@ -651,7 +652,7 @@ export async function deleteUserAsync(userId: string): Promise<{ success: boolea
 
     // 2. Remove from local storage
     const users = getAllUsers().filter((u) => u.id !== userId && u.username?.toLowerCase() !== userId.toLowerCase());
-    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+    safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
     notifyUserSubscribers(users);
 
     // 3. Remove from Firestore cloud database
@@ -689,7 +690,7 @@ export function deleteUser(userId: string): { success: boolean; message: string 
     }).catch(() => {});
 
     const users = getAllUsers().filter((u) => u.id !== userId && u.username?.toLowerCase() !== userId.toLowerCase());
-    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+    safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
     notifyUserSubscribers(users);
 
     // Remove from Firestore cloud database
@@ -735,7 +736,7 @@ export async function toggleUserStatusAsync(
     );
     if (idx >= 0) {
       users[idx] = { ...users[idx], isActive };
-      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+      safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
       notifyUserSubscribers(users);
 
       // 3. Update Firestore if possible
@@ -796,7 +797,7 @@ export async function authenticateWithResultAsync(
       } else {
         all.push(authedUser);
       }
-      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(all));
+      safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(all));
       notifyUserSubscribers(all);
       setCurrentUser(authedUser);
       return { user: authedUser };
@@ -875,7 +876,7 @@ export async function authenticateWithResultAsync(
       });
 
       if (cloudUsers.length > 0) {
-        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(cloudUsers));
+        safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(cloudUsers));
         notifyUserSubscribers(cloudUsers);
       }
 
@@ -1025,7 +1026,7 @@ export const INACTIVITY_TIMEOUT_MS = 0;
 
 export function updateLastActiveTime(): void {
   try {
-    localStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
+    safeStorage.setItem(LAST_ACTIVE_KEY, Date.now().toString());
   } catch {}
 }
 
@@ -1036,7 +1037,7 @@ export function isSessionExpired(): boolean {
 
 export function getCurrentUser(): UserProfile | null {
   try {
-    const raw = localStorage.getItem(CURRENT_USER_KEY);
+    const raw = safeStorage.getItem(CURRENT_USER_KEY);
     if (!raw) return null;
     const user: UserProfile = JSON.parse(raw);
     if (user && (user.role === 'super_admin' || user.username.toLowerCase() === 'shrinath')) {
@@ -1051,14 +1052,14 @@ export function getCurrentUser(): UserProfile | null {
 
 export function setCurrentUser(user: UserProfile | null): void {
   if (user) {
-    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
-    localStorage.setItem('vmk_auth_token', `logged_in_${user.username}`);
+    safeStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+    safeStorage.setItem('vmk_auth_token', `logged_in_${user.username}`);
     updateLastActiveTime();
   } else {
-    localStorage.removeItem(CURRENT_USER_KEY);
-    localStorage.removeItem('vmk_auth_token');
-    localStorage.removeItem('vmk_auth_time');
-    localStorage.removeItem(LAST_ACTIVE_KEY);
+    safeStorage.removeItem(CURRENT_USER_KEY);
+    safeStorage.removeItem('vmk_auth_token');
+    safeStorage.removeItem('vmk_auth_time');
+    safeStorage.removeItem(LAST_ACTIVE_KEY);
   }
 }
 
@@ -1068,7 +1069,7 @@ export function setCurrentUser(user: UserProfile | null): void {
 
 export function getStudentRecords(): StudentRecord[] {
   try {
-    const raw = localStorage.getItem(STUDENTS_STORAGE_KEY);
+    const raw = safeStorage.getItem(STUDENTS_STORAGE_KEY);
     if (!raw) {
       return [];
     }
@@ -1096,7 +1097,7 @@ export function saveStudentRecord(record: StudentRecord): void {
     } else {
       records.unshift(record);
     }
-    localStorage.setItem(STUDENTS_STORAGE_KEY, JSON.stringify(records));
+    safeStorage.setItem(STUDENTS_STORAGE_KEY, JSON.stringify(records));
     studentSubscribers.forEach((cb) => cb(records));
 
     // Cloud sync
@@ -1111,7 +1112,7 @@ export function saveStudentRecord(record: StudentRecord): void {
 export function deleteStudentRecord(id: string): void {
   try {
     const records = getStudentRecords().filter((r) => r.id !== id);
-    localStorage.setItem(STUDENTS_STORAGE_KEY, JSON.stringify(records));
+    safeStorage.setItem(STUDENTS_STORAGE_KEY, JSON.stringify(records));
     studentSubscribers.forEach((cb) => cb(records));
 
     // Cloud sync
@@ -1129,7 +1130,7 @@ export function deleteStudentRecord(id: string): void {
 
 export function getCenterNotices(): CenterNotice[] {
   try {
-    const raw = localStorage.getItem(NOTICES_STORAGE_KEY);
+    const raw = safeStorage.getItem(NOTICES_STORAGE_KEY);
     if (!raw) {
       return [];
     }
@@ -1157,7 +1158,7 @@ export function saveCenterNotice(notice: CenterNotice): void {
     } else {
       notices.unshift(notice);
     }
-    localStorage.setItem(NOTICES_STORAGE_KEY, JSON.stringify(notices));
+    safeStorage.setItem(NOTICES_STORAGE_KEY, JSON.stringify(notices));
     noticeSubscribers.forEach((cb) => cb(notices));
 
     // Cloud sync
@@ -1172,7 +1173,7 @@ export function saveCenterNotice(notice: CenterNotice): void {
 export function deleteCenterNotice(id: string): void {
   try {
     const notices = getCenterNotices().filter((n) => n.id !== id);
-    localStorage.setItem(NOTICES_STORAGE_KEY, JSON.stringify(notices));
+    safeStorage.setItem(NOTICES_STORAGE_KEY, JSON.stringify(notices));
     noticeSubscribers.forEach((cb) => cb(notices));
 
     // Cloud sync
@@ -1190,7 +1191,7 @@ export function deleteCenterNotice(id: string): void {
 
 export function getVisitorRecords(): VisitorRecord[] {
   try {
-    const raw = localStorage.getItem(VISITORS_STORAGE_KEY);
+    const raw = safeStorage.getItem(VISITORS_STORAGE_KEY);
     if (!raw) {
       return [];
     }
@@ -1218,7 +1219,7 @@ export function saveVisitorRecord(record: VisitorRecord): void {
     } else {
       records.unshift(record);
     }
-    localStorage.setItem(VISITORS_STORAGE_KEY, JSON.stringify(records));
+    safeStorage.setItem(VISITORS_STORAGE_KEY, JSON.stringify(records));
     visitorSubscribers.forEach((cb) => cb(records));
 
     // Cloud sync
@@ -1233,7 +1234,7 @@ export function saveVisitorRecord(record: VisitorRecord): void {
 export function deleteVisitorRecord(id: string): void {
   try {
     const records = getVisitorRecords().filter((r) => r.id !== id);
-    localStorage.setItem(VISITORS_STORAGE_KEY, JSON.stringify(records));
+    safeStorage.setItem(VISITORS_STORAGE_KEY, JSON.stringify(records));
     visitorSubscribers.forEach((cb) => cb(records));
 
     // Cloud sync
@@ -1260,7 +1261,7 @@ export function checkoutVisitor(id: string, checkOutTime?: string): void {
         checkOutTime: nowTime,
         status: 'Checked Out',
       };
-      localStorage.setItem(VISITORS_STORAGE_KEY, JSON.stringify(records));
+      safeStorage.setItem(VISITORS_STORAGE_KEY, JSON.stringify(records));
       visitorSubscribers.forEach((cb) => cb(records));
 
       // Cloud sync

@@ -13,6 +13,7 @@
  */
 
 import { ALL_COURSES, DEFAULT_COURSE } from '../data/courses';
+import { convertQueryToThirdPersonFallback, detectFirstPersonLanguage } from './queryRewriter';
 
 export interface CapturedTicketDetails {
   candidateName?: string;
@@ -641,6 +642,11 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
         }
       }
     }
+  }
+
+  // If query is in first-person language, rewrite into third-person statement suitable for SAC ticket
+  if (details.query && detectFirstPersonLanguage(details.query)) {
+    details.query = convertQueryToThirdPersonFallback(details.query);
   }
 
   return details;

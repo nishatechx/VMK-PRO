@@ -3,26 +3,24 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   X,
   Camera,
-  RotateCw,
-  Sparkles,
-  CheckCircle2,
-  AlertCircle,
-  Lightbulb,
-  Maximize,
   RefreshCw,
+  AlertCircle,
+  Check,
 } from 'lucide-react';
 import { fastClientCornerDetection, QuadCorners } from '../utils/documentVision';
 
 interface LiveCameraScannerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCapture: (capturedDataUrl: string) => void;
+  onCapture: (capturedDataUrl: string, allPages?: string[]) => void;
+  initialMultiPage?: boolean;
 }
 
 export const LiveCameraScannerModal: React.FC<LiveCameraScannerModalProps> = ({
   isOpen,
   onClose,
   onCapture,
+  initialMultiPage = false,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -31,14 +29,19 @@ export const LiveCameraScannerModal: React.FC<LiveCameraScannerModalProps> = ({
   const [cameraFacing, setCameraFacing] = useState<'environment' | 'user'>('environment');
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const [detectedCorners, setDetectedCorners] = useState<QuadCorners | null>(null);
-  const [guidanceMessage, setGuidanceMessage] = useState<string>('Align document within frame');
+  const [guidanceMessage, setGuidanceMessage] = useState<string>('Position document in frame');
   const [guidanceType, setGuidanceType] = useState<'info' | 'success' | 'warning'>('info');
   const [autoCaptureEnabled, setAutoCaptureEnabled] = useState<boolean>(true);
-  const [confidence, setConfidence] = useState<number>(0);
   const [isCapturing, setIsCapturing] = useState<boolean>(false);
+  const [flashFeedback, setFlashFeedback] = useState<boolean>(false);
+
+  // Multi-page batch scanning state
+  const [capturedPages, setCapturedPages] = useState<string[]>([]);
+  const [isMultiPageMode, setIsMultiPageMode] = useState<boolean>(initialMultiPage);
 
   // Consecutive steady frames counter for auto-capture
   const steadyFramesRef = useRef<number>(0);
+  const prevCornersRef = useRef<QuadCorners | null>(null);
 
   // Start device camera
   const startCamera = useCallback(async () => {
@@ -50,8 +53,8 @@ export const LiveCameraScannerModal: React.FC<LiveCameraScannerModalProps> = ({
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: cameraFacing,
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
+          width: { ideal: 2560, min: 1280 },
+          height: { ideal: 1440, min: 720 },
         },
         audio: false,
       });
@@ -63,7 +66,7 @@ export const LiveCameraScannerModal: React.FC<LiveCameraScannerModalProps> = ({
       }
       setHasCameraPermission(true);
     } catch (err) {
-      console.error('[Camera Scanner] Error accessing camera:', err);
+      console.error('[Google Files Camera] Error accessing camera:', err);
       setHasCameraPermission(false);
     }
   }, [cameraFacing]);
@@ -82,6 +85,7 @@ export const LiveCameraScannerModal: React.FC<LiveCameraScannerModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
+      setCapturedPages([]);
       startCamera();
     } else {
       stopCamera();
@@ -91,19 +95,22 @@ export const LiveCameraScannerModal: React.FC<LiveCameraScannerModalProps> = ({
     };
   }, [isOpen, startCamera, stopCamera]);
 
-  // Real-time frame analysis loop
+  // Real-time document detection loop
   useEffect(() => {
     if (!isOpen || !hasCameraPermission) return;
 
     let lastAnalysis = 0;
     const processFrame = (time: number) => {
-      // Analyze ~10 times per second for smooth battery-friendly performance
-      if (time - lastAnalysis > 100 && videoRef.current && videoRef.current.readyState === 4) {
+      if (
+        time - lastAnalysis > 90 &&
+        videoRef.current &&
+        videoRef.current.readyState === 4 &&
+        !isCapturing
+      ) {
         lastAnalysis = time;
         try {
           const res = fastClientCornerDetection(videoRef.current);
           setDetectedCorners(res.corners);
-          setConfidence(res.confidence);
 
           const { topLeft, topRight, bottomRight, bottomLeft } = res.corners;
           const widthTop = topRight.x - topLeft.x;
@@ -113,30 +120,58 @@ export const LiveCameraScannerModal: React.FC<LiveCameraScannerModalProps> = ({
           const avgWidth = (widthTop + widthBottom) / 2;
           const avgHeight = (heightLeft + heightRight) / 2;
 
-          // Quality guidance logic
+          let isStable = false;
+          if (prevCornersRef.current) {
+            const dTL = Math.hypot(
+              topLeft.x - prevCornersRef.current.topLeft.x,
+              topLeft.y - prevCornersRef.current.topLeft.y
+            );
+            const dTR = Math.hypot(
+              topRight.x - prevCornersRef.current.topRight.x,
+              topRight.y - prevCornersRef.current.topRight.y
+            );
+            const dBR = Math.hypot(
+              bottomRight.x - prevCornersRef.current.bottomRight.x,
+              bottomRight.y - prevCornersRef.current.bottomRight.y
+            );
+            const dBL = Math.hypot(
+              bottomLeft.x - prevCornersRef.current.bottomLeft.x,
+              bottomLeft.y - prevCornersRef.current.bottomLeft.y
+            );
+            const maxMovement = Math.max(dTL, dTR, dBR, dBL);
+            isStable = maxMovement < 1.8;
+          }
+          prevCornersRef.current = res.corners;
+
           if (res.qualityReport.isTooDark) {
-            setGuidanceMessage('Poor lighting. Move into better light');
+            setGuidanceMessage('Poor lighting. Move into brighter light');
             setGuidanceType('warning');
             steadyFramesRef.current = 0;
-          } else if (avgWidth < 45 || avgHeight < 40) {
-            setGuidanceMessage('Move closer to document');
+          } else if (avgWidth < 40 || avgHeight < 35) {
+            setGuidanceMessage('Move closer');
             setGuidanceType('info');
             steadyFramesRef.current = 0;
-          } else if (topLeft.x <= 3 || topRight.x >= 97 || topLeft.y <= 3 || bottomLeft.y >= 97) {
-            setGuidanceMessage('Document touching edge. Move farther away');
-            setGuidanceType('warning');
-            steadyFramesRef.current = 0;
-          } else if (Math.abs(widthTop - widthBottom) > 25 || Math.abs(heightLeft - heightRight) > 25) {
-            setGuidanceMessage('Align camera straight above document');
+          } else if (
+            topLeft.x <= 2 ||
+            topRight.x >= 98 ||
+            topLeft.y <= 2 ||
+            bottomLeft.y >= 98
+          ) {
+            setGuidanceMessage('Document touching edge');
             setGuidanceType('warning');
             steadyFramesRef.current = 0;
           } else {
-            setGuidanceMessage('Document detected! Hold steady');
-            setGuidanceType('success');
-            steadyFramesRef.current += 1;
+            if (isStable) {
+              steadyFramesRef.current += 1;
+              setGuidanceMessage('Hold steady');
+              setGuidanceType('success');
+            } else {
+              setGuidanceMessage('Hold steady');
+              setGuidanceType('info');
+            }
 
-            // Auto-capture after 1.2s of steady alignment
-            if (autoCaptureEnabled && steadyFramesRef.current >= 8 && !isCapturing) {
+            // Auto-capture after 7 steady frames
+            if (autoCaptureEnabled && steadyFramesRef.current >= 7 && !isCapturing) {
               handleTriggerCapture();
               return;
             }
@@ -174,17 +209,37 @@ export const LiveCameraScannerModal: React.FC<LiveCameraScannerModalProps> = ({
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const capturedDataUrl = canvas.toDataURL('image/jpeg', 0.95);
 
-      // Play subtle haptic feedback if supported
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
         navigator.vibrate(40);
       }
 
-      stopCamera();
-      onCapture(capturedDataUrl);
+      setFlashFeedback(true);
+      setTimeout(() => setFlashFeedback(false), 150);
+
+      const nextPages = [...capturedPages, capturedDataUrl];
+      setCapturedPages(nextPages);
+
+      if (!isMultiPageMode && nextPages.length === 1) {
+        stopCamera();
+        onCapture(capturedDataUrl, nextPages);
+      } else {
+        steadyFramesRef.current = 0;
+        prevCornersRef.current = null;
+        setTimeout(() => {
+          setIsCapturing(false);
+        }, 400);
+      }
     } catch (err) {
-      console.error('[Live Scanner] Capture error:', err);
+      console.error('[Google Camera Scan] Capture error:', err);
       setIsCapturing(false);
     }
+  };
+
+  // Complete batch scan
+  const handleFinishMultiPage = () => {
+    if (capturedPages.length === 0) return;
+    stopCamera();
+    onCapture(capturedPages[0], capturedPages);
   };
 
   if (!isOpen) return null;
@@ -195,48 +250,49 @@ export const LiveCameraScannerModal: React.FC<LiveCameraScannerModalProps> = ({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-between select-none overflow-hidden"
+        className="fixed inset-0 z-50 bg-[#131314] text-[#E3E3E3] flex flex-col justify-between select-none overflow-hidden font-sans"
       >
-        {/* Top Control Bar */}
-        <div className="w-full px-4 py-3.5 flex items-center justify-between text-white bg-gradient-to-b from-black/80 to-transparent z-10">
-          <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
-            <span className="text-xs font-bold tracking-wider uppercase">Live AI Document Scanner</span>
-          </div>
+        {/* Top App Bar (Google Camera Style) */}
+        <div className="w-full px-4 py-3 flex items-center justify-between z-20">
+          <button
+            onClick={onClose}
+            className="p-2.5 rounded-full bg-[#1E1F20]/70 hover:bg-[#282A2C] text-[#E3E3E3] transition-colors cursor-pointer"
+            title="Close camera"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          {capturedPages.length > 0 && (
+            <div className="px-3.5 py-1 rounded-full bg-[#1E1F20]/80 text-[#E3E3E3] text-xs font-normal border border-white/10">
+              Page {capturedPages.length + 1}
+            </div>
+          )}
 
           <div className="flex items-center gap-2">
-            {/* Flip camera */}
             <button
-              onClick={() => setCameraFacing((f) => (f === 'environment' ? 'user' : 'environment'))}
-              className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+              onClick={() =>
+                setCameraFacing((f) => (f === 'environment' ? 'user' : 'environment'))
+              }
+              className="p-2.5 rounded-full bg-[#1E1F20]/70 hover:bg-[#282A2C] text-[#E3E3E3] transition-colors cursor-pointer"
               title="Switch camera"
             >
               <RefreshCw className="w-4 h-4" />
             </button>
-
-            {/* Close */}
-            <button
-              onClick={onClose}
-              className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
-              title="Close camera"
-            >
-              <X className="w-5 h-5" />
-            </button>
           </div>
         </div>
 
-        {/* Video Stage & Overlays */}
-        <div className="relative flex-1 w-full max-w-2xl flex items-center justify-center overflow-hidden px-4">
+        {/* Viewfinder Area */}
+        <div className="relative flex-1 w-full max-w-xl mx-auto flex items-center justify-center overflow-hidden px-4">
           {hasCameraPermission === false ? (
-            <div className="text-center p-6 text-slate-300">
-              <AlertCircle className="w-12 h-12 text-rose-400 mx-auto mb-3" />
-              <h3 className="text-base font-bold text-white mb-1">Camera Access Denied</h3>
-              <p className="text-xs text-slate-400 max-w-sm">
-                Please grant camera permissions in your browser settings to use the real-time AI scanner.
+            <div className="text-center p-6 text-[#C4C7C5]">
+              <AlertCircle className="w-10 h-10 text-[#F2B8B5] mx-auto mb-2" />
+              <h3 className="text-sm font-medium text-[#E3E3E3] mb-1">Camera Access Required</h3>
+              <p className="text-xs text-[#8E918F] max-w-xs">
+                Allow camera permissions in your browser to scan documents.
               </p>
             </div>
           ) : (
-            <div className="relative w-full aspect-[3/4] max-h-[70vh] rounded-2xl overflow-hidden shadow-2xl border border-white/20 bg-black">
+            <div className="relative w-full aspect-[3/4] max-h-[72vh] rounded-2xl overflow-hidden shadow-2xl bg-black border border-white/10">
               <video
                 ref={videoRef}
                 playsInline
@@ -245,10 +301,14 @@ export const LiveCameraScannerModal: React.FC<LiveCameraScannerModalProps> = ({
                 className="w-full h-full object-cover"
               />
 
-              {/* Real-time Document Detection Quad Overlay */}
-              {detectedCorners && (
+              {/* Shutter Flash */}
+              {flashFeedback && (
+                <div className="absolute inset-0 bg-white z-40 transition-opacity duration-150 pointer-events-none" />
+              )}
+
+              {/* Google-style Real-time Document Outline */}
+              {detectedCorners && !flashFeedback && (
                 <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
-                  {/* Subtle dark mask outside detected quad */}
                   <polygon
                     points={`
                       ${detectedCorners.topLeft.x}%,${detectedCorners.topLeft.y}%
@@ -256,13 +316,10 @@ export const LiveCameraScannerModal: React.FC<LiveCameraScannerModalProps> = ({
                       ${detectedCorners.bottomRight.x}%,${detectedCorners.bottomRight.y}%
                       ${detectedCorners.bottomLeft.x}%,${detectedCorners.bottomLeft.y}%
                     `}
-                    fill={guidanceType === 'success' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(234, 179, 8, 0.12)'}
-                    stroke={guidanceType === 'success' ? '#3B82F6' : '#EAB308'}
-                    strokeWidth="3"
-                    strokeDasharray="6 4"
+                    fill="rgba(26, 115, 232, 0.12)"
+                    stroke="#1A73E8"
+                    strokeWidth="2"
                   />
-
-                  {/* 4 Corner Markers */}
                   {[
                     detectedCorners.topLeft,
                     detectedCorners.topRight,
@@ -273,87 +330,95 @@ export const LiveCameraScannerModal: React.FC<LiveCameraScannerModalProps> = ({
                       key={i}
                       cx={`${pt.x}%`}
                       cy={`${pt.y}%`}
-                      r="7"
+                      r="4"
                       fill="#FFFFFF"
-                      stroke={guidanceType === 'success' ? '#3B82F6' : '#EAB308'}
-                      strokeWidth="3"
-                      className="transition-all duration-75"
+                      stroke="#1A73E8"
+                      strokeWidth="2"
                     />
                   ))}
                 </svg>
               )}
 
-              {/* Guidance Badge Overlay */}
-              <div className="absolute top-4 left-0 right-0 flex justify-center px-4 pointer-events-none z-20">
-                <motion.div
-                  key={guidanceMessage}
-                  initial={{ opacity: 0, y: -6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-semibold backdrop-blur-md shadow-lg flex items-center gap-2 border ${
-                    guidanceType === 'success'
-                      ? 'bg-emerald-600/90 text-white border-emerald-400/40'
-                      : guidanceType === 'warning'
-                      ? 'bg-amber-600/90 text-white border-amber-400/40'
-                      : 'bg-slate-900/80 text-white border-white/20'
-                  }`}
-                >
-                  {guidanceType === 'success' ? (
-                    <CheckCircle2 className="w-4 h-4 text-white" />
-                  ) : guidanceType === 'warning' ? (
-                    <AlertCircle className="w-4 h-4 text-white" />
-                  ) : (
-                    <Lightbulb className="w-4 h-4 text-blue-300" />
-                  )}
-                  <span>{guidanceMessage}</span>
-                </motion.div>
-              </div>
-
-              {/* Auto-Capture Progress Bar */}
-              {autoCaptureEnabled && guidanceType === 'success' && (
-                <div className="absolute bottom-4 left-8 right-8 z-20">
-                  <div className="w-full h-1.5 bg-white/20 rounded-full overflow-hidden">
-                    <motion.div
-                      className="h-full bg-blue-500 rounded-full"
-                      initial={{ width: '0%' }}
-                      animate={{ width: `${Math.min(100, (steadyFramesRef.current / 8) * 100)}%` }}
-                      transition={{ duration: 0.1 }}
-                    />
-                  </div>
-                  <p className="text-[10px] text-center text-white/80 mt-1 font-medium">Auto-capturing...</p>
+              {/* Google-style Guidance Pill */}
+              <div className="absolute top-4 inset-x-0 flex justify-center pointer-events-none z-20">
+                <div className="px-4 py-1.5 rounded-full text-xs font-normal bg-[#1E1F20]/90 text-[#E3E3E3] border border-white/10 shadow-sm backdrop-blur-xs">
+                  {guidanceMessage}
                 </div>
-              )}
+              </div>
             </div>
           )}
         </div>
 
-        {/* Bottom Shutter & Options Bar */}
-        <div className="w-full px-6 py-5 bg-gradient-to-t from-black to-transparent flex flex-col items-center gap-3 z-10">
-          <div className="flex items-center gap-3">
-            {/* Auto Capture Toggle */}
+        {/* Bottom Shutter & Controls (Google Camera Style) */}
+        <div className="w-full px-6 py-5 bg-[#131314] flex flex-col items-center gap-4 z-20">
+          {/* Segmented Auto/Manual Toggle */}
+          <div className="flex items-center p-1 bg-[#1E1F20] rounded-full border border-white/10 text-xs">
             <button
-              onClick={() => setAutoCaptureEnabled(!autoCaptureEnabled)}
-              className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors cursor-pointer border ${
+              onClick={() => setAutoCaptureEnabled(true)}
+              className={`px-3 py-1 rounded-full font-medium transition-colors cursor-pointer ${
                 autoCaptureEnabled
-                  ? 'bg-blue-600/80 text-white border-blue-400'
-                  : 'bg-white/10 text-slate-300 border-white/20'
+                  ? 'bg-[#0B57D0] text-white'
+                  : 'text-[#C4C7C5] hover:text-white'
               }`}
             >
-              Auto-Snap: {autoCaptureEnabled ? 'ON' : 'OFF'}
+              Auto-capture
+            </button>
+            <button
+              onClick={() => setAutoCaptureEnabled(false)}
+              className={`px-3 py-1 rounded-full font-medium transition-colors cursor-pointer ${
+                !autoCaptureEnabled
+                  ? 'bg-[#0B57D0] text-white'
+                  : 'text-[#C4C7C5] hover:text-white'
+              }`}
+            >
+              Manual
             </button>
           </div>
 
-          {/* Shutter Button */}
-          <button
-            onClick={handleTriggerCapture}
-            disabled={isCapturing || hasCameraPermission === false}
-            className="relative w-18 h-18 rounded-full border-4 border-white flex items-center justify-center p-1 cursor-pointer transition-transform active:scale-95 disabled:opacity-50"
-            title="Snap Photo"
-          >
-            <div className="w-full h-full rounded-full bg-white hover:bg-slate-100 transition-colors flex items-center justify-center">
-              <Camera className="w-7 h-7 text-slate-900" />
+          {/* Shutter Row */}
+          <div className="w-full max-w-sm flex items-center justify-between">
+            {/* Thumbnail / Page count preview */}
+            <div className="w-16 flex items-center">
+              {capturedPages.length > 0 && (
+                <div
+                  onClick={handleFinishMultiPage}
+                  className="relative w-11 h-13 rounded-lg overflow-hidden border border-white/40 shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
+                  title="Finish and review scanned pages"
+                >
+                  <img
+                    src={capturedPages[capturedPages.length - 1]}
+                    alt="Last page thumbnail"
+                    className="w-full h-full object-cover"
+                  />
+                  <span className="absolute bottom-0 inset-x-0 bg-black/70 text-[9px] text-center text-white font-medium">
+                    {capturedPages.length}
+                  </span>
+                </div>
+              )}
             </div>
-          </button>
-          <span className="text-[11px] text-slate-400">Tap to capture or let AI auto-snap when steady</span>
+
+            {/* Google Shutter Button */}
+            <button
+              onClick={handleTriggerCapture}
+              disabled={isCapturing || hasCameraPermission === false}
+              className="relative w-18 h-18 rounded-full border-4 border-white flex items-center justify-center p-1 cursor-pointer transition-transform active:scale-95 disabled:opacity-50"
+              title="Capture page"
+            >
+              <div className="w-full h-full rounded-full bg-white transition-colors" />
+            </button>
+
+            {/* Done Button (Multi-page) */}
+            <div className="w-16 flex justify-end">
+              {capturedPages.length > 0 && (
+                <button
+                  onClick={handleFinishMultiPage}
+                  className="px-4 py-2 rounded-full bg-[#0B57D0] hover:bg-[#1A73E8] text-white text-xs font-medium shadow-md transition-all active:scale-95 cursor-pointer"
+                >
+                  Done
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </motion.div>
     </AnimatePresence>

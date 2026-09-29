@@ -2,6 +2,7 @@ import { doc, getDoc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { UserProfile } from '../types/auth';
 import { sanitizeForFirestore, getAllUsers, saveUserAsync } from './authService';
+import { safeStorage } from '../utils/safeStorage';
 
 const MASTER_API_KEY_STORAGE = 'vmk_system_gemini_api_key';
 const FALLBACK_API_KEY_STORAGE = 'vmk_gemini_api_key';
@@ -14,8 +15,8 @@ let isListenerActive = false;
 if (typeof window !== 'undefined') {
   try {
     inMemoryMasterKey =
-      localStorage.getItem(MASTER_API_KEY_STORAGE) ||
-      localStorage.getItem(FALLBACK_API_KEY_STORAGE) ||
+      safeStorage.getItem(MASTER_API_KEY_STORAGE) ||
+      safeStorage.getItem(FALLBACK_API_KEY_STORAGE) ||
       (import.meta as any).env?.VITE_GEMINI_API_KEY ||
       '';
   } catch {
@@ -40,7 +41,7 @@ export function initMasterApiKeySync() {
           const key = (data?.apiKey || '').trim();
           if (key) {
             inMemoryMasterKey = key;
-            localStorage.setItem(MASTER_API_KEY_STORAGE, key);
+            safeStorage.setItem(MASTER_API_KEY_STORAGE, key);
             notifySubscribers(key);
           }
         }
@@ -94,8 +95,8 @@ export async function getMasterApiKey(): Promise<string> {
   // Check localStorage
   if (typeof window !== 'undefined') {
     const cached =
-      localStorage.getItem(MASTER_API_KEY_STORAGE) ||
-      localStorage.getItem(FALLBACK_API_KEY_STORAGE) ||
+      safeStorage.getItem(MASTER_API_KEY_STORAGE) ||
+      safeStorage.getItem(FALLBACK_API_KEY_STORAGE) ||
       (import.meta as any).env?.VITE_GEMINI_API_KEY ||
       '';
     if (cached && cached.trim()) {
@@ -113,7 +114,7 @@ export async function getMasterApiKey(): Promise<string> {
         const key = String(data.apiKey).trim();
         inMemoryMasterKey = key;
         if (typeof window !== 'undefined') {
-          localStorage.setItem(MASTER_API_KEY_STORAGE, key);
+          safeStorage.setItem(MASTER_API_KEY_STORAGE, key);
         }
         return key;
       }
@@ -132,7 +133,7 @@ export async function getMasterApiKey(): Promise<string> {
       if (key) {
         inMemoryMasterKey = key;
         if (typeof window !== 'undefined') {
-          localStorage.setItem(MASTER_API_KEY_STORAGE, key);
+          safeStorage.setItem(MASTER_API_KEY_STORAGE, key);
         }
         return key;
       }
@@ -159,8 +160,8 @@ export async function saveMasterApiKey(
   try {
     inMemoryMasterKey = cleanKey;
     if (typeof window !== 'undefined') {
-      localStorage.setItem(MASTER_API_KEY_STORAGE, cleanKey);
-      localStorage.setItem(FALLBACK_API_KEY_STORAGE, cleanKey);
+      safeStorage.setItem(MASTER_API_KEY_STORAGE, cleanKey);
+      safeStorage.setItem(FALLBACK_API_KEY_STORAGE, cleanKey);
     }
     notifySubscribers(cleanKey);
 

@@ -27,6 +27,7 @@ export interface TicketRecord {
   id: string; // Unique ticket record ID
   ticketNo: string; // e.g. TC-FC1102-20260902-1234 or WA-CAP-2026-981240
   ticketType: TicketType;
+  subject?: string; // Automatically derived subject based on the nature of query
   candidateName: string;
   cetNo?: string;
   capId?: string;

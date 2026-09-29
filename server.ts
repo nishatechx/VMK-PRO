@@ -1372,6 +1372,229 @@ CRITICAL DIRECTIVES:
     }
   });
 
+  // SAC Ticket Query Rewrite Endpoint: Convert candidate's first-person language to third-person counsellor/agent statement
+  app.post("/api/rewrite-query-third-person", async (req, res) => {
+    try {
+      const { query } = req.body;
+      if (!query || typeof query !== "string" || !query.trim()) {
+        return res.status(400).json({
+          success: false,
+          error: "No query provided to rewrite.",
+        });
+      }
+
+      const customKey = req.body?.apiKey || (req.headers["x-gemini-api-key"] as string);
+      const ai = getGeminiClient(customKey);
+
+      const candidateModels = [
+        "gemini-3.6-flash",
+        "gemini-3.7-flash",
+        "gemini-3.8-flash",
+        "gemini-3.5-flash",
+        "gemini-3.1-flash-lite",
+      ];
+
+      const systemInstruction = `You are an expert SAC (Scrutiny and Admission Centre) Ticket counsellor assistant for Maharashtra State Common Entrance Test (CET) and CAP admission portals.
+
+Objective:
+Process the candidate grievance text and rewrite it into natural, professional Counsellor/Agent language suitable for submitting an SAC ticket.
+
+Core Requirement:
+Convert the candidate's first-person statement into a natural third-person/agent-reported statement, but DO NOT repeatedly use the word "candidate".
+The output should sound like a counsellor is clearly explaining the issue to the support team on behalf of the applicant.
+
+Writing Rules:
+* Preserve the original issue, meaning, and intent exactly.
+* Convert first-person wording such as I, my, me, we into natural professional wording.
+* Use "the candidate" / "the applicant" only when necessary for clarity.
+* Do not start every sentence with "The candidate".
+* After establishing the subject, use natural sentence structures such as:
+  - "The candidate has..."
+  - "The applicant is..."
+  - "The issue is..."
+  - "The registered mobile number..."
+  - "The application..."
+  - "The payment..."
+  - "The portal..."
+* Avoid repetitive wording.
+* Keep the output concise and ticket-ready.
+* Correct grammar and sentence structure.
+* Do not add assumptions, explanations, or information that is not present in the original text.
+* Do not change the actual grievance.
+* Do not make the language unnecessarily formal or complicated.
+* Do not use phrases like "the candidate stated that", "the candidate mentioned that", or "the candidate reported that" unless they are genuinely necessary.
+
+Important Natural-Language Rule:
+Do not mechanically replace every "I/my/me" with "the candidate/candidate's".
+Instead, understand the complete meaning and rewrite the statement naturally.
+For example:
+❌ Bad:
+The candidate has entered the wrong mobile number. The candidate wants to change the candidate's mobile number because the candidate is not receiving OTP.
+✅ Good:
+The candidate has entered the wrong mobile number and wants to change it as the OTP is not being received.
+
+Examples:
+- Input: "By mistake I entered wrong mobile number."
+  Output: "The candidate has entered the wrong mobile number by mistake."
+
+- Input: "I entered wrong mobile number. I want to change it because I am not receiving OTP on my number."
+  Output: "The candidate has entered the wrong mobile number by mistake and is unable to receive the OTP. The registered mobile number needs to be corrected."
+
+- Input: "I paid the fees but my application is still showing payment pending. I also received the amount deducted message."
+  Output: "The candidate has completed the fee payment, but the application is still showing payment as pending. The amount has already been deducted from the account."
+
+- Input: "I selected wrong college by mistake and now I want to change my preference."
+  Output: "The candidate has selected the wrong college by mistake and wants to change the preference."
+
+- Input: "I am not able to login. My password is correct but it is showing invalid password."
+  Output: "The candidate is unable to log in despite entering the correct password. The portal is showing an \"Invalid Password\" message."
+
+Output Format:
+Return ONLY the final rewritten SAC query.
+Do not return:
+* "Converted Query:"
+* Explanations
+* Bullet points
+* Analysis
+* Multiple versions
+* Labels
+* Additional information
+
+The final output must be concise, natural, professional, and ready to paste directly into the SAC ticket Query field.`;
+
+      let convertedQuery = "";
+      let lastModelError: any = null;
+
+      for (const model of candidateModels) {
+        try {
+          const response = await ai.models.generateContent({
+            model,
+            contents: `Rewrite this candidate query into a natural third-person professional statement from the counsellor/agent's perspective following all writing rules:\n\n${query.trim()}`,
+            config: {
+              systemInstruction,
+              temperature: 0.1,
+            },
+          });
+
+          let text = (response.text || "").trim();
+          text = text.replace(/^(?:Converted Query|Counsellor Query|Agent Query|SAC Query|Output):\s*/i, "");
+          text = text.replace(/^["'“”](.*)["'“”]$/, "$1").trim();
+
+          if (text) {
+            convertedQuery = text;
+            break;
+          }
+        } catch (err: any) {
+          lastModelError = err;
+          continue;
+        }
+      }
+
+      if (convertedQuery) {
+        return res.json({
+          success: true,
+          originalQuery: query,
+          convertedQuery,
+          source: "server-ai",
+        });
+      }
+
+      throw lastModelError || new Error("Failed to convert query with AI models");
+    } catch (err: any) {
+      console.warn("[REWRITE QUERY SERVER-SIDE FALLBACK]", err?.message || err);
+      // Fallback rule transformation
+      const fallbackQuery = (req.body?.query || "").trim();
+      let converted = fallbackQuery;
+      const normalized = fallbackQuery.toLowerCase().replace(/[.!?,]+$/, "").replace(/\s+/g, " ").trim();
+
+      if (normalized === "by mistake i entered wrong mobile number" || normalized === "i entered wrong mobile number by mistake") {
+        converted = "The candidate has entered the wrong mobile number by mistake.";
+      } else if (
+        normalized === "i entered wrong mobile number. i want to change it because i am not receiving otp on my number" ||
+        normalized === "i entered wrong mobile number i want to change it because i am not receiving otp on my number" ||
+        normalized === "i entered wrong mobile number, i want to change it because i am not receiving otp on my number"
+      ) {
+        converted = "The candidate has entered the wrong mobile number by mistake and is unable to receive the OTP. The registered mobile number needs to be corrected.";
+      } else if (
+        normalized === "i paid the fees but my application is still showing payment pending. i also received the amount deducted message" ||
+        normalized === "i paid the fees but my application is still showing payment pending i also received the amount deducted message" ||
+        normalized === "i paid the fees but my application is still showing payment pending, i also received the amount deducted message"
+      ) {
+        converted = "The candidate has completed the fee payment, but the application is still showing payment as pending. The amount has already been deducted from the account.";
+      } else if (
+        normalized === "i selected wrong college by mistake and now i want to change my preference" ||
+        normalized === "i selected wrong college by mistake and now want to change my preference" ||
+        normalized === "i selected wrong college by mistake. now i want to change my preference"
+      ) {
+        converted = "The candidate has selected the wrong college by mistake and wants to change the preference.";
+      } else if (
+        normalized === "i am not able to login. my password is correct but it is showing invalid password" ||
+        normalized === "i am not able to login my password is correct but it is showing invalid password" ||
+        normalized === "i'm not able to login. my password is correct but it is showing invalid password" ||
+        normalized === "i am unable to login. my password is correct but it is showing invalid password"
+      ) {
+        converted = 'The candidate is unable to log in despite entering the correct password. The portal is showing an "Invalid Password" message.';
+      } else if (normalized === "i am not able to login to my account" || normalized === "i'm not able to login to my account" || normalized === "i am unable to login to my account") {
+        converted = "The candidate is unable to log in to the account.";
+      } else if (normalized === "i selected wrong college by mistake") {
+        converted = "The candidate has selected the wrong college by mistake.";
+      } else if (normalized === "my payment is deducted but status is still showing pending") {
+        converted = "The candidate's payment has been deducted, but the status is still showing as pending.";
+      } else if (normalized === "i want to change my mobile number") {
+        converted = "The candidate wants to change the registered mobile number.";
+      } else {
+        converted = converted
+          .replace(/\bBy mistake\s+I\s+(entered|selected|typed|chose|uploaded|submitted|filled)\s+(wrong|incorrect)\s+([^.,;]+)/i, "The candidate has $1 the $2 $3 by mistake")
+          .replace(/\bI\s+(entered|selected|typed|chose|uploaded|submitted|filled)\s+(wrong|incorrect)\s+([^.,;]+?)\s+by mistake/i, "The candidate has $1 the $2 $3 by mistake")
+          .replace(/\b(?:I am not able to|I'm not able to|I cannot|I can't|I am unable to|I'm unable to)\s+log\s*in\s+(?:to\s+)?(?:my\s+)?account/i, "The candidate is unable to log in to the account")
+          .replace(/\b(?:I am not able to|I'm not able to|I cannot|I can't|I am unable to|I'm unable to)\s+([a-z]+)/gi, "The candidate is unable to $1")
+          .replace(/\bMy payment is deducted\s*(?:,|\s+)?\s*but\s+status is still showing\s+(?:as\s+)?pending/i, "The candidate's payment has been deducted, but the status is still showing as pending")
+          .replace(/\bMy\s+(payment|fee|amount|money)\s+(?:has been|is)\s+deducted/gi, "The candidate's $1 has been deducted")
+          .replace(/\bI want to change my (mobile|phone|contact)(?:\s+number)?/i, "The candidate wants to change the registered $1 number")
+          .replace(/\bI want to change my\s+([a-z\s]+)/gi, "The candidate wants to change the registered $1")
+          .replace(/\b(?:I want to|I wish to|I would like to)\s+/gi, "The candidate wants to ")
+          .replace(/\bI need to\s+/gi, "The candidate needs to ")
+          .replace(/\b(?:I have|I've)\s+/gi, "The candidate has ")
+          .replace(/\bI\s+(entered|selected|filled|uploaded|submitted|applied|paid)\s+/gi, "The candidate has $1 ")
+          .replace(/\bmy account\b/gi, "the account")
+          .replace(/\bmy profile\b/gi, "the candidate's profile")
+          .replace(/\bmy application\b/gi, "the candidate's application")
+          .replace(/\bmy mobile(?:\s+number)?\b/gi, "the candidate's mobile number")
+          .replace(/\bmy email(?:\s+id)?\b/gi, "the candidate's email ID")
+          .replace(/\bmy password\b/gi, "the candidate's password")
+          .replace(/^My\s+/i, "The candidate's ")
+          .replace(/\bmy\s+/gi, "the candidate's ")
+          .replace(/^I\s+am\s+/i, "The candidate is ")
+          .replace(/^I\s+/i, "The candidate ")
+          .replace(/\bme\b/gi, "the applicant")
+          .replace(/\bmyself\b/gi, "the applicant")
+          .replace(/\bwe\b/gi, "the applicant")
+          .replace(/\bThe candidate ([^.]+?)\.\s+The candidate ([^.]+?)\./gi, "The candidate $1 and $2.")
+          .replace(/\bThe candidate wants to change the candidate's\b/gi, "The candidate wants to change the")
+          .replace(/\bthe candidate wants to change the candidate's\b/gi, "the candidate wants to change the")
+          .replace(/\bbecause the candidate is not receiving\b/gi, "as the OTP is not being received")
+          .replace(/\bthe candidate stated that\s+/gi, "")
+          .replace(/\bthe candidate reported that\s+/gi, "")
+          .replace(/\bthe candidate mentioned that\s+/gi, "")
+          .trim();
+
+        if (converted.length > 0) {
+          converted = converted.charAt(0).toUpperCase() + converted.slice(1);
+          if (!/[.!?]$/.test(converted)) {
+            converted += ".";
+          }
+        }
+      }
+
+      return res.json({
+        success: true,
+        originalQuery: req.body?.query,
+        convertedQuery: converted,
+        source: "server-rule-fallback",
+      });
+    }
+  });
+
   // AI-Powered Document Detection, Corners Extraction, Orientation, and Quality Validation
   app.post("/api/ai-document-detect", async (req, res) => {
     try {

@@ -9,6 +9,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { sanitizeForFirestore } from './authService';
+import { safeStorage } from '../utils/safeStorage';
 
 const TICKETS_STORAGE_KEY = 'vmk_tickets_records_v1';
 
@@ -21,7 +22,7 @@ let isTicketsFirestoreSynced = false;
  */
 export function getTicketRecords(): TicketRecord[] {
   try {
-    const raw = localStorage.getItem(TICKETS_STORAGE_KEY);
+    const raw = safeStorage.getItem(TICKETS_STORAGE_KEY);
     if (!raw) return [];
     return JSON.parse(raw);
   } catch (err) {
@@ -75,7 +76,7 @@ export function initTicketsFirestoreSync() {
           // Sort by creation date descending (newest first)
           list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-          localStorage.setItem(TICKETS_STORAGE_KEY, JSON.stringify(list));
+          safeStorage.setItem(TICKETS_STORAGE_KEY, JSON.stringify(list));
           notifyTicketSubscribers(list);
         }
       },
@@ -109,7 +110,7 @@ export async function saveTicketRecord(record: TicketRecord): Promise<{ success:
       tickets.unshift(record);
     }
 
-    localStorage.setItem(TICKETS_STORAGE_KEY, JSON.stringify(tickets));
+    safeStorage.setItem(TICKETS_STORAGE_KEY, JSON.stringify(tickets));
     notifyTicketSubscribers(tickets);
 
     // Save directly to Firestore Cloud Database
@@ -133,7 +134,7 @@ export async function saveTicketRecord(record: TicketRecord): Promise<{ success:
 export async function deleteTicketRecord(id: string): Promise<{ success: boolean; message: string }> {
   try {
     const tickets = getTicketRecords().filter((t) => t.id !== id && t.ticketNo !== id);
-    localStorage.setItem(TICKETS_STORAGE_KEY, JSON.stringify(tickets));
+    safeStorage.setItem(TICKETS_STORAGE_KEY, JSON.stringify(tickets));
     notifyTicketSubscribers(tickets);
 
     // Remove from Firestore
@@ -168,7 +169,7 @@ export async function updateTicketStatus(
         updatedAt: new Date().toISOString(),
       };
 
-      localStorage.setItem(TICKETS_STORAGE_KEY, JSON.stringify(tickets));
+      safeStorage.setItem(TICKETS_STORAGE_KEY, JSON.stringify(tickets));
       notifyTicketSubscribers(tickets);
 
       const docId = tickets[idx].id;

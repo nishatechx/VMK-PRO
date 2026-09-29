@@ -9,6 +9,7 @@ import {
 } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { VisitorRecord } from '../types/auth';
+import { safeStorage } from '../utils/safeStorage';
 
 // Initialize Firebase App
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
@@ -42,7 +43,7 @@ export interface GoogleSheetsConfig {
 
 export const getSavedSheetsConfig = (): GoogleSheetsConfig | null => {
   try {
-    const raw = localStorage.getItem(SHEETS_CONFIG_KEY);
+    const raw = safeStorage.getItem(SHEETS_CONFIG_KEY);
     if (!raw) return null;
     return JSON.parse(raw);
   } catch {
@@ -52,9 +53,9 @@ export const getSavedSheetsConfig = (): GoogleSheetsConfig | null => {
 
 export const saveSheetsConfig = (config: GoogleSheetsConfig | null): void => {
   if (config) {
-    localStorage.setItem(SHEETS_CONFIG_KEY, JSON.stringify(config));
+    safeStorage.setItem(SHEETS_CONFIG_KEY, JSON.stringify(config));
   } else {
-    localStorage.removeItem(SHEETS_CONFIG_KEY);
+    safeStorage.removeItem(SHEETS_CONFIG_KEY);
   }
 };
 

@@ -47,6 +47,24 @@
         "content": { "type": "string", "description": "Notice content" }
       }
     },
+    "broadcasts": {
+      "title": "Broadcast Notifications",
+      "description": "Administrative notifications pushed by DNO and Super Admin to staff",
+      "fields": {
+        "id": { "type": "string", "description": "Broadcast unique identifier" },
+        "title": { "type": "string", "description": "Broadcast title" },
+        "message": { "type": "string", "description": "Broadcast message / directive" },
+        "priority": { "type": "string", "description": "Priority: urgent, important, info" },
+        "senderName": { "type": "string", "description": "Name of broadcaster" },
+        "senderRole": { "type": "string", "description": "Role of broadcaster (DNO / Super Admin)" },
+        "targetRoles": { "type": "array", "description": "Target audience roles" },
+        "targetDistrict": { "type": "string", "description": "Target district or 'all'" },
+        "imageUrl": { "type": "string", "description": "Optional attachment image URL" },
+        "linkUrl": { "type": "string", "description": "Optional circular or website URL" },
+        "linkText": { "type": "string", "description": "Text for the link action button" },
+        "createdAt": { "type": "string", "description": "ISO creation timestamp" }
+      }
+    },
     "qr_uploads": {
       "title": "QR Uploaded Documents",
       "description": "Candidate documents uploaded via QR code mobile scan or PC import",
@@ -68,6 +86,7 @@
       "fields": {
         "ticketNo": { "type": "string", "description": "Ticket unique reference number" },
         "ticketType": { "type": "string", "description": "Type: candidate_ticket or whatsapp_ticket" },
+        "subject": { "type": "string", "description": "Automatically derived subject based on nature of query" },
         "candidateName": { "type": "string", "description": "Candidate name" },
         "mobile": { "type": "string", "description": "Candidate mobile number" },
         "email": { "type": "string", "description": "Candidate email address" },

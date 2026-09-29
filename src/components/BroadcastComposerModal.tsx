@@ -15,6 +15,7 @@ import {
   Building2,
   Users,
   Eye,
+  Loader2,
 } from 'lucide-react';
 import { BroadcastNotification, BroadcastPriority, BroadcastTargetRole } from '../types/broadcast';
 import { UserProfile } from '../types/auth';
@@ -54,6 +55,9 @@ export const BroadcastComposerModal: React.FC<BroadcastComposerModalProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
 
   const [allBroadcasts, setAllBroadcasts] = useState<BroadcastNotification[]>(() => getBroadcasts());
+  const [broadcastToDeleteId, setBroadcastToDeleteId] = useState<string | null>(null);
+  const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
+  const [deleteFeedbackMsg, setDeleteFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isSuperAdmin = currentUser?.role === 'super_admin' || currentUser?.username?.toLowerCase() === 'shrinath';
@@ -145,14 +149,32 @@ export const BroadcastComposerModal: React.FC<BroadcastComposerModalProps> = ({
     }
   };
 
-  const handleDeleteBroadcast = async (id: string) => {
-    if (!window.confirm('Are you sure you want to revoke and delete this broadcast notification?')) {
-      return;
-    }
+  const handleDeleteBroadcast = async (broadcastId: string, broadcastTitle: string) => {
+    setIsDeletingId(broadcastId);
+    setDeleteFeedbackMsg(null);
+
+    // Optimistically update list so the UI responds immediately
+    setAllBroadcasts((prev) => prev.filter((b) => b.id !== broadcastId));
+    setBroadcastToDeleteId(null);
+
     try {
-      await deleteBroadcast(id);
-    } catch (err) {
+      await deleteBroadcast(broadcastId);
+      setDeleteFeedbackMsg({
+        text: `Broadcast "${broadcastTitle}" was successfully deleted and revoked.`,
+        type: 'success',
+      });
+      setTimeout(() => setDeleteFeedbackMsg(null), 3500);
+    } catch (err: any) {
       console.error('Failed to delete broadcast:', err);
+      // Revert if error
+      setAllBroadcasts(getBroadcasts());
+      setDeleteFeedbackMsg({
+        text: 'Failed to delete broadcast from database. Please try again.',
+        type: 'error',
+      });
+      setTimeout(() => setDeleteFeedbackMsg(null), 4000);
+    } finally {
+      setIsDeletingId(null);
     }
   };
 
@@ -428,6 +450,23 @@ export const BroadcastComposerModal: React.FC<BroadcastComposerModalProps> = ({
           ) : (
             /* Manage Active Broadcasts */
             <div className="space-y-3">
+              {deleteFeedbackMsg && (
+                <div
+                  className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
+                    deleteFeedbackMsg.type === 'success'
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      : 'bg-rose-50 text-rose-800 border-rose-200'
+                  }`}
+                >
+                  {deleteFeedbackMsg.type === 'success' ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                  )}
+                  <span>{deleteFeedbackMsg.text}</span>
+                </div>
+              )}
+
               {allBroadcasts.length === 0 ? (
                 <div className="py-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300">
                   <Radio className="w-8 h-8 text-slate-400 mx-auto mb-2 opacity-50" />
@@ -465,13 +504,60 @@ export const BroadcastComposerModal: React.FC<BroadcastComposerModalProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => handleDeleteBroadcast(b.id)}
-                        className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors cursor-pointer shrink-0"
+                        onClick={() => setBroadcastToDeleteId(broadcastToDeleteId === b.id ? null : b.id)}
+                        disabled={isDeletingId === b.id}
+                        className={`p-1.5 rounded-lg border transition-colors cursor-pointer shrink-0 active:scale-95 disabled:opacity-50 ${
+                          broadcastToDeleteId === b.id
+                            ? 'bg-rose-100 border-rose-300 text-rose-700'
+                            : 'text-rose-600 hover:bg-rose-50 border-slate-200 hover:border-rose-300'
+                        }`}
                         title="Delete / Revoke broadcast"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        {isDeletingId === b.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-rose-600" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
                       </button>
                     </div>
+
+                    {/* Inline Confirmation Card */}
+                    {broadcastToDeleteId === b.id && (
+                      <div className="mt-2 p-3 rounded-xl bg-rose-50 border border-rose-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in duration-150">
+                        <div className="flex items-center gap-2 text-rose-900 text-xs font-semibold">
+                          <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                          <span>Permanently delete this broadcast notification?</span>
+                        </div>
+                        <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setBroadcastToDeleteId(null)}
+                            disabled={isDeletingId === b.id}
+                            className="px-3 py-1 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteBroadcast(b.id, b.title)}
+                            disabled={isDeletingId === b.id}
+                            className="px-3.5 py-1 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 active:scale-95 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs disabled:opacity-50"
+                          >
+                            {isDeletingId === b.id ? (
+                              <>
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                <span>Deleting...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Confirm Delete</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-[11px] text-slate-500">
                       <div className="flex items-center gap-2">

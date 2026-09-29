@@ -591,11 +591,13 @@ export default function App() {
       />
 
       {/* Broadcast Composer Modal for Super Admin & DNO */}
-      <BroadcastComposerModal
-        isOpen={isBroadcastComposerOpen}
-        onClose={() => setIsBroadcastComposerOpen(false)}
-        currentUser={currentUser}
-      />
+      {isBroadcastComposerOpen && (
+        <BroadcastComposerModal
+          isOpen={isBroadcastComposerOpen}
+          onClose={() => setIsBroadcastComposerOpen(false)}
+          currentUser={currentUser}
+        />
+      )}
     </div>
   );
 }

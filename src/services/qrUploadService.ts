@@ -4,6 +4,8 @@ import { db } from '../lib/firebase';
 import { sanitizeForFirestore, getCurrentUser } from './authService';
 import { UserProfile } from '../types/auth';
 import { getDefaultVaultFiles } from '../data/seedVaultDocuments';
+import { safeStorage } from '../utils/safeStorage';
+import { idbSaveFile, idbSaveFiles, idbGetAllFiles, idbDeleteFile } from '../utils/idbStorage';
 import {
   collection,
   doc,
@@ -20,6 +22,10 @@ import {
 
 const STORAGE_KEY_PREFIX = 'vmk_qr_files_';
 const VAULT_STORAGE_KEY = 'vmk_in_software_vault_v1';
+
+// In-memory cache for ultra-fast document access without LocalStorage bloat
+let inMemoryVaultFiles: QrUploadedFile[] = [];
+let isIdbInitialized = false;
 
 // BroadcastChannel for cross-tab realtime sync (on same browser)
 let broadcastChannel: BroadcastChannel | null = null;
@@ -270,19 +276,31 @@ export const qrUploadService = {
   getAllVaultFiles(forUser?: UserProfile | null): QrUploadedFile[] {
     const targetUser = forUser !== undefined ? forUser : getCurrentUser();
     try {
-      const saved = localStorage.getItem(VAULT_STORAGE_KEY);
-      let allFiles: QrUploadedFile[] = [];
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          allFiles = parsed;
+      if (inMemoryVaultFiles.length === 0) {
+        // Initialize with default documents immediately for instantaneous render
+        inMemoryVaultFiles = getDefaultVaultFiles();
+
+        // Asynchronously hydrate from IndexedDB without blocking render
+        if (typeof window !== 'undefined' && !isIdbInitialized) {
+          isIdbInitialized = true;
+          idbGetAllFiles<QrUploadedFile>().then((idbFiles) => {
+            if (idbFiles.length > 0) {
+              const fileMap = new Map<string, QrUploadedFile>();
+              inMemoryVaultFiles.forEach((f) => fileMap.set(f.id, f));
+              idbFiles.forEach((f) => fileMap.set(f.id, f));
+              inMemoryVaultFiles = Array.from(fileMap.values());
+              inMemoryVaultFiles.sort(
+                (a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
+              );
+            } else {
+              // Seed IndexedDB
+              idbSaveFiles(inMemoryVaultFiles).catch(() => {});
+            }
+          }).catch(() => {});
         }
       }
-      if (allFiles.length === 0) {
-        allFiles = getDefaultVaultFiles();
-        localStorage.setItem(VAULT_STORAGE_KEY, JSON.stringify(allFiles));
-      }
-      return filterVaultFilesForUser(allFiles, targetUser);
+
+      return filterVaultFilesForUser(inMemoryVaultFiles, targetUser);
     } catch {
       return filterVaultFilesForUser(getDefaultVaultFiles(), targetUser);
     }
@@ -376,26 +394,22 @@ export const qrUploadService = {
     try {
       // Session store
       const key = `${STORAGE_KEY_PREFIX}${sessionId}`;
-      const saved = localStorage.getItem(key);
+      const saved = safeStorage.getItem(key);
       if (saved) {
         const list: QrUploadedFile[] = JSON.parse(saved);
         const idx = list.findIndex((f) => f.id === fileId);
         if (idx >= 0) {
           list[idx].verifiedStamp = !list[idx].verifiedStamp;
           newStatus = !!list[idx].verifiedStamp;
-          localStorage.setItem(key, JSON.stringify(list));
+          safeStorage.setItem(key, JSON.stringify(list));
         }
       }
 
-      // Vault store
-      const vaultSaved = localStorage.getItem(VAULT_STORAGE_KEY);
-      if (vaultSaved) {
-        const list: QrUploadedFile[] = JSON.parse(vaultSaved);
-        const idx = list.findIndex((f) => f.id === fileId);
-        if (idx >= 0) {
-          list[idx].verifiedStamp = newStatus;
-          localStorage.setItem(VAULT_STORAGE_KEY, JSON.stringify(list));
-        }
+      // Vault in-memory & IndexedDB store
+      const inMemoryIdx = inMemoryVaultFiles.findIndex((f) => f.id === fileId);
+      if (inMemoryIdx >= 0) {
+        inMemoryVaultFiles[inMemoryIdx].verifiedStamp = newStatus;
+        idbSaveFile(inMemoryVaultFiles[inMemoryIdx]).catch(() => {});
       }
     } catch (e) {
       console.warn('Error toggling stamp:', e);
@@ -444,39 +458,35 @@ export const qrUploadService = {
       console.warn('Server patch error:', err);
     }
 
-    // 3. Update in local storage & vault cache
+    // 3. Update in memory & IndexedDB
     try {
-      const vaultSaved = localStorage.getItem(VAULT_STORAGE_KEY);
-      if (vaultSaved) {
-        const list: QrUploadedFile[] = JSON.parse(vaultSaved);
-        const idx = list.findIndex((f) => f.id === fileId);
-        if (idx >= 0) {
-          list[idx] = {
-            ...list[idx],
-            dataUrl: updates.dataUrl,
-            size: updates.size !== undefined ? updates.size : list[idx].size,
-            name: updates.name || list[idx].name,
-          };
-          if (!updated) updated = list[idx];
-          localStorage.setItem(VAULT_STORAGE_KEY, JSON.stringify(list));
-        }
+      const idx = inMemoryVaultFiles.findIndex((f) => f.id === fileId);
+      if (idx >= 0) {
+        inMemoryVaultFiles[idx] = {
+          ...inMemoryVaultFiles[idx],
+          dataUrl: updates.dataUrl,
+          size: updates.size !== undefined ? updates.size : inMemoryVaultFiles[idx].size,
+          name: updates.name || inMemoryVaultFiles[idx].name,
+        };
+        if (!updated) updated = inMemoryVaultFiles[idx];
+        idbSaveFile(inMemoryVaultFiles[idx]).catch(() => {});
       }
 
       if (updates.sessionId) {
         const key = `${STORAGE_KEY_PREFIX}${updates.sessionId}`;
-        const saved = localStorage.getItem(key);
+        const saved = safeStorage.getItem(key);
         if (saved) {
           const list: QrUploadedFile[] = JSON.parse(saved);
-          const idx = list.findIndex((f) => f.id === fileId);
-          if (idx >= 0) {
-            list[idx] = {
-              ...list[idx],
+          const sIdx = list.findIndex((f) => f.id === fileId);
+          if (sIdx >= 0) {
+            list[sIdx] = {
+              ...list[sIdx],
               dataUrl: updates.dataUrl,
-              size: updates.size !== undefined ? updates.size : list[idx].size,
-              name: updates.name || list[idx].name,
+              size: updates.size !== undefined ? updates.size : list[sIdx].size,
+              name: updates.name || list[sIdx].name,
             };
-            if (!updated) updated = list[idx];
-            localStorage.setItem(key, JSON.stringify(list));
+            if (!updated) updated = list[sIdx];
+            safeStorage.setItem(key, JSON.stringify(list));
           }
         }
       }
@@ -513,19 +523,16 @@ export const qrUploadService = {
     }
 
     try {
+      // Delete from memory and IndexedDB
+      inMemoryVaultFiles = inMemoryVaultFiles.filter((f) => f.id !== fileId);
+      idbDeleteFile(fileId).catch(() => {});
+
       const key = `${STORAGE_KEY_PREFIX}${sessionId}`;
-      const saved = localStorage.getItem(key);
+      const saved = safeStorage.getItem(key);
       if (saved) {
         const list: QrUploadedFile[] = JSON.parse(saved);
         const filtered = list.filter((f) => f.id !== fileId);
-        localStorage.setItem(key, JSON.stringify(filtered));
-      }
-
-      const vaultSaved = localStorage.getItem(VAULT_STORAGE_KEY);
-      if (vaultSaved) {
-        const list: QrUploadedFile[] = JSON.parse(vaultSaved);
-        const filtered = list.filter((f) => f.id !== fileId);
-        localStorage.setItem(VAULT_STORAGE_KEY, JSON.stringify(filtered));
+        safeStorage.setItem(key, JSON.stringify(filtered));
       }
 
       if (broadcastChannel) {
@@ -539,7 +546,7 @@ export const qrUploadService = {
   saveToLocalStorage(sessionId: string, file: QrUploadedFile) {
     try {
       const key = `${STORAGE_KEY_PREFIX}${sessionId}`;
-      const saved = localStorage.getItem(key);
+      const saved = safeStorage.getItem(key);
       const list: QrUploadedFile[] = saved ? JSON.parse(saved) : [];
       const existingIdx = list.findIndex((f) => f.id === file.id);
       if (existingIdx >= 0) {
@@ -548,7 +555,8 @@ export const qrUploadService = {
         list.unshift(file);
       }
       if (list.length > 25) list.pop();
-      localStorage.setItem(key, JSON.stringify(list));
+      safeStorage.setItem(key, JSON.stringify(list));
+      idbSaveFile(file).catch(() => {});
     } catch (e) {
       console.warn('localStorage save warning:', e);
     }
@@ -556,16 +564,16 @@ export const qrUploadService = {
 
   saveToSoftwareVault(file: QrUploadedFile) {
     try {
-      const saved = localStorage.getItem(VAULT_STORAGE_KEY);
-      const list: QrUploadedFile[] = saved ? JSON.parse(saved) : [];
-      const existingIdx = list.findIndex((f) => f.id === file.id);
+      const existingIdx = inMemoryVaultFiles.findIndex((f) => f.id === file.id);
       if (existingIdx >= 0) {
-        list[existingIdx] = file;
+        inMemoryVaultFiles[existingIdx] = file;
       } else {
-        list.unshift(file);
+        inMemoryVaultFiles.unshift(file);
       }
-      if (list.length > 50) list.pop();
-      localStorage.setItem(VAULT_STORAGE_KEY, JSON.stringify(list));
+      if (inMemoryVaultFiles.length > 60) inMemoryVaultFiles.pop();
+
+      // Persist full base64 file to high-capacity IndexedDB
+      idbSaveFile(file).catch(() => {});
     } catch (e) {
       console.warn('Vault save warning:', e);
     }
@@ -574,7 +582,7 @@ export const qrUploadService = {
   getFromLocalStorage(sessionId: string): QrUploadedFile[] {
     try {
       const key = `${STORAGE_KEY_PREFIX}${sessionId}`;
-      const saved = localStorage.getItem(key);
+      const saved = safeStorage.getItem(key);
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];

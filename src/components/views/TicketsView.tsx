@@ -32,6 +32,7 @@ import {
   Eye,
   MapPin,
   Lock,
+  Tag,
 } from 'lucide-react';
 import { TicketRecord, TicketStatus, TicketType, UserProfile } from '../../types/auth';
 import { hasFeaturePermission } from '../../services/authService';
@@ -128,6 +129,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
       onOpenTicketWithData({
         editingTicketId: ticket.id,
         ticketNo: ticket.ticketNo,
+        subject: ticket.subject,
         cetNo: ticket.cetNo,
         capId: ticket.capId,
         candidateName: ticket.candidateName,
@@ -817,6 +819,16 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                     </div>
                   </div>
 
+                  {/* Ticket Subject (Auto-derived from nature of query) */}
+                  {ticket.subject && (
+                    <div className="flex items-center gap-1.5 text-xs text-[#003B73] bg-[#F0F7FF] px-2.5 py-1.5 rounded-xl border border-[#BAE0FD]/80">
+                      <Tag className="w-3.5 h-3.5 text-[#0056A6] shrink-0" />
+                      <span className="font-semibold truncate" title={ticket.subject}>
+                        {ticket.subject}
+                      </span>
+                    </div>
+                  )}
+
                   {/* Query Snippet */}
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
@@ -1150,6 +1162,38 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                   </span>
                 </div>
               </div>
+
+              {/* Separate Official SAC Subject */}
+              {selectedTicket.subject && (
+                <div className="p-3.5 rounded-2xl bg-[#F0F7FF] border border-[#BAE0FD] flex items-center justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#0056A6] block mb-0.5 flex items-center gap-1">
+                      <Tag className="w-3 h-3" />
+                      SAC Portal Subject (Separate Field)
+                    </span>
+                    <p className="text-sm font-bold text-[#003B73] truncate">
+                      {selectedTicket.subject}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleCopyText(selectedTicket.subject!, `subj-${selectedTicket.id}`)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white hover:bg-[#0056A6] text-[#0056A6] hover:text-white border border-[#0056A6]/30 shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+                    title="Copy Subject"
+                  >
+                    {copiedId === `subj-${selectedTicket.id}` ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <span className="text-emerald-700">Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy Subject</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
 
               {/* Formatted Output Console */}
               <div>

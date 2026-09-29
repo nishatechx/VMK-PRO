@@ -331,28 +331,28 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
           )}
         </AnimatePresence>
 
-        {/* Upload Action Card */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
-          {/* Action Buttons: AI Scanner, Camera, and Browse Files */}
-          <div className="grid grid-cols-3 gap-2">
+        {/* Upload Action Card (Google Files Material 3) */}
+        <div className="bg-white border border-[#E0E2EC] rounded-3xl p-5 shadow-xs space-y-4">
+          {/* Action Buttons: Google Files 3-button layout */}
+          <div className="grid grid-cols-3 gap-2.5">
             <button
               type="button"
-              id="ai-scanner-btn"
+              id="scanner-btn"
               onClick={() => setShowLiveScanner(true)}
-              className="h-13 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 hover:from-blue-500 hover:to-indigo-600 active:scale-98 text-white font-medium text-xs flex flex-col items-center justify-center gap-1 transition-all cursor-pointer shadow-sm"
-              title="Live AI Document Scanner"
+              className="h-14 rounded-2xl bg-[#E8F0FE] hover:bg-[#D2E3FC] active:scale-98 text-[#0B57D0] font-medium text-xs flex flex-col items-center justify-center gap-1 transition-all cursor-pointer"
+              title="Scan document"
             >
-              <Sparkles className="w-4 h-4 text-blue-200 animate-pulse" />
-              <span>AI Scanner</span>
+              <Crop className="w-5 h-5 text-[#0B57D0]" />
+              <span>Scan</span>
             </button>
 
             <button
               type="button"
               id="camera-capture-btn"
               onClick={() => cameraInputRef.current?.click()}
-              className="h-13 rounded-xl bg-slate-900 hover:bg-slate-800 active:scale-98 text-white font-medium text-xs flex flex-col items-center justify-center gap-1 transition-all cursor-pointer shadow-xs"
+              className="h-14 rounded-2xl bg-[#F2F2F2] hover:bg-[#E6E6E6] active:scale-98 text-[#1F1F1F] font-medium text-xs flex flex-col items-center justify-center gap-1 transition-all cursor-pointer"
             >
-              <Camera className="w-4 h-4" />
+              <Camera className="w-5 h-5 text-[#1F1F1F]" />
               <span>Camera</span>
             </button>
 
@@ -360,10 +360,10 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
               type="button"
               id="browse-multiple-files-btn"
               onClick={() => fileInputRef.current?.click()}
-              className="h-13 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-98 text-slate-800 font-medium text-xs flex flex-col items-center justify-center gap-1 transition-all cursor-pointer"
+              className="h-14 rounded-2xl bg-[#F2F2F2] hover:bg-[#E6E6E6] active:scale-98 text-[#1F1F1F] font-medium text-xs flex flex-col items-center justify-center gap-1 transition-all cursor-pointer"
             >
-              <FileUp className="w-4 h-4 text-slate-600" />
-              <span>Browse Files</span>
+              <FileUp className="w-5 h-5 text-[#444746]" />
+              <span>Files</span>
             </button>
           </div>
 
@@ -389,11 +389,13 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
           {/* Tap / Drop Area */}
           <div
             onClick={() => fileInputRef.current?.click()}
-            className="border border-dashed border-slate-200 hover:border-slate-300 rounded-xl p-4 text-center bg-slate-50/70 hover:bg-slate-50 cursor-pointer transition-colors"
+            className="border-2 border-dashed border-[#C4C7C5] hover:border-[#0B57D0] rounded-2xl p-5 text-center bg-[#F8F9FA] hover:bg-[#F2F4F7] cursor-pointer transition-colors"
           >
-            <UploadCloud className="w-6 h-6 text-slate-400 mx-auto mb-1.5" />
-            <p className="text-xs font-medium text-slate-700">Choose multiple files or capture with camera</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">PDF, JPG, PNG up to 50MB</p>
+            <div className="w-10 h-10 rounded-full bg-[#E8F0FE] text-[#0B57D0] mx-auto mb-2 flex items-center justify-center">
+              <UploadCloud className="w-5 h-5" />
+            </div>
+            <p className="text-xs font-medium text-[#1F1F1F]">Choose files or capture photo</p>
+            <p className="text-[11px] text-[#444746] mt-0.5">PDF, JPG, PNG up to 50MB</p>
           </div>
 
           {/* Staged Files Queue */}

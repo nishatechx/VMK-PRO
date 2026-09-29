@@ -5,11 +5,14 @@ import {
   deleteDoc,
   getDocs,
   onSnapshot,
+  query,
+  where,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { sanitizeForFirestore } from './authService';
 import { BroadcastNotification } from '../types/broadcast';
 import { UserProfile } from '../types/auth';
+import { safeStorage } from '../utils/safeStorage';
 
 const BROADCASTS_STORAGE_KEY = 'vmk_broadcasts_v1';
 const BROADCAST_CHANNEL_NAME = 'vmk_broadcast_notifications_channel';
@@ -47,7 +50,7 @@ if (broadcastChannel) {
 
 export function getBroadcasts(): BroadcastNotification[] {
   try {
-    const raw = localStorage.getItem(BROADCASTS_STORAGE_KEY);
+    const raw = safeStorage.getItem(BROADCASTS_STORAGE_KEY);
     if (!raw) return [];
     const parsed: BroadcastNotification[] = JSON.parse(raw);
     return parsed.sort(
@@ -74,20 +77,24 @@ export function subscribeToBroadcasts(
     unsubscribeFirestore = onSnapshot(
       colRef,
       (snapshot) => {
+        const list: BroadcastNotification[] = [];
         if (!snapshot.empty) {
-          const list: BroadcastNotification[] = [];
           snapshot.forEach((d) => {
             const data = d.data() as BroadcastNotification;
-            if (data && data.id) {
-              list.push(data);
+            if (data) {
+              const item: BroadcastNotification = {
+                ...data,
+                id: data.id || d.id,
+              };
+              list.push(item);
             }
           });
           list.sort(
             (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
           );
-          localStorage.setItem(BROADCASTS_STORAGE_KEY, JSON.stringify(list));
-          notifySubscribers(list);
         }
+        safeStorage.setItem(BROADCASTS_STORAGE_KEY, JSON.stringify(list));
+        notifySubscribers(list);
       },
       (err) => {
         console.warn('Firestore broadcasts onSnapshot note:', err.message);
@@ -116,7 +123,7 @@ export async function saveBroadcast(broadcast: BroadcastNotification): Promise<v
     } else {
       list.unshift(broadcast);
     }
-    localStorage.setItem(BROADCASTS_STORAGE_KEY, JSON.stringify(list));
+    safeStorage.setItem(BROADCASTS_STORAGE_KEY, JSON.stringify(list));
     notifySubscribers(list);
 
     if (broadcastChannel) {
@@ -145,7 +152,7 @@ export async function saveBroadcast(broadcast: BroadcastNotification): Promise<v
 export async function deleteBroadcast(broadcastId: string): Promise<void> {
   try {
     const list = getBroadcasts().filter((b) => b.id !== broadcastId);
-    localStorage.setItem(BROADCASTS_STORAGE_KEY, JSON.stringify(list));
+    safeStorage.setItem(BROADCASTS_STORAGE_KEY, JSON.stringify(list));
     notifySubscribers(list);
 
     if (broadcastChannel) {
@@ -155,6 +162,14 @@ export async function deleteBroadcast(broadcastId: string): Promise<void> {
     // Cloud Firestore Delete
     try {
       await deleteDoc(doc(db, 'broadcasts', broadcastId));
+      // Also query by 'id' property in case document was stored under an auto-generated Firestore ID
+      const q = query(collection(db, 'broadcasts'), where('id', '==', broadcastId));
+      const snap = await getDocs(q);
+      for (const d of snap.docs) {
+        if (d.id !== broadcastId) {
+          await deleteDoc(d.ref);
+        }
+      }
     } catch (e: any) {
       console.warn('Firestore broadcast delete note:', e?.message);
     }
@@ -174,11 +189,11 @@ function getUserReadStorageKey(userIdOrUsername: string): string {
 export function markBroadcastAsRead(broadcastId: string, userKey: string): void {
   try {
     const key = getUserReadStorageKey(userKey);
-    const raw = localStorage.getItem(key);
+    const raw = safeStorage.getItem(key);
     const readIds: string[] = raw ? JSON.parse(raw) : [];
     if (!readIds.includes(broadcastId)) {
       readIds.push(broadcastId);
-      localStorage.setItem(key, JSON.stringify(readIds));
+      safeStorage.setItem(key, JSON.stringify(readIds));
     }
   } catch (err) {
     console.error('Error marking broadcast as read:', err);
@@ -191,7 +206,7 @@ export function markBroadcastAsRead(broadcastId: string, userKey: string): void 
 export function hasUserReadBroadcast(broadcastId: string, userKey: string): boolean {
   try {
     const key = getUserReadStorageKey(userKey);
-    const raw = localStorage.getItem(key);
+    const raw = safeStorage.getItem(key);
     if (!raw) return false;
     const readIds: string[] = JSON.parse(raw);
     return readIds.includes(broadcastId);

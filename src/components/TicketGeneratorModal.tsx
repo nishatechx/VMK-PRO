@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X,
@@ -20,6 +20,10 @@ import {
   Hash,
   Users,
   MessageCircle,
+  RotateCcw,
+  Loader2,
+  Binary,
+  Tag,
 } from 'lucide-react';
 import { getStudentRecords, getCurrentUser } from '../services/authService';
 import { saveTicketRecord } from '../services/ticketService';
@@ -29,6 +33,13 @@ import { DEPARTMENT_COURSES, DEFAULT_COURSE } from '../data/courses';
 import { FormValidationErrorModal } from './FormValidationErrorModal';
 import { APP_ASSETS } from '../constants/assets';
 import { cleanCandidateName } from '../utils/ticketExtractor';
+import {
+  detectFirstPersonLanguage,
+  convertQueryToThirdPersonFallback,
+  rewriteCandidateQuery,
+} from '../utils/queryRewriter';
+import { deriveTicketSubject } from '../utils/ticketSubjectGenerator';
+import { getMasterApiKey } from '../services/apiConfigService';
 
 export interface TicketState {
   cetNo: string;
@@ -132,6 +143,154 @@ export const TicketGeneratorModal: React.FC<TicketGeneratorModalProps> = ({
     district?: string;
   } | null>(null);
   const [isSavedToDb, setIsSavedToDb] = useState<boolean>(false);
+
+  // Ticket Subject State (Auto-derived from query nature, provided separately per requirement)
+  const [ticketSubject, setTicketSubject] = useState<string>('');
+  const [isSubjectManual, setIsSubjectManual] = useState<boolean>(false);
+  const [subjectCopied, setSubjectCopied] = useState<boolean>(false);
+
+  // Automatically derive subject from query nature whenever query or course changes (unless user manually customized it)
+  useEffect(() => {
+    if (!isSubjectManual) {
+      const derived = deriveTicketSubject(ticketForm.query, ticketForm.course);
+      setTicketSubject(derived);
+    }
+  }, [ticketForm.query, ticketForm.course, isSubjectManual]);
+
+  const handleCopySubject = async () => {
+    const textToCopy = (ticketSubject || deriveTicketSubject(ticketForm.query, ticketForm.course)).trim();
+    if (!textToCopy) return;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(textToCopy);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = textToCopy;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+      setSubjectCopied(true);
+      setTimeout(() => setSubjectCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy ticket subject:', err);
+    }
+  };
+
+  const handleResetSubjectToAuto = () => {
+    setIsSubjectManual(false);
+    const derived = deriveTicketSubject(ticketForm.query, ticketForm.course);
+    setTicketSubject(derived);
+  };
+
+  // Query 3rd-person rewrite states & Binary text animation
+  const [isRewritingQuery, setIsRewritingQuery] = useState<boolean>(false);
+  const [originalQueryHistory, setOriginalQueryHistory] = useState<string | null>(null);
+  const [binaryStreamText, setBinaryStreamText] = useState<string>('');
+  const binaryAnimationTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (binaryAnimationTimerRef.current) {
+        clearInterval(binaryAnimationTimerRef.current);
+      }
+    };
+  }, []);
+
+  const generateBinaryChunk = (len = 160) => {
+    let result = '';
+    for (let i = 0; i < len; i++) {
+      if (i > 0 && i % 8 === 0) result += ' ';
+      result += Math.random() > 0.5 ? '1' : '0';
+    }
+    return result;
+  };
+
+  const handleRewriteQuery = async () => {
+    const currentQuery = ticketForm.query.trim();
+    if (!currentQuery || isRewritingQuery) return;
+
+    setIsRewritingQuery(true);
+    setBinaryStreamText(generateBinaryChunk());
+
+    // Start rapid binary stream animation
+    if (binaryAnimationTimerRef.current) {
+      clearInterval(binaryAnimationTimerRef.current);
+    }
+    binaryAnimationTimerRef.current = setInterval(() => {
+      setBinaryStreamText(generateBinaryChunk());
+    }, 45);
+
+    try {
+      const masterKey = await getMasterApiKey();
+      const res = await rewriteCandidateQuery(currentQuery, masterKey);
+      const converted = (res?.convertedQuery && res.convertedQuery.trim()) || convertQueryToThirdPersonFallback(currentQuery);
+
+      if (converted) {
+        // Binary matrix decode reveal animation
+        const steps = 6;
+        let step = 0;
+        const decodeInterval = setInterval(() => {
+          step++;
+          const progress = step / steps;
+          const revealedLen = Math.floor(converted.length * progress);
+          const revealedStr = converted.slice(0, revealedLen);
+          const remainderCount = Math.min(24, Math.max(0, converted.length - revealedLen));
+          let remainderBinary = '';
+          for (let i = 0; i < remainderCount; i++) {
+            remainderBinary += Math.random() > 0.5 ? '1' : '0';
+          }
+          setBinaryStreamText(revealedStr + (remainderBinary ? ' ' + remainderBinary : ''));
+
+          if (step >= steps) {
+            clearInterval(decodeInterval);
+            if (binaryAnimationTimerRef.current) {
+              clearInterval(binaryAnimationTimerRef.current);
+              binaryAnimationTimerRef.current = null;
+            }
+            setOriginalQueryHistory(currentQuery);
+            setTicketForm((prev) => ({
+              ...prev,
+              query: converted,
+            }));
+            setIsRewritingQuery(false);
+          }
+        }, 50);
+      } else {
+        if (binaryAnimationTimerRef.current) {
+          clearInterval(binaryAnimationTimerRef.current);
+          binaryAnimationTimerRef.current = null;
+        }
+        setIsRewritingQuery(false);
+      }
+    } catch (err: any) {
+      console.warn('Error rewriting query:', err);
+      const fallback = convertQueryToThirdPersonFallback(currentQuery);
+      if (fallback) {
+        setOriginalQueryHistory(currentQuery);
+        setTicketForm((prev) => ({
+          ...prev,
+          query: fallback,
+        }));
+      }
+      if (binaryAnimationTimerRef.current) {
+        clearInterval(binaryAnimationTimerRef.current);
+        binaryAnimationTimerRef.current = null;
+      }
+      setIsRewritingQuery(false);
+    }
+  };
+
+  const handleUndoQueryRewrite = () => {
+    if (originalQueryHistory !== null) {
+      setTicketForm((prev) => ({
+        ...prev,
+        query: originalQueryHistory,
+      }));
+      setOriginalQueryHistory(null);
+    }
+  };
 
   const handleCopyField = async (fieldKey: string, value: string) => {
     try {
@@ -325,6 +484,12 @@ export const TicketGeneratorModal: React.FC<TicketGeneratorModalProps> = ({
           setEditingTicketInfo(null);
         }
 
+        let initialFinalQuery = rawQuery;
+        if (rawQuery && !isEditingTicket && detectFirstPersonLanguage(rawQuery)) {
+          initialFinalQuery = convertQueryToThirdPersonFallback(rawQuery);
+          setOriginalQueryHistory(rawQuery);
+        }
+
         setTicketForm({
           cetNo: finalCetNo.toUpperCase().trim(),
           capId: finalCapId.toUpperCase().trim(),
@@ -333,8 +498,16 @@ export const TicketGeneratorModal: React.FC<TicketGeneratorModalProps> = ({
           mobile: rawMobile,
           email: rawEmail,
           course: rawCourse || DEFAULT_COURSE,
-          query: rawQuery,
+          query: initialFinalQuery,
         });
+
+        if (initialCandidate.subject && initialCandidate.subject.trim()) {
+          setTicketSubject(initialCandidate.subject.trim());
+          setIsSubjectManual(true);
+        } else {
+          setIsSubjectManual(false);
+          setTicketSubject(deriveTicketSubject(initialFinalQuery, rawCourse || DEFAULT_COURSE));
+        }
 
         if (isEditingTicket) {
           setTicketStatus({
@@ -358,6 +531,8 @@ export const TicketGeneratorModal: React.FC<TicketGeneratorModalProps> = ({
         }
       } else {
         setEditingTicketInfo(null);
+        setIsSubjectManual(false);
+        setTicketSubject(deriveTicketSubject('', DEFAULT_COURSE));
       }
     }
   }, [isOpen, initialCandidate]);
@@ -481,6 +656,11 @@ export const TicketGeneratorModal: React.FC<TicketGeneratorModalProps> = ({
       formattedDob = dob;
     }
 
+    const finalSubject = (ticketSubject.trim() || deriveTicketSubject(query, course)).trim();
+
+    // STRICT USER REQUIREMENT:
+    // "in sac ticket generator give subject automatically from the nature of query. dont give subject in generated ticket note. give it seperate"
+    // Output text strictly contains candidate details and query ONLY. No subject line.
     const outputText = `Candidate Name: ${candidateName.trim()}
 Mobile Number: ${cleanMobile}
 Email Address: ${email.trim()}
@@ -498,6 +678,7 @@ Query: ${query.trim()}`;
       id: recordId || ticketNo,
       ticketNo,
       ticketType: 'candidate_ticket',
+      subject: finalSubject,
       candidateName: candidateName.trim(),
       cetNo: cetNo.trim().toUpperCase(),
       capId: capId.trim().toUpperCase(),
@@ -561,9 +742,13 @@ Query: ${query.trim()}`;
       course: DEFAULT_COURSE,
       query: '',
     });
+    setOriginalQueryHistory(null);
     setTicketOutput('');
     setGeneratedTicketNo('');
     setEditingTicketInfo(null);
+    setIsSubjectManual(false);
+    setTicketSubject(deriveTicketSubject('', DEFAULT_COURSE));
+    setSubjectCopied(false);
     setTicketStatus({
       message: 'Fill all 8 mandatory fields to generate an official candidate ticket note.',
       type: 'neutral',
@@ -572,6 +757,7 @@ Query: ${query.trim()}`;
 
   const handlePrintSlip = () => {
     if (!ticketOutput) return;
+    const finalSubject = (ticketSubject.trim() || deriveTicketSubject(ticketForm.query, ticketForm.course)).trim();
     const printWindow = window.open('', '_blank');
     if (printWindow) {
       printWindow.document.write(`
@@ -581,16 +767,51 @@ Query: ${query.trim()}`;
             <title>Ticket - ${ticketForm.cetNo || 'Print'}</title>
             <style>
               body {
-                font-family: monospace;
-                font-size: 12px;
-                line-height: 1.5;
+                font-family: Arial, sans-serif;
+                font-size: 13px;
+                line-height: 1.6;
                 padding: 24px;
-                color: #000;
+                color: #0f172a;
                 background: #fff;
+              }
+              .subject-box {
+                margin-bottom: 16px;
+                padding: 12px 14px;
+                background: #f0f7ff;
+                border-radius: 8px;
+                border: 1px solid #bae0fd;
+                color: #003b73;
+              }
+              .subject-label {
+                font-size: 10px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                font-weight: bold;
+                color: #0056a6;
+                margin-bottom: 3px;
+              }
+              .subject-text {
+                font-size: 14px;
+                font-weight: 700;
+              }
+              .note-label {
+                font-size: 10px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                font-weight: bold;
+                color: #64748b;
+                margin-bottom: 6px;
               }
               pre {
                 white-space: pre-wrap;
                 word-wrap: break-word;
+                font-family: Consolas, monospace;
+                background: #f8fafc;
+                border: 1px solid #e2e8f0;
+                padding: 14px;
+                border-radius: 8px;
+                font-size: 12px;
+                color: #1e293b;
               }
               @media print {
                 body { padding: 0; }
@@ -598,6 +819,11 @@ Query: ${query.trim()}`;
             </style>
           </head>
           <body>
+            <div class="subject-box">
+              <div class="subject-label">Official SAC Ticket Subject (Separate Field)</div>
+              <div class="subject-text">${finalSubject}</div>
+            </div>
+            <div class="note-label">Candidate Ticket Note (Description)</div>
             <pre>${ticketOutput}</pre>
             <script>
               window.onload = function() {
@@ -886,25 +1112,152 @@ Query: ${query.trim()}`;
                           </select>
                         </div>
 
-                        {/* 8. Query */}
+                        {/* Separate Ticket Subject (Auto-derived from query nature) */}
+                        <div className="flex flex-col gap-1.5 sm:col-span-2 bg-[#F0F7FF] p-3.5 rounded-xl border border-[#BAE0FD]/90 shadow-2xs">
+                          <div className="flex items-center justify-between gap-2">
+                            <label htmlFor="ticket-subject" className="text-xs font-bold text-[#003B73] flex items-center gap-1.5 cursor-pointer">
+                              <Tag className="w-3.5 h-3.5 text-[#0056A6]" />
+                              <span>Ticket Subject</span>
+                              <span className="text-[11px] font-normal text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-md border border-emerald-300/70 flex items-center gap-1">
+                                <Sparkles className="w-3 h-3 text-emerald-600" />
+                                Auto from Nature of Query
+                              </span>
+                            </label>
+
+                            <div className="flex items-center gap-2">
+                              {isSubjectManual && (
+                                <button
+                                  type="button"
+                                  onClick={handleResetSubjectToAuto}
+                                  title="Re-detect subject automatically from query keywords"
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold rounded-md border border-[#BAE0FD] bg-white hover:bg-slate-50 text-[#0056A6] transition-all cursor-pointer shadow-2xs active:scale-95"
+                                >
+                                  <RotateCcw className="w-3 h-3 text-[#0056A6]" />
+                                  <span>Auto-derive</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                id="copy-subject-field-btn"
+                                onClick={handleCopySubject}
+                                title="Copy Subject to paste into SAC Portal Subject field"
+                                className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-bold rounded-md border transition-all cursor-pointer active:scale-95 select-none ${
+                                  subjectCopied
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-300 ring-1 ring-emerald-400/20'
+                                    : 'bg-white hover:bg-[#EAF4FB] text-[#0056A6] border-[#0056A6]/30 shadow-2xs'
+                                }`}
+                              >
+                                {subjectCopied ? (
+                                  <>
+                                    <Check className="w-3 h-3 text-emerald-600 shrink-0" />
+                                    <span className="text-[10px] text-emerald-700">Subject Copied</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3 h-3 text-[#0056A6] shrink-0" />
+                                    <span className="text-[10px]">Copy Subject</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="relative">
+                            <input
+                              id="ticket-subject"
+                              type="text"
+                              value={ticketSubject}
+                              onChange={(e) => {
+                                setTicketSubject(e.target.value);
+                                setIsSubjectManual(true);
+                              }}
+                              placeholder="Automatic Subject derived from candidate query..."
+                              className="w-full px-3.5 py-2 text-xs sm:text-sm font-semibold border border-[#BAE0FD] rounded-lg focus:border-[#0056A6] focus:ring-2 focus:ring-[#0056A6]/15 outline-none bg-white text-[#003B73] placeholder:text-slate-400 shadow-2xs"
+                            />
+                          </div>
+                          <p className="text-[11px] text-[#0056A6]/80 flex items-center gap-1">
+                            <Info className="w-3 h-3 text-[#0056A6] shrink-0" />
+                            <span>In the SAC portal, paste this Subject in the <strong>'Subject'</strong> field. The generated ticket note goes separately into the <strong>'Description'</strong> area.</span>
+                          </p>
+                        </div>
+
+                        {/* 8. Query Input Box with Binary Conversion Animation */}
                         <div className="flex flex-col gap-1.5 sm:col-span-2">
-                          <div className="flex items-center justify-between">
-                            <label htmlFor="query" className="text-xs font-bold text-slate-800 flex items-center gap-1 cursor-pointer">
+                          <div className="flex items-center justify-between gap-2">
+                            <label htmlFor="query" className="text-xs font-bold text-slate-800 flex items-center gap-1.5 cursor-pointer">
                               <span>Query / Grievance Details</span>
                               <span className="text-rose-600">*</span>
                             </label>
-                            {renderFieldCopyBtn('query', ticketForm.query, 'Query / Grievance Details')}
+
+                            <div className="flex items-center gap-2 ml-auto">
+                              {originalQueryHistory !== null && !isRewritingQuery && (
+                                <button
+                                  type="button"
+                                  onClick={handleUndoQueryRewrite}
+                                  title="Revert back to original wording"
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition-all cursor-pointer active:scale-95 shadow-2xs"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+                                  <span>Undo</span>
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                id="convert-query-btn"
+                                onClick={handleRewriteQuery}
+                                disabled={isRewritingQuery || !ticketForm.query.trim()}
+                                title="Convert candidate query into counsellor/agent statement"
+                                className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-lg border transition-all cursor-pointer active:scale-95 select-none ${
+                                  isRewritingQuery
+                                    ? 'bg-slate-950 text-emerald-400 border-emerald-500/60 shadow-xs cursor-wait font-mono'
+                                    : !ticketForm.query.trim()
+                                    ? 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed opacity-60'
+                                    : 'bg-[#0056A6] hover:bg-[#003B73] text-white border-[#0056A6] shadow-xs'
+                                }`}
+                              >
+                                <Binary className={`w-3.5 h-3.5 shrink-0 ${isRewritingQuery ? 'animate-spin text-emerald-400' : 'text-current'}`} />
+                                <span>{isRewritingQuery ? 'Converting...' : 'Convert'}</span>
+                              </button>
+
+                              {renderFieldCopyBtn('query', ticketForm.query, 'Query / Grievance Details')}
+                            </div>
                           </div>
-                          <textarea
-                            id="query"
-                            name="query"
-                            required
-                            rows={4}
-                            value={ticketForm.query}
-                            onChange={handleTicketChange}
-                            placeholder="Describe the candidate query, missing document discrepancy, or portal issue in detail..."
-                            className="w-full p-3.5 text-xs sm:text-sm border border-[#D9E1EA] rounded-xl focus:border-[#0056A6] focus:ring-3 focus:ring-[#0056A6]/15 outline-none bg-white text-slate-900 placeholder:text-slate-400 leading-relaxed"
-                          />
+
+                          <div className="relative w-full">
+                            <textarea
+                              id="query"
+                              name="query"
+                              required
+                              rows={4}
+                              value={ticketForm.query}
+                              onChange={handleTicketChange}
+                              placeholder="State the candidate issue in third person (e.g., 'The candidate has entered the wrong mobile number by mistake.')..."
+                              className="w-full p-3.5 text-xs sm:text-sm border border-[#D9E1EA] rounded-xl focus:border-[#0056A6] focus:ring-3 focus:ring-[#0056A6]/15 outline-none bg-white text-slate-900 placeholder:text-slate-400 leading-relaxed font-sans"
+                            />
+
+                            {/* Binary Text Animation Overlay */}
+                            {isRewritingQuery && (
+                              <div className="absolute inset-0 z-10 bg-slate-950/92 rounded-xl p-3.5 flex flex-col justify-between overflow-hidden border border-emerald-500/50 shadow-inner font-mono select-none animate-in fade-in duration-150 text-emerald-400">
+                                <div className="flex items-center justify-between border-b border-emerald-500/30 pb-1.5 text-[11px] font-bold">
+                                  <span className="flex items-center gap-1.5 tracking-wider uppercase">
+                                    <Binary className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                                    <span>CONVERTING QUERY (BINARY STREAM)</span>
+                                  </span>
+                                  <span className="text-[10px] text-emerald-400/80 font-mono tracking-widest animate-pulse">
+                                    [01010101]
+                                  </span>
+                                </div>
+                                <div className="my-auto py-2 text-xs font-mono text-emerald-400 tracking-wider break-all leading-relaxed opacity-95 line-clamp-3 select-none">
+                                  {binaryStreamText}
+                                </div>
+                                <div className="flex items-center justify-between text-[10px] text-emerald-400/70 border-t border-emerald-500/25 pt-1">
+                                  <span>Translating to professional agent language</span>
+                                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -971,8 +1324,49 @@ Query: ${query.trim()}`;
                   </div>
                 </div>
 
-                {/* Right Column: Generated Ticket Note Preview */}
-                <aside className="lg:sticky lg:top-0 space-y-4">
+                {/* Right Column: Generated Ticket Note Preview & Separate Subject */}
+                <aside className="lg:sticky lg:top-0 space-y-3.5">
+                  {/* SEPARATE SAC PORTAL TICKET SUBJECT CARD */}
+                  <div className="bg-white border border-[#BAE0FD] rounded-2xl shadow-xs overflow-hidden flex flex-col">
+                    <div className="px-4 py-2.5 bg-[#003B73] text-white border-b border-[#002850] flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Tag className="w-3.5 h-3.5 text-amber-300" />
+                        <span className="text-xs font-bold uppercase tracking-wider text-white">
+                          SAC Portal Subject (Separate Field)
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        id="preview-copy-subject-btn"
+                        onClick={handleCopySubject}
+                        className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
+                          subjectCopied
+                            ? 'bg-emerald-500 text-white border-emerald-400'
+                            : 'bg-white/15 hover:bg-white/25 text-white border-white/20 shadow-2xs'
+                        }`}
+                        title="Copy Subject to paste into SAC Portal Subject field"
+                      >
+                        {subjectCopied ? <Check className="w-3 h-3 text-white" /> : <Copy className="w-3 h-3 text-amber-300" />}
+                        <span>{subjectCopied ? 'Subject Copied!' : 'Copy Subject'}</span>
+                      </button>
+                    </div>
+
+                    <div className="p-3.5 bg-gradient-to-br from-[#F0F7FF] to-blue-50/40">
+                      <p className="text-xs sm:text-sm font-bold text-[#003B73] leading-snug">
+                        {ticketSubject || deriveTicketSubject(ticketForm.query, ticketForm.course)}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-[#BAE0FD]/60 text-[10px] text-slate-500">
+                        <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                          <Sparkles className="w-3 h-3 text-emerald-600" />
+                          Auto-derived from Query Nature
+                        </span>
+                        <span className="text-slate-400">&bull;</span>
+                        <span className="text-[#0056A6] font-medium">Paste in SAC 'Subject' input</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* GENERATED TICKET NOTE PREVIEW (NOTE ONLY, NO SUBJECT) */}
                   <div className="bg-white border border-[#D9E1EA] rounded-2xl shadow-xs overflow-hidden flex flex-col h-full">
                     <div className="px-5 py-3.5 bg-[#003B73] text-white border-b border-[#002850] flex items-center justify-between">
                       <div className="flex items-center gap-2">
