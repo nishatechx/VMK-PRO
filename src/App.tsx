@@ -22,6 +22,7 @@ import { VaultFilePickerModal } from './components/VaultFilePickerModal';
 import { LoginScreen } from './components/LoginScreen';
 import { BroadcastComposerModal } from './components/BroadcastComposerModal';
 import { BroadcastPopupModal } from './components/BroadcastPopupModal';
+import { KnowledgeCenterModal } from './components/KnowledgeCenterModal';
 import { BroadcastNotification } from './types/broadcast';
 import {
   getUnreadBroadcastsForUser,
@@ -62,6 +63,7 @@ export default function App() {
   const [isQrUploadModalOpen, setIsQrUploadModalOpen] = useState<boolean>(false);
   const [isImgToPdfOpen, setIsImgToPdfOpen] = useState<boolean>(false);
   const [isImageToTextOpen, setIsImageToTextOpen] = useState<boolean>(false);
+  const [isKnowledgeCenterOpen, setIsKnowledgeCenterOpen] = useState<boolean>(false);
 
   // Broadcast Notifications System
   const [isBroadcastComposerOpen, setIsBroadcastComposerOpen] = useState<boolean>(false);
@@ -176,6 +178,10 @@ export default function App() {
       }
       setIsImageToTextOpen(true);
     }
+  };
+
+  const handleOpenKnowledgeCenter = () => {
+    setIsKnowledgeCenterOpen(true);
   };
 
   const [qrSessionParam, setQrSessionParam] = useState<string | null>(null);
@@ -376,6 +382,7 @@ export default function App() {
             onOpenImgToPdfTool={handleOpenImgToPdf}
             onOpenImageToTextTool={handleOpenImageToText}
             onOpenExternalPortal={() => setIsExternalAssistantOpen(true)}
+            onOpenKnowledgeCenter={handleOpenKnowledgeCenter}
           />
         </div>
       )}
@@ -405,6 +412,7 @@ export default function App() {
               onOpenImgToPdfTool={handleOpenImgToPdf}
               onOpenImageToTextTool={handleOpenImageToText}
               onOpenExternalPortal={() => setIsExternalAssistantOpen(true)}
+              onOpenKnowledgeCenter={handleOpenKnowledgeCenter}
             />
           </div>
         </div>
@@ -445,6 +453,7 @@ export default function App() {
                   onOpenImageToTextTool={handleOpenImageToText}
                   onOpenExternalPortal={() => setIsExternalAssistantOpen(true)}
                   onOpenBroadcastModal={() => setIsBroadcastComposerOpen(true)}
+                  onOpenKnowledgeCenter={handleOpenKnowledgeCenter}
                   onNavigateTab={navigateToTab}
                   currentUser={currentUser}
                 />
@@ -598,6 +607,13 @@ export default function App() {
           currentUser={currentUser}
         />
       )}
+
+      {/* CET & CAP Knowledge Center RAG Document Repository & Assistant */}
+      <KnowledgeCenterModal
+        isOpen={isKnowledgeCenterOpen}
+        onClose={() => setIsKnowledgeCenterOpen(false)}
+        currentUser={currentUser}
+      />
     </div>
   );
 }

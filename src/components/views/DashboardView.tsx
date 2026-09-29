@@ -94,6 +94,7 @@ interface DashboardViewProps {
   onOpenImageToTextTool?: () => void;
   onOpenExternalPortal?: () => void;
   onOpenBroadcastModal?: () => void;
+  onOpenKnowledgeCenter?: () => void;
   onNavigateTab: (tab: any) => void;
   currentUser?: UserProfile | null;
 }
@@ -107,6 +108,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenImageToTextTool,
   onOpenExternalPortal,
   onOpenBroadcastModal,
+  onOpenKnowledgeCenter,
   onNavigateTab,
   currentUser,
 }) => {
@@ -269,6 +271,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       title: 'Image to Text',
       imageSrc: APP_ASSETS.IMAGE_TO_TEXT,
       onClick: onOpenImageToTextTool,
+    });
+  }
+
+  if (onOpenKnowledgeCenter) {
+    facilitationTools.push({
+      id: 'dashboard-tool-knowledge-center',
+      title: 'CIA',
+      imageSrc: APP_ASSETS.LOGO,
+      onClick: onOpenKnowledgeCenter,
     });
   }
 
@@ -571,7 +582,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <span className="text-[11px] text-slate-400 hidden sm:inline font-medium">Quick Access</span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
                 {facilitationTools.map((tool) => (
                   <button
                     key={tool.id}

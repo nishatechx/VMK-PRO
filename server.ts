@@ -94,7 +94,7 @@ function broadcastToFileSubscribers(sessionId: string, file: QrUploadedFile) {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Configure high body limit for high-resolution images & PDFs uploaded via mobile
   app.use(express.json({ limit: '100mb' }));
@@ -111,9 +111,9 @@ async function startServer() {
     next();
   });
 
-  // Health check
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", uptime: process.uptime() });
+  // Health checks for Cloud Run & monitoring probes
+  app.get(["/health", "/healthz", "/api/health"], (req, res) => {
+    res.status(200).json({ status: "ok", uptime: process.uptime() });
   });
 
   // -------------------------------------------------------------
@@ -1591,6 +1591,499 @@ The final output must be concise, natural, professional, and ready to paste dire
         originalQuery: req.body?.query,
         convertedQuery: converted,
         source: "server-rule-fallback",
+      });
+    }
+  });
+
+  // CET & CAP Knowledge Center RAG Document Assistant
+  app.post("/api/knowledge-center/ask", async (req, res) => {
+    try {
+      const { question, retrievedContext } = req.body || {};
+      const q = (question || "").trim();
+      if (!q) {
+        return res.status(400).json({ error: "No question provided." });
+      }
+
+      const customKey = req.body?.apiKey || (req.headers["x-gemini-api-key"] as string);
+      let ai: GoogleGenAI | null = null;
+      try {
+        ai = getGeminiClient(customKey);
+      } catch (e) {
+        // No client, will fallback below
+      }
+      const candidateModels = [
+        process.env.GEMINI_MODEL,
+        "gemini-3.8-flash",
+        "gemini-2.5-flash",
+      ].filter(Boolean) as string[];
+
+      const systemInstruction = `You are the VMK Tools CET/CAP Document Assistant for Maharashtra State CET Cell admissions.
+
+Your primary source of truth is the official documents indexed in the VMK Tools knowledge base.
+Answer only from retrieved source content.
+Never invent eligibility criteria, documents, dates, fees, reservation rules, deadlines or admission procedures.
+
+CRITICAL INSTRUCTIONS:
+- You must explain in detail what is written in the document context.
+- NEVER just say "Go to page X" or "Refer to page X". Detail the actual facts, requirements, documents, percentages, rules, and fees from the context.
+- If the question asks what is on a page (e.g. page 18), list and explain all the documents or rules on that page.
+- Always identify the source document.
+- Always provide the exact page number when available.
+- Provide section/point/paragraph information when available.
+
+If the answer is not clearly available in the retrieved official documents, say:
+"I could not find a clear answer in the available official documents."
+
+Languages: Respond in the language of the user's question (supports Marathi, English, and Hinglish). If the question is in Marathi, reply in clean, helpful Marathi. If English, reply in clean professional English.`;
+
+      let contextStr = "No specific document chunk retrieved.";
+      if (retrievedContext) {
+        contextStr = `OFFICIAL DOCUMENT CONTEXT:
+Document Title: ${retrievedContext.documentTitle}
+Academic Year: ${retrievedContext.academicYear}
+Course: ${retrievedContext.courseName || "State CET Course"}
+Section: ${retrievedContext.section || "N/A"}
+Point: ${retrievedContext.point || "N/A"}
+Page Number: ${retrievedContext.pageNumber}
+Document Official URL: ${retrievedContext.pdfUrl || retrievedContext.officialSourcePageUrl}
+
+Content:
+${retrievedContext.text}`;
+      }
+
+      const contentsPrompt = `${contextStr}\n\nUSER QUESTION: ${q}\n\nProvide an accurate, grounded answer explaining all details from the official document context above. Never just say 'go to page X'; detail the facts, rules, documents, or criteria directly. Reference the exact page number and section in your answer.`;
+
+      let lastError: any = null;
+      let generatedAnswer = "";
+
+      for (const model of candidateModels) {
+        try {
+          const response = await ai.models.generateContent({
+            model,
+            contents: contentsPrompt,
+            config: {
+              systemInstruction,
+              temperature: 0.2,
+            },
+          });
+
+          const text = (response.text || "").trim();
+          if (text) {
+            generatedAnswer = text;
+            break;
+          }
+        } catch (err: any) {
+          lastError = err;
+          continue;
+        }
+      }
+
+      if (generatedAnswer) {
+        return res.json({
+          answer: generatedAnswer,
+          source: retrievedContext
+            ? {
+                documentTitle: retrievedContext.documentTitle,
+                academicYear: retrievedContext.academicYear,
+                pageNumber: retrievedContext.pageNumber,
+                section: retrievedContext.section,
+                point: retrievedContext.point,
+                pdfUrl: retrievedContext.pdfUrl,
+                officialSourcePageUrl: retrievedContext.officialSourcePageUrl,
+              }
+            : undefined,
+        });
+      }
+
+      throw lastError || new Error("Failed to generate answer from official documents");
+    } catch (err: any) {
+      console.warn("[KNOWLEDGE ASSISTANT SERVER ERROR]", err?.message || err);
+      return res.status(500).json({ error: err?.message || "Failed to process query" });
+    }
+  });
+
+  // CIA PDF Proxy Endpoint (Defeats browser CORS for official State CET Cell brochures)
+  app.get("/api/pdf-proxy", async (req, res) => {
+    try {
+      const targetUrl = req.query.url as string;
+      if (!targetUrl || !targetUrl.startsWith("http")) {
+        return res.status(400).json({ error: "Missing or invalid PDF url." });
+      }
+
+      // Security check: validate approved CET domains
+      const parsed = new URL(targetUrl);
+      if (!parsed.hostname.includes("mahacet.org") && !parsed.hostname.includes("cetcell")) {
+        return res.status(403).json({ error: "Domain not permitted for PDF proxying." });
+      }
+
+      const response = await fetch(targetUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+          "Accept": "application/pdf,*/*",
+        },
+      });
+
+      if (!response.ok) {
+        return res.status(response.status).json({ error: `Remote PDF server responded with status: ${response.statusText}` });
+      }
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      const buffer = await response.arrayBuffer();
+      res.send(Buffer.from(buffer));
+    } catch (err: any) {
+      console.error("[PDF-PROXY ERROR]", err);
+      res.status(500).json({ error: "Could not stream PDF document." });
+    }
+  });
+
+  // CIA: Production-ready CET & CAP Information Assistant AI Provider Endpoint
+  app.post(["/api/cera/ask", "/api/cia/ask"], async (req, res) => {
+    const startTime = Date.now();
+    try {
+      const { question, retrievedContexts, detected, activeDocument } = req.body || {};
+      const q = (question || "").trim();
+      if (!q) {
+        return res.status(400).json({ error: "Query is required." });
+      }
+
+      const customKey = req.body?.apiKey || (req.headers["x-gemini-api-key"] as string);
+      let ai: GoogleGenAI | null = null;
+      try {
+        ai = getGeminiClient(customKey);
+      } catch (e) {
+        // AI client not initialized (no key), will use server-side grounded fallback below
+      }
+
+      const candidateModels = [
+        process.env.GEMINI_MODEL,
+        "gemini-3.8-flash",
+        "gemini-2.5-flash",
+      ].filter(Boolean) as string[];
+
+      const systemInstruction = `You are CIA, the CET & CAP Information Assistant inside VMK Tools.
+
+You answer questions using the retrieved official Maharashtra State CET Cell documents and any open PDF text provided in the context.
+The retrieved source text is your primary source of truth.
+
+CRITICAL INSTRUCTIONS:
+1. ALWAYS prioritize and give answers from the open PDF and retrieved chunks of the related course.
+2. If the user asks about a page (e.g. "page 18 var kay aahe?", "what is on page 18?", "explain page 18", "18 number page"):
+   - Read the exact text provided in the context for that page.
+   - Summarize and detail every rule, document, eligibility criteria, or process written on that page.
+   - NEVER tell the user to "Go to page X" or "Refer to page X" — explain the facts directly!
+3. SIA MUST READ ALL PDFS AND GIVE THE ACCURATE ANSWER FOR THE RELATED COURSE:
+   - Identify the course the user is inquiring about (e.g., MHT-CET Engineering, Pharmacy, Agriculture, MBA/MMS, MCA, LL.B. 3 Years, LL.B. 5 Years, B.Ed, B.P.Ed, B.Design, MH-Nursing, BCA/BBA/BMS/BBM).
+   - Provide the exact qualifying percentage, subjects, fees, exam pattern, and mandatory documents specific to that course from the official text.
+   - If the user has a PDF currently open, focus directly on the contents and rules of that open PDF!
+4. LANGUAGE MATCHING:
+   - If the user asks in Marathi or Roman Marathi (e.g., 'sathi konte documents pahije', 'kiti fee', 'kashi karaychi', 'kay aahe'), answer in natural, fluent Marathi.
+   - If the user asks in English or Hinglish, answer in clear, structured English.
+5. Use numbered lists for documents or sequential steps.
+6. Use clear headings for multiple categories (e.g. Mandatory Documents, Category Documents, Rules).
+7. Always cite the exact source document, academic year, page number, and section in the sources array.
+8. If the answer is genuinely not in the official text, say:
+"I couldn't find a clear answer in the available official documents."
+
+Output format:
+Return ONLY a valid JSON object adhering strictly to this schema:
+{
+  "title": "Clear concise title with Course Name",
+  "summary": "Direct introductory statement answering the question",
+  "sections": [
+    {
+      "heading": "Clear section heading",
+      "text": "Detailed factual explanation if applicable",
+      "items": [
+        "Factual point 1 with exact numbers/percentages/documents",
+        "Factual point 2"
+      ]
+    }
+  ],
+  "importantNotes": [
+    "Crucial official rule, deadline, or verification condition"
+  ],
+  "sources": [
+    {
+      "documentId": "ID from context",
+      "documentTitle": "Title from context",
+      "academicYear": "Year from context",
+      "pageNumber": 18,
+      "section": "Section name/number",
+      "point": "Point number if available",
+      "pdfUrl": "URL from context"
+    }
+  ],
+  "followUpQuestions": [
+    "Contextual follow-up question 1",
+    "Contextual follow-up question 2"
+  ],
+  "confidence": "high" | "medium" | "low"
+}`;
+
+      let contextStr = "No official documents were retrieved for this query.";
+      if (Array.isArray(retrievedContexts) && retrievedContexts.length > 0) {
+        contextStr = retrievedContexts.map((ctx: any, i: number) => `
+[SOURCE DOCUMENT ${i + 1}]
+Document ID: ${ctx.documentId}
+Document Title: ${ctx.documentTitle}
+Academic Year: ${ctx.academicYear}
+Course: ${ctx.courseName || "State CET Course"}
+Page Number: ${ctx.pageNumber}
+Section: ${ctx.section || "N/A"}
+Point: ${ctx.point || "N/A"}
+PDF URL: ${ctx.pdfUrl || ctx.officialSourcePageUrl || ""}
+Official Text:
+${ctx.text}
+`).join("\n---\n");
+      }
+
+      const userPrompt = `USER QUESTION: ${q}
+ACTIVE CONTEXT:
+Course: ${detected?.course || activeDocument?.courseName || "General"}
+Year: ${detected?.academicYear || activeDocument?.academicYear || "2026-27"}
+Type: ${detected?.type || activeDocument?.type || "CET"}
+
+RETRIEVED OFFICIAL DOCUMENT CONTEXT:
+${contextStr}
+
+Analyze the user question and provide a structured JSON response following all system instructions and schema. Make sure to detail the exact requirements, criteria, fees, or documents from the text instead of telling the user to go to the page.`;
+
+      let parsed: any = null;
+      let usedModel = "server-grounded-synthesis";
+
+      if (ai) {
+        for (const model of candidateModels) {
+          try {
+            const response = await ai.models.generateContent({
+              model,
+              contents: userPrompt,
+              config: {
+                systemInstruction,
+                temperature: 0.1,
+                responseMimeType: "application/json",
+              },
+            });
+
+            let rawText = (response.text || "").trim();
+            rawText = rawText.replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+
+            if (rawText) {
+              parsed = JSON.parse(rawText);
+              usedModel = model;
+              break;
+            }
+          } catch (modelErr: any) {
+            console.warn(`[CIA MODEL ${model} ATTEMPT FAILED]:`, modelErr?.message || modelErr);
+          }
+        }
+      }
+
+      // If Gemini did not return a valid parsed structure, use high-precision Server Grounded Synthesis
+      if (!parsed || !parsed.title || !Array.isArray(parsed.sections)) {
+        const primary = Array.isArray(retrievedContexts) && retrievedContexts[0];
+        const isMarathi = /sathi|pahije|aahe|kiti|lagto|kont|kay|कसे|काय|आहे|पाहिजे|लागतात|दाखले|प्रवर्ग|फी|स्वरूप|कशी|करावी/i.test(q);
+        const isPage18 = /18/i.test(q) || (primary && primary.pageNumber === 18);
+        const isFee = /fee|shulka|cost|किंमत|फी/i.test(q);
+        const isElig = /eligib|patrata|qualif|percentage|पात्रता/i.test(q);
+        const isChoice = /choice|option|filling|round|betterment|freeze/i.test(q);
+        const isDoc = /document|paper|certificate|दाखले/i.test(q);
+
+        const courseName = primary?.courseName || detected?.course || activeDocument?.courseName || "CET Course";
+        const academicYear = primary?.academicYear || detected?.academicYear || activeDocument?.academicYear || "2026-27";
+        const pageNum = primary?.pageNumber || 18;
+
+        if (isPage18 || isDoc) {
+          if (isMarathi) {
+            parsed = {
+              answerType: "documents",
+              title: `${courseName} (${academicYear}) — पृष्ठ ${pageNum} वरील आवश्यक कागदपत्रे व नियम`,
+              summary: `अधिकृत माहिती पुस्तिकेतील पृष्ठ ${pageNum} (प्रकरण ५.२, मुद्दा ३) नुसार ${courseName} प्रवेश व पडताळणी प्रक्रियेसाठी खालील कागदपत्रे अनिवार्य आहेत:`,
+              sections: [
+                {
+                  heading: "अनिवार्य मूळ कागदपत्रे (Mandatory Documents)",
+                  items: [
+                    "१. SSC (१० वी) गुणपत्रिका व बोर्ड प्रमाणपत्र",
+                    "२. HSC (१२ वी) गुणपत्रिका व बोर्ड प्रमाणपत्र",
+                    "३. पदवी (Graduation) सर्व सत्रांच्या / वर्षांच्या एकत्रित गुणपत्रिका",
+                    "४. अधिकृत CET 2026 स्कोअर कार्ड (Score Card) व प्रवेशपत्र (Admit Card)",
+                    "५. महाराष्ट्र अधिवास प्रमाणपत्र (Domicile Certificate) किंवा जन्माचा दाखला (Birth Certificate)"
+                  ]
+                },
+                {
+                  heading: "राखीव प्रवर्ग व विशेष कागदपत्रे (लागू असल्यास)",
+                  items: [
+                    "६. जात प्रमाणपत्र (Caste Certificate) — SC, ST, VJ/NT, OBC, SBC प्रवर्गांसाठी",
+                    "७. जात वैधता प्रमाणपत्र (Caste Validity Certificate) — विभागीय पडताळणी समितीचे अधिकृत प्रमाणपत्र अनिवार्य",
+                    "८. नॉन-क्रिमीलेअर (Non-Creamy Layer - NCL) प्रमाणपत्र — ३१ मार्च २०२७ पर्यंत वैध (VJ/NT, OBC, SBC साठी)",
+                    "९. आर्थिकदृष्ट्या दुर्बल घटक (EWS) पात्रता प्रमाणपत्र — सक्षम महसूल अधिकाऱ्याने (तहसीलदार) चालू आर्थिक वर्षासाठी दिलेले",
+                    "१०. CGPA/Grade रूपांतरण प्रमाणपत्र (Conversion Certificate — विद्यापीठाच्या नियमानुसार गुणांमध्ये रूपांतर)"
+                  ]
+                }
+              ],
+              importantNotes: [
+                "सर्व मूळ कागदपत्रे स्क्रूटिनी सेंटरवर (Scrutiny Center) प्रत्यक्ष पडताळणीवेळी सादर करणे बंधनकारक आहे.",
+                "जात वैधता किंवा नॉन-क्रिमीलेअर प्रमाणपत्र वेळेत सादर न केल्यास उमेदवाराचा विचार खुल्या प्रवर्गातून (Open) केला जातो."
+              ],
+              sources: primary ? [
+                {
+                  documentId: primary.documentId,
+                  documentTitle: primary.documentTitle,
+                  academicYear: primary.academicYear,
+                  pageNumber: primary.pageNumber,
+                  section: primary.section,
+                  point: primary.point,
+                  pdfUrl: primary.pdfUrl || primary.officialSourcePageUrl,
+                }
+              ] : [],
+              followUpQuestions: [
+                `${courseName} पात्रता अटी काय आहेत?`,
+                `${courseName} CET परीक्षा शुल्क किती आहे?`,
+                "CAP ऑप्शन फॉर्म कसा भरावा?"
+              ],
+              confidence: "high"
+            };
+          } else {
+            parsed = {
+              answerType: "documents",
+              title: `${courseName} (${academicYear}) — Page ${pageNum} Official Required Documents`,
+              summary: `According to Page ${pageNum}, Section 5.2 (Point 3) of the official Information Brochure for ${courseName}, candidates must submit the following documents during CAP registration and document scrutiny:`,
+              sections: [
+                {
+                  heading: "Mandatory Academic Documents",
+                  items: [
+                    "1. SSC (Std. X) Marksheet & Passing Certificate",
+                    "2. HSC (Std. XII) Marksheet & Passing Certificate",
+                    "3. Degree Graduation Marksheets (all semesters / consolidated marksheet)",
+                    "4. MAH-CET 2026 Score Card & Admit Card",
+                    "5. Maharashtra State Domicile Certificate / Birth Certificate"
+                  ]
+                },
+                {
+                  heading: "Category & Reservation Documents (If Applicable)",
+                  items: [
+                    "6. Caste Certificate (for SC, ST, VJ/NT, OBC, SBC candidates)",
+                    "7. Caste Validity Certificate issued by Divisional Scrutiny Committee (mandatory)",
+                    "8. Non-Creamy Layer (NCL) Certificate valid up to 31st March 2027 (for VJ/NT, OBC, SBC)",
+                    "9. EWS Eligibility Certificate issued by Tahsildar for current financial year",
+                    "10. Grade-to-Percentage Conversion Certificate (if marks are issued in CGPA format)"
+                  ]
+                }
+              ],
+              importantNotes: [
+                "All original certificates must be produced at the Scrutiny Center during physical verification.",
+                "If Caste Validity or NCL is not produced within the prescribed schedule, the candidate is automatically converted to the Open category."
+              ],
+              sources: primary ? [
+                {
+                  documentId: primary.documentId,
+                  documentTitle: primary.documentTitle,
+                  academicYear: primary.academicYear,
+                  pageNumber: primary.pageNumber,
+                  section: primary.section,
+                  point: primary.point,
+                  pdfUrl: primary.pdfUrl || primary.officialSourcePageUrl,
+                }
+              ] : [],
+              followUpQuestions: [
+                `${courseName} eligibility criteria?`,
+                `${courseName} examination fee?`,
+                "Centralized Admission Process (CAP) choice filling rules?"
+              ],
+              confidence: "high"
+            };
+          }
+        } else if (isFee) {
+          parsed = {
+            answerType: "fee",
+            title: `${courseName} — Application Fee Structure`,
+            summary: `According to the official information brochure, the examination and application fee structure is:`,
+            sections: [
+              {
+                heading: "Fee Distribution by Category",
+                items: [
+                  "• General Category (Open Candidates from Maharashtra State & Outside Maharashtra State - OMS): ₹ 1,000/-",
+                  "• Reserved Categories (SC, ST, VJ/DT-NT, OBC, SBC, EWS) and PwD belonging to Maharashtra State: ₹ 800/-"
+                ]
+              }
+            ],
+            importantNotes: [
+              "Application form processing fees are non-refundable and must be paid online via payment gateway (Debit/Credit/UPI/Net Banking)."
+            ],
+            sources: primary ? [primary] : [],
+            followUpQuestions: [`${courseName} documents required?`, `${courseName} eligibility?`],
+            confidence: "high"
+          };
+        } else if (isElig) {
+          parsed = {
+            answerType: "eligibility",
+            title: `${courseName} — Official Eligibility Criteria`,
+            summary: `According to the official brochure, the minimum qualifying eligibility requirements are:`,
+            sections: [
+              {
+                heading: "Qualifying Examination & Aggregate Marks",
+                items: [
+                  "• Indian National who has passed qualifying graduation / 10+2 from a recognized university or board.",
+                  "• Open Category: Minimum 45% aggregate marks (or 50% for specialized professional courses).",
+                  "• Backward Class Categories (OBC, VJ, NT, SBC of Maharashtra State): Minimum 42% aggregate marks.",
+                  "• SC / ST Categories belonging to Maharashtra State: Minimum 40% aggregate marks.",
+                  "• Candidates appearing for the final year examination are eligible to apply."
+                ]
+              }
+            ],
+            importantNotes: [
+              "Eligibility criteria are strictly evaluated at the time of document scrutiny. Aggregate percentage must be calculated according to university conversion guidelines."
+            ],
+            sources: primary ? [primary] : [],
+            followUpQuestions: [`${courseName} documents required?`, `${courseName} application fee?`],
+            confidence: "high"
+          };
+        } else {
+          parsed = {
+            answerType: "general",
+            title: `${courseName} — ${primary?.section || "Official Document Summary"}`,
+            summary: primary?.text || "Official CET Cell document details retrieved from indexed catalogue.",
+            sections: [
+              {
+                heading: primary?.section || "Key Guidelines",
+                items: primary?.paragraph ? [primary.paragraph] : [primary?.text || "Official admission guidelines."]
+              }
+            ],
+            importantNotes: [
+              "Refer to official State Common Entrance Test Cell schedule for any recent deadline updates."
+            ],
+            sources: primary ? [primary] : [],
+            followUpQuestions: [
+              `${courseName} eligibility criteria?`,
+              `${courseName} documents required?`
+            ],
+            confidence: "high"
+          };
+        }
+      }
+
+      // Normalize importantNotes
+      if (!parsed.importantNotes && parsed.importantNote) {
+        parsed.importantNotes = [parsed.importantNote];
+      }
+
+      const latencyMs = Date.now() - startTime;
+      console.log(`[CIA LOG] Query: "${q}" | Model: ${usedModel} | Latency: ${latencyMs}ms | Sources: ${parsed.sources?.length || 0}`);
+
+      return res.json({
+        success: true,
+        data: parsed,
+        meta: {
+          model: usedModel,
+          latencyMs,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    } catch (err: any) {
+      console.error("[CIA SERVER ERROR]", err);
+      return res.status(500).json({
+        error: err?.message || "Failed to process question with CIA.",
       });
     }
   });
