@@ -1,6 +1,13 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, Firestore } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  getFirestore,
+  Firestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  setLogLevel,
+} from 'firebase/firestore';
 import firebaseConfigData from '../../firebase-applet-config.json';
 
 // Your web app's Firebase configuration loaded from provisioned config
@@ -13,13 +20,44 @@ export const firebaseConfig = {
   appId: firebaseConfigData.appId,
 };
 
-// Initialize Firebase
+// Initialize Firebase App
 export const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Initialize Firestore with custom or default database ID
+// Set Firestore log level to error to prevent noisy 10-second backend connection warnings
+try {
+  setLogLevel('error');
+} catch {}
+
+// Initialize Firestore with auto-detect long-polling and multi-tab persistent cache
 const databaseId = (firebaseConfigData as Record<string, any>)?.firestoreDatabaseId;
-export const db: Firestore = databaseId
-  ? getFirestore(firebaseApp, databaseId)
-  : getFirestore(firebaseApp);
+
+function createFirestoreInstance(): Firestore {
+  try {
+    return initializeFirestore(
+      firebaseApp,
+      {
+        experimentalAutoDetectLongPolling: true,
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager(),
+        }),
+      },
+      databaseId
+    );
+  } catch {
+    try {
+      return initializeFirestore(
+        firebaseApp,
+        {
+          experimentalAutoDetectLongPolling: true,
+        },
+        databaseId
+      );
+    } catch {
+      return databaseId ? getFirestore(firebaseApp, databaseId) : getFirestore(firebaseApp);
+    }
+  }
+}
+
+export const db: Firestore = createFirestoreInstance();
 
 
