@@ -66,9 +66,11 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
+  const cleanSessionId = String(sessionId || '').trim().toUpperCase();
+
   const loadFiles = async () => {
     try {
-      const list = await qrUploadService.getFiles(sessionId);
+      const list = await qrUploadService.getFiles(cleanSessionId);
       setFiles(list);
     } catch {
       // ignore
@@ -77,9 +79,9 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
 
   useEffect(() => {
     loadFiles();
-    const interval = setInterval(loadFiles, 2500);
+    const interval = setInterval(loadFiles, 2000);
     return () => clearInterval(interval);
-  }, [sessionId]);
+  }, [cleanSessionId]);
 
   const handleFilesAdded = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const inputFiles = e.target.files;
@@ -148,26 +150,63 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
 
   const handleLiveCapture = async (capturedDataUrl: string) => {
     setShowLiveScanner(false);
+    setIsUploading(true);
+    setStatusMsg({
+      text: 'Uploading scanned document to computer...',
+      type: '',
+    });
+
     try {
-      const res = await fetch(capturedDataUrl);
-      const blob = await res.blob();
-      const fileName = `Scan_${new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14)}.jpg`;
-      const file = new File([blob], fileName, { type: 'image/jpeg' });
+      const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
+      const fileName = `Scan_${timestamp}.jpg`;
+      const size = Math.round((capturedDataUrl.length * 3) / 4);
 
-      const newItem: StagedFileItem = {
-        id: `scan-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        file,
-        previewUrl: capturedDataUrl,
-        isPdf: false,
-      };
+      await qrUploadService.uploadFile(cleanSessionId, {
+        name: fileName,
+        type: 'image/jpeg',
+        size,
+        dataUrl: capturedDataUrl,
+        category: 'Camera-Scan',
+        uploadedBy: uploaderParams.uploadedBy,
+        uploaderName: uploaderParams.uploaderName,
+        uploaderRole: uploaderParams.uploaderRole,
+        district: uploaderParams.district,
+      });
 
-      setStagedFiles((prev) => [...prev, newItem]);
       setStatusMsg({
-        text: 'Document scanned with AI and staged. Tap Crop to adjust if needed.',
+        text: `✓ Scanned document "${fileName}" uploaded to computer successfully!`,
         type: 'success',
       });
+      await loadFiles();
+      setTimeout(() => {
+        setStatusMsg((prev) => (prev.type === 'success' ? { text: '', type: '' } : prev));
+      }, 5000);
     } catch (err) {
-      console.error('Failed to process live scan capture:', err);
+      console.error('Failed to auto-upload live scan capture:', err);
+      // Fallback: stage file locally so user can retry manually
+      try {
+        const res = await fetch(capturedDataUrl);
+        const blob = await res.blob();
+        const fallbackName = `Scan_${new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14)}.jpg`;
+        const file = new File([blob], fallbackName, { type: 'image/jpeg' });
+        setStagedFiles((prev) => [
+          ...prev,
+          {
+            id: `scan-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            file,
+            previewUrl: capturedDataUrl,
+            isPdf: false,
+          },
+        ]);
+        setStatusMsg({
+          text: 'Auto-upload was delayed. Scanned document staged below — tap Upload to finish.',
+          type: 'error',
+        });
+      } catch {
+        setStatusMsg({ text: 'Failed to process capture', type: 'error' });
+      }
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -217,7 +256,7 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
       try {
         const dataUrl = item.previewUrl || (await fileToDataUrl(item.file));
 
-        await qrUploadService.uploadFile(sessionId, {
+        await qrUploadService.uploadFile(cleanSessionId, {
           name: item.file.name,
           type: item.file.type || 'application/octet-stream',
           size: item.file.size,
@@ -240,7 +279,7 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
 
     if (failureCount === 0) {
       setStatusMsg({
-        text: `${completed} file${completed > 1 ? 's' : ''} uploaded successfully`,
+        text: `${completed} file${completed > 1 ? 's' : ''} uploaded successfully to computer`,
         type: 'success',
       });
     } else {
@@ -258,14 +297,14 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
 
   const handleDelete = async (fileId: string) => {
     try {
-      await qrUploadService.deleteFile(sessionId, fileId);
+      await qrUploadService.deleteFile(cleanSessionId, fileId);
       await loadFiles();
     } catch {
       // ignore
     }
   };
 
-  const shortSession = sessionId.length > 8 ? sessionId.slice(-6).toUpperCase() : sessionId.toUpperCase();
+  const shortSession = cleanSessionId.length > 8 ? cleanSessionId.slice(-6).toUpperCase() : cleanSessionId.toUpperCase();
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-900">

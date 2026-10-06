@@ -79,9 +79,11 @@ function detectDocCategory(fileName: string): string {
 }
 
 function broadcastToFileSubscribers(sessionId: string, file: QrUploadedFile) {
-  const clients = sseSubscribers.get(sessionId);
+  const normSessionId = String(sessionId || '').trim().toUpperCase();
+  const rawSessionId = String(sessionId || '').trim();
+  const clients = sseSubscribers.get(normSessionId) || sseSubscribers.get(rawSessionId);
   if (clients) {
-    const data = JSON.stringify({ type: 'NEW_FILE', sessionId, file });
+    const data = JSON.stringify({ type: 'NEW_FILE', sessionId: normSessionId, file });
     clients.forEach((res) => {
       try {
         res.write(`data: ${data}\n\n`);
@@ -816,9 +818,11 @@ async function startServer() {
         return res.status(400).json({ error: "Missing required fields (sessionId, name, dataUrl)" });
       }
 
+      const normSessionId = String(sessionId).trim().toUpperCase();
+
       const file: QrUploadedFile = {
         id: `doc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-        sessionId: String(sessionId).trim(),
+        sessionId: normSessionId,
         name: String(name),
         type: type || 'application/octet-stream',
         size: Number(size) || 0,
@@ -833,22 +837,28 @@ async function startServer() {
         district: district ? String(district).trim() : undefined,
       };
 
-      // Store in session
-      if (!sessionStore.has(file.sessionId)) {
-        sessionStore.set(file.sessionId, []);
+      // Store in session (both normalized and original keys for safety)
+      if (!sessionStore.has(normSessionId)) {
+        sessionStore.set(normSessionId, []);
       }
-      const sessionFiles = sessionStore.get(file.sessionId)!;
+      const sessionFiles = sessionStore.get(normSessionId)!;
       sessionFiles.unshift(file);
       if (sessionFiles.length > 50) sessionFiles.pop();
+
+      const rawSession = String(sessionId).trim();
+      if (rawSession !== normSessionId) {
+        if (!sessionStore.has(rawSession)) sessionStore.set(rawSession, []);
+        sessionStore.get(rawSession)!.unshift(file);
+      }
 
       // Store in global vault
       vaultStore.unshift(file);
       if (vaultStore.length > 100) vaultStore.pop();
 
       // Realtime push to any listening desktop clients
-      broadcastToFileSubscribers(file.sessionId, file);
+      broadcastToFileSubscribers(normSessionId, file);
 
-      console.log(`[QR-UPLOAD] Received "${file.name}" (${file.size} bytes) for Session ${file.sessionId} by ${file.uploadedBy || 'anonymous'} [${file.district || 'Unassigned'}]`);
+      console.log(`[QR-UPLOAD] Received "${file.name}" (${file.size} bytes) for Session ${normSessionId} by ${file.uploadedBy || 'anonymous'} [${file.district || 'Unassigned'}]`);
 
       return res.status(200).json({ success: true, file });
     } catch (err: any) {
@@ -865,7 +875,10 @@ async function startServer() {
         return res.json({ success: true, files: [] });
       }
 
-      const files = sessionStore.get(String(sessionId).trim()) || [];
+      const normSessionId = String(sessionId).trim().toUpperCase();
+      const rawSessionId = String(sessionId).trim();
+
+      const files = sessionStore.get(normSessionId) || sessionStore.get(rawSessionId) || [];
       return res.json({ success: true, files });
     } catch (err: any) {
       return res.status(500).json({ error: err?.message || 'Error fetching files' });
@@ -881,6 +894,12 @@ async function startServer() {
 
       let files = vaultStore;
 
+      // Master Super Admin sees all vault files across all districts
+      const isSuperAdmin = role === 'super_admin' || username === 'shrinath';
+      if (isSuperAdmin) {
+        return res.json({ success: true, files });
+      }
+
       const isDno = role === 'dno' || username === 'dno';
 
       if (isDno) {
@@ -890,11 +909,9 @@ async function startServer() {
         return res.json({ success: true, files });
       }
 
-      // Counselor / Staff: Only see their own files. Any other counselor cannot see them.
+      // Counselor / Staff: see their own files or unassigned/intake files
       if (username) {
-        files = files.filter(f => (f.uploadedBy || '').trim().toLowerCase() === username);
-      } else {
-        files = [];
+        files = files.filter(f => !f.uploadedBy || (f.uploadedBy || '').trim().toLowerCase() === username || (f.uploadedBy || '').trim().toLowerCase() === 'counsellor' || (f.uploadedBy || '').trim().toLowerCase() === 'anonymous');
       }
 
       return res.json({ success: true, files });
@@ -910,24 +927,26 @@ async function startServer() {
       return res.status(400).send("sessionId required");
     }
 
+    const normSessionId = String(sessionId).trim().toUpperCase();
+
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
     });
 
-    res.write(`data: ${JSON.stringify({ type: 'CONNECTED', sessionId })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: 'CONNECTED', sessionId: normSessionId })}\n\n`);
 
-    if (!sseSubscribers.has(sessionId)) {
-      sseSubscribers.set(sessionId, new Set());
+    if (!sseSubscribers.has(normSessionId)) {
+      sseSubscribers.set(normSessionId, new Set());
     }
-    const set = sseSubscribers.get(sessionId)!;
+    const set = sseSubscribers.get(normSessionId)!;
     set.add(res);
 
     req.on('close', () => {
       set.delete(res);
       if (set.size === 0) {
-        sseSubscribers.delete(sessionId);
+        sseSubscribers.delete(normSessionId);
       }
     });
   });

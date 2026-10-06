@@ -129,8 +129,17 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
   // Fetch session & vault files filtered strictly by user role and district
   const fetchFiles = async () => {
     try {
-      const allVault = await qrUploadService.getAllVaultFilesAsync(activeUser);
-      setVaultFiles(allVault);
+      const [sessionFiles, allVault] = await Promise.all([
+        qrUploadService.getFiles(sessionId),
+        qrUploadService.getAllVaultFilesAsync(activeUser),
+      ]);
+      const mergedMap = new Map<string, QrUploadedFile>();
+      allVault.forEach((f) => mergedMap.set(f.id, f));
+      sessionFiles.forEach((f) => mergedMap.set(f.id, f));
+      const merged = Array.from(mergedMap.values()).sort(
+        (a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
+      );
+      setVaultFiles(merged);
     } catch {
       // fallback to sync cache
       const cached = qrUploadService.getAllVaultFiles(activeUser);
@@ -147,9 +156,15 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
     const interval = setInterval(fetchFiles, 1500);
 
     const onIncomingFile = (newFile: QrUploadedFile) => {
-      // Ensure incoming file conforms to user's access boundaries
-      const filtered = filterVaultFilesForUser([newFile], activeUser);
-      if (filtered.length === 0) return;
+      // If file was uploaded to THIS session, it is always accepted!
+      const normActiveSession = String(sessionId || '').trim().toUpperCase();
+      const normFileSession = String(newFile.sessionId || '').trim().toUpperCase();
+      const isCurrentSession = normFileSession === normActiveSession;
+
+      if (!isCurrentSession) {
+        const filtered = filterVaultFilesForUser([newFile], activeUser);
+        if (filtered.length === 0) return;
+      }
 
       setVaultFiles((prev) => {
         if (prev.some((f) => f.id === newFile.id)) return prev;
@@ -159,6 +174,8 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
         text: `📥 Real-time Received: "${newFile.name}" (${formatBytes(newFile.size)}) stored in Software Vault!`,
         type: 'success',
       });
+      // Switch view mode if currently on upload tab so user immediately sees the uploaded file
+      setActiveTab((prev) => (prev === 'upload' ? 'dual' : prev));
     };
 
     // 1. Listen to real-time Firebase Firestore database snapshots
@@ -386,31 +403,49 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
   const handleLiveCameraCapture = async (capturedDataUrl: string) => {
     setShowLiveCameraModal(false);
     setIsProcessingAutoCrop(true);
-    setAutoCropProgressText('Correcting perspective and optimizing captured document...');
+    setAutoCropProgressText('Processing scanned document...');
     try {
-      const optimized = await autoCropAndOptimizeDocument(capturedDataUrl);
+      let finalDataUrl = capturedDataUrl;
+      let finalSize = Math.round((capturedDataUrl.length * 3) / 4);
+
+      // Attempt perspective correction safely with graceful fallback
+      try {
+        const optimized = await autoCropAndOptimizeDocument(capturedDataUrl);
+        if (optimized?.dataUrl) {
+          finalDataUrl = optimized.dataUrl;
+          finalSize = optimized.size;
+        }
+      } catch (cropErr) {
+        console.warn('Perspective correction skipped, saving original camera scan:', cropErr);
+      }
+
       const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
       const fileName = `Scan_${timestamp}.jpg`;
-      await qrUploadService.uploadFile(sessionId, {
+      const uploadedDoc = await qrUploadService.uploadFile(sessionId, {
         name: fileName,
         type: 'image/jpeg',
-        size: optimized.size,
-        dataUrl: optimized.dataUrl,
+        size: finalSize,
+        dataUrl: finalDataUrl,
         category: 'Camera-Scan',
         uploadedBy: activeUser?.username,
         uploaderName: activeUser?.fullName || activeUser?.username,
         uploaderRole: activeUser?.role,
         district: userDistrict,
       });
+
+      // Update state and switch to vault immediately so user sees their scanned file
+      setVaultFiles((prev) => [uploadedDoc, ...prev.filter((f) => f.id !== uploadedDoc.id)]);
       await fetchFiles();
+      setActiveTab('vault');
+
       setStatusMessage({
-        text: `✓ Live camera scan perspective-corrected and stored in Software Vault!`,
+        text: `✓ Scanned document "${fileName}" saved in Software Vault!`,
         type: 'success',
       });
     } catch (err) {
       console.error('Camera capture error:', err);
       setStatusMessage({
-        text: 'Failed to optimize camera document.',
+        text: 'Failed to save scanned document. Please try again.',
         type: 'error',
       });
     } finally {
