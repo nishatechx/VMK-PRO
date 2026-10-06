@@ -17,6 +17,16 @@ export interface QrUploadedFile {
   district?: string; // administrative district (e.g. 'Washim', 'Akola')
 }
 
+export interface CustomVaultFolder {
+  id: string;
+  name: string;
+  createdBy: string; // username of user who created the folder
+  creatorName?: string; // display name of creator
+  creatorRole?: string; // role of creator ('counsellor', 'supporting_staff', 'dno', etc.)
+  district?: string; // administrative district
+  createdAt: string; // ISO date
+}
+
 export const QR_BROADCAST_CHANNEL = 'vmk_qr_file_sync_channel';
 
 // Helper to format file sizes

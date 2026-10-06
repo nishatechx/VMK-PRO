@@ -1,5 +1,5 @@
-import { QrUploadedFile, QR_BROADCAST_CHANNEL } from '../types/qrUpload';
-export type { QrUploadedFile };
+import { QrUploadedFile, CustomVaultFolder, QR_BROADCAST_CHANNEL } from '../types/qrUpload';
+export type { QrUploadedFile, CustomVaultFolder };
 import { db } from '../lib/firebase';
 import { sanitizeForFirestore, getCurrentUser } from './authService';
 import { UserProfile } from '../types/auth';
@@ -23,43 +23,268 @@ import {
 
 const STORAGE_KEY_PREFIX = 'vmk_qr_files_';
 const VAULT_STORAGE_KEY = 'vmk_in_software_vault_v1';
-const VAULT_FOLDERS_STORAGE_KEY = 'vmk_vault_custom_folders_v1';
+const VAULT_FOLDERS_STORAGE_KEY = 'vmk_vault_custom_folders_v2';
+const LEGACY_VAULT_FOLDERS_STORAGE_KEY = 'vmk_vault_custom_folders_v1';
 
-export function getCustomVaultFolders(): string[] {
+/**
+ * Filter custom folders according to user role:
+ * - Super admin sees all folders across all users & districts
+ * - District Nodal Officer (DNO) can see all folders created by users in their district
+ * - Regular users / counsellors CANNOT see each other's folders (only their own)
+ */
+export function filterVaultFoldersForUser(
+  folders: CustomVaultFolder[],
+  user: UserProfile | null | undefined
+): CustomVaultFolder[] {
+  if (!user) return folders;
+
+  const isSuperAdmin = user.role === 'super_admin' || user.username?.toLowerCase() === 'shrinath';
+  if (isSuperAdmin) {
+    return folders;
+  }
+
+  const isDno = user.role === 'dno' || user.username?.toLowerCase() === 'dno';
+  if (isDno) {
+    // Master state-wide DNO sees all folders
+    if (user.username.toLowerCase() === 'dno' && !user.district) {
+      return folders;
+    }
+    const dnoDistrict = (user.district || 'Washim').trim().toLowerCase();
+    return folders.filter((f) => {
+      if (!f.district) return true;
+      return f.district.trim().toLowerCase() === dnoDistrict;
+    });
+  }
+
+  // Regular user / counsellor / operator:
+  // "dont show the folder of users to each others only dno can see"
+  const currentUsername = user.username.trim().toLowerCase();
+  return folders.filter((f) => {
+    const creator = (f.createdBy || '').trim().toLowerCase();
+    return creator === currentUsername;
+  });
+}
+
+export function getAllStoredCustomVaultFolders(): CustomVaultFolder[] {
   try {
     const raw = safeStorage.getItem(VAULT_FOLDERS_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        return parsed.map((item) => {
+          if (typeof item === 'string') {
+            return {
+              id: item,
+              name: item,
+              createdBy: 'counsellor',
+              createdAt: new Date().toISOString(),
+            };
+          }
+          return item as CustomVaultFolder;
+        });
+      }
+    }
+
+    // Check legacy key
+    const legacyRaw = safeStorage.getItem(LEGACY_VAULT_FOLDERS_STORAGE_KEY);
+    if (legacyRaw) {
+      const legacyParsed = JSON.parse(legacyRaw);
+      if (Array.isArray(legacyParsed)) {
+        const migrated: CustomVaultFolder[] = legacyParsed.map((name: string) => ({
+          id: String(name),
+          name: String(name),
+          createdBy: 'counsellor',
+          createdAt: new Date().toISOString(),
+        }));
+        saveAllCustomVaultFolders(migrated);
+        return migrated;
+      }
     }
   } catch {}
   return [];
 }
 
-export function saveCustomVaultFolders(folders: string[]): void {
+export function saveAllCustomVaultFolders(folders: CustomVaultFolder[]): void {
   try {
-    const unique = Array.from(new Set(folders.map((f) => f.trim()).filter(Boolean)));
-    safeStorage.setItem(VAULT_FOLDERS_STORAGE_KEY, JSON.stringify(unique));
+    const map = new Map<string, CustomVaultFolder>();
+    folders.forEach((f) => {
+      const key = `${(f.name || '').trim().toLowerCase()}__${(f.createdBy || '').trim().toLowerCase()}`;
+      if (!map.has(key)) map.set(key, f);
+    });
+    safeStorage.setItem(VAULT_FOLDERS_STORAGE_KEY, JSON.stringify(Array.from(map.values())));
   } catch {}
 }
 
-export function addCustomVaultFolder(folderName: string): string[] {
-  const clean = folderName.trim();
-  if (!clean) return getCustomVaultFolders();
-  const current = getCustomVaultFolders();
-  if (!current.includes(clean)) {
-    const updated = [...current, clean];
-    saveCustomVaultFolders(updated);
-    return updated;
-  }
-  return current;
+export function getCustomVaultFolders(forUser?: UserProfile | null): CustomVaultFolder[] {
+  const targetUser = forUser !== undefined ? forUser : getCurrentUser();
+  const all = getAllStoredCustomVaultFolders();
+  return filterVaultFoldersForUser(all, targetUser);
 }
 
-export function removeCustomVaultFolder(folderName: string): string[] {
-  const current = getCustomVaultFolders();
-  const updated = current.filter((f) => f.toLowerCase() !== folderName.trim().toLowerCase());
-  saveCustomVaultFolders(updated);
-  return updated;
+export function saveCustomVaultFolders(folders: CustomVaultFolder[]): void {
+  saveAllCustomVaultFolders(folders);
+}
+
+export function addCustomVaultFolder(
+  folderName: string,
+  forUser?: UserProfile | null
+): CustomVaultFolder[] {
+  const clean = folderName.trim();
+  const targetUser = forUser !== undefined ? forUser : getCurrentUser();
+  if (!clean) return getCustomVaultFolders(targetUser);
+
+  const currentUsername = targetUser?.username || 'counsellor';
+  const all = getAllStoredCustomVaultFolders();
+
+  const existingIndex = all.findIndex(
+    (f) => f.name.toLowerCase() === clean.toLowerCase() && f.createdBy.toLowerCase() === currentUsername.toLowerCase()
+  );
+
+  let updatedAll: CustomVaultFolder[];
+  let folderObj: CustomVaultFolder;
+
+  if (existingIndex >= 0) {
+    folderObj = all[existingIndex];
+    updatedAll = all;
+  } else {
+    folderObj = {
+      id: `folder_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      name: clean,
+      createdBy: currentUsername,
+      creatorName: targetUser?.fullName || targetUser?.username || 'Counsellor',
+      creatorRole: targetUser?.role || 'counsellor',
+      district: targetUser?.district || 'Washim',
+      createdAt: new Date().toISOString(),
+    };
+    updatedAll = [...all, folderObj];
+    saveAllCustomVaultFolders(updatedAll);
+  }
+
+  // Cloud sync to Server & Firestore
+  syncFolderToCloud(folderObj).catch(() => {});
+
+  return filterVaultFoldersForUser(updatedAll, targetUser);
+}
+
+export function removeCustomVaultFolder(
+  folderNameOrId: string,
+  forUser?: UserProfile | null
+): CustomVaultFolder[] {
+  const targetUser = forUser !== undefined ? forUser : getCurrentUser();
+  const isSuperAdmin = targetUser?.role === 'super_admin' || targetUser?.username?.toLowerCase() === 'shrinath';
+  const isDno = targetUser?.role === 'dno' || targetUser?.username?.toLowerCase() === 'dno';
+  const currentUsername = (targetUser?.username || '').trim().toLowerCase();
+
+  const all = getAllStoredCustomVaultFolders();
+  const updatedAll = all.filter((f) => {
+    const isTarget = f.id === folderNameOrId || f.name.toLowerCase() === folderNameOrId.trim().toLowerCase();
+    if (!isTarget) return true; // keep
+    // Can only delete if creator OR DNO / super admin
+    if (isSuperAdmin || isDno) return false; // remove
+    if (f.createdBy.toLowerCase() === currentUsername) return false; // remove
+    return true; // keep
+  });
+
+  saveAllCustomVaultFolders(updatedAll);
+  deleteFolderFromCloud(folderNameOrId, targetUser).catch(() => {});
+
+  return filterVaultFoldersForUser(updatedAll, targetUser);
+}
+
+async function syncFolderToCloud(folder: CustomVaultFolder): Promise<void> {
+  // 1. Server API
+  try {
+    await fetch('/api/vault-folders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(folder),
+    });
+  } catch {}
+
+  // 2. Firestore
+  try {
+    const docId = `folder_${folder.createdBy}_${folder.name.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+    await setDoc(doc(db, 'vault_folders', docId), sanitizeForFirestore(folder), { merge: true });
+  } catch {}
+}
+
+async function deleteFolderFromCloud(folderIdOrName: string, user?: UserProfile | null): Promise<void> {
+  const username = user?.username || '';
+  const role = user?.role || '';
+  // 1. Server API
+  try {
+    await fetch(`/api/vault-folders/${encodeURIComponent(folderIdOrName)}?username=${encodeURIComponent(username)}&role=${encodeURIComponent(role)}`, {
+      method: 'DELETE',
+    });
+  } catch {}
+
+  // 2. Firestore
+  try {
+    const q = query(
+      collection(db, 'vault_folders'),
+      where('name', '==', folderIdOrName)
+    );
+    const snap = await getDocs(q);
+    snap.forEach((d) => {
+      deleteDoc(d.ref).catch(() => {});
+    });
+  } catch {}
+}
+
+export async function fetchCustomVaultFoldersAsync(forUser?: UserProfile | null): Promise<CustomVaultFolder[]> {
+  const targetUser = forUser !== undefined ? forUser : getCurrentUser();
+  const map = new Map<string, CustomVaultFolder>();
+
+  // Add local stored
+  getAllStoredCustomVaultFolders().forEach((f) => {
+    map.set(`${f.name.toLowerCase()}__${f.createdBy.toLowerCase()}`, f);
+  });
+
+  // 1. Fetch from Server
+  try {
+    const params = new URLSearchParams();
+    if (targetUser) {
+      params.set('username', targetUser.username);
+      params.set('role', targetUser.role);
+      if (targetUser.district) params.set('district', targetUser.district);
+    }
+    const res = await fetch(`/api/vault-folders?${params.toString()}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.folders)) {
+        data.folders.forEach((f: CustomVaultFolder) => {
+          map.set(`${f.name.toLowerCase()}__${f.createdBy.toLowerCase()}`, f);
+        });
+      }
+    }
+  } catch {}
+
+  // 2. Fetch from Firestore
+  try {
+    const isSuperAdmin = targetUser?.role === 'super_admin' || targetUser?.username?.toLowerCase() === 'shrinath';
+    const isDno = targetUser?.role === 'dno' || targetUser?.username?.toLowerCase() === 'dno';
+
+    let q;
+    if (isSuperAdmin || isDno) {
+      q = query(collection(db, 'vault_folders'), limit(100));
+    } else if (targetUser?.username) {
+      q = query(collection(db, 'vault_folders'), where('createdBy', '==', targetUser.username), limit(50));
+    } else {
+      q = query(collection(db, 'vault_folders'), limit(30));
+    }
+
+    const snap = await getDocs(q);
+    snap.forEach((d) => {
+      const f = d.data() as CustomVaultFolder;
+      if (f && f.name && f.createdBy) {
+        map.set(`${f.name.toLowerCase()}__${f.createdBy.toLowerCase()}`, f);
+      }
+    });
+  } catch {}
+
+  const merged = Array.from(map.values());
+  saveAllCustomVaultFolders(merged);
+  return filterVaultFoldersForUser(merged, targetUser);
 }
 
 // In-memory cache for ultra-fast document access without LocalStorage bloat

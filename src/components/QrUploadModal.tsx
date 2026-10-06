@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import {
   QrUploadedFile,
+  CustomVaultFolder,
   formatBytes,
   fileToDataUrl,
   triggerFileDownload,
@@ -47,6 +48,7 @@ import {
   qrUploadService,
   filterVaultFilesForUser,
   getCustomVaultFolders,
+  fetchCustomVaultFoldersAsync,
   addCustomVaultFolder,
   removeCustomVaultFolder,
 } from '../services/qrUploadService';
@@ -178,8 +180,8 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
     type: '',
   });
 
-  // Folder navigation and custom folders management
-  const [customFolders, setCustomFolders] = useState<string[]>(() => getCustomVaultFolders());
+  // Folder navigation and custom folders management (Isolated per user, with DNO audit view)
+  const [customFolders, setCustomFolders] = useState<CustomVaultFolder[]>(() => getCustomVaultFolders(activeUser));
   const [activeFolder, setActiveFolder] = useState<{
     type: 'custom' | 'date';
     name: string;
@@ -188,6 +190,10 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
   const [showNewFolderModal, setShowNewFolderModal] = useState<boolean>(false);
   const [newFolderNameInput, setNewFolderNameInput] = useState<string>('');
   const [moveTargetFile, setMoveTargetFile] = useState<QrUploadedFile | null>(null);
+
+  useEffect(() => {
+    setCustomFolders(getCustomVaultFolders(activeUser));
+  }, [activeUser]);
 
   // AI & Computer Vision Auto-Cropping States
   const [autoCropOnUpload, setAutoCropOnUpload] = useState<boolean>(true);
@@ -209,9 +215,10 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
   // Fetch session & vault files filtered strictly by user role and district
   const fetchFiles = async () => {
     try {
-      const [sessionFiles, allVault] = await Promise.all([
+      const [sessionFiles, allVault, remoteFolders] = await Promise.all([
         qrUploadService.getFiles(sessionId),
         qrUploadService.getAllVaultFilesAsync(activeUser),
+        fetchCustomVaultFoldersAsync(activeUser),
       ]);
       const mergedMap = new Map<string, QrUploadedFile>();
       allVault.forEach((f) => mergedMap.set(f.id, f));
@@ -220,10 +227,12 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
         (a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
       );
       setVaultFiles(merged);
+      setCustomFolders(remoteFolders);
     } catch {
       // fallback to sync cache
       const cached = qrUploadService.getAllVaultFiles(activeUser);
       setVaultFiles(cached);
+      setCustomFolders(getCustomVaultFolders(activeUser));
     }
   };
 
@@ -576,7 +585,7 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
   const handleCreateFolder = (name: string) => {
     const clean = name.trim();
     if (!clean) return;
-    const updated = addCustomVaultFolder(clean);
+    const updated = addCustomVaultFolder(clean, activeUser);
     setCustomFolders(updated);
     setShowNewFolderModal(false);
     setNewFolderNameInput('');
@@ -584,7 +593,7 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
   };
 
   const handleDeleteCustomFolder = async (folderName: string) => {
-    const updated = removeCustomVaultFolder(folderName);
+    const updated = removeCustomVaultFolder(folderName, activeUser);
     setCustomFolders(updated);
     if (activeFolder && activeFolder.key.toLowerCase() === folderName.toLowerCase()) {
       setActiveFolder(null);
@@ -1299,18 +1308,27 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
 
                           <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
                             {/* Custom folders created by user */}
-                            {customFolders.map((folderName) => {
+                            {customFolders.map((folder) => {
+                              const folderName = folder.name;
                               const count = vaultFiles.filter((f) => (f.folder || '').trim().toLowerCase() === folderName.toLowerCase()).length;
+                              const isOtherCreator = isDno && folder.createdBy && folder.createdBy.toLowerCase() !== (activeUser?.username || '').toLowerCase();
                               return (
                                 <div
-                                  key={folderName}
+                                  key={folder.id || `${folderName}_${folder.createdBy}`}
                                   onClick={() => setActiveFolder({ type: 'custom', name: folderName, key: folderName })}
                                   className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-white hover:bg-amber-50/50 border border-slate-200 hover:border-amber-400 rounded-xl cursor-pointer transition-all shadow-2xs group"
                                 >
                                   <Folder className="w-4 h-4 text-amber-500 fill-amber-100 shrink-0" />
                                   <div className="text-left min-w-0">
                                     <p className="text-xs font-bold text-slate-800 group-hover:text-amber-900 truncate max-w-[130px]">{folderName}</p>
-                                    <p className="text-[10px] text-slate-400">{count} {count === 1 ? 'doc' : 'docs'}</p>
+                                    <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                                      <span>{count} {count === 1 ? 'doc' : 'docs'}</span>
+                                      {isOtherCreator && (
+                                        <span className="text-amber-700 font-medium truncate max-w-[80px]" title={`Created by ${folder.creatorName || folder.createdBy}`}>
+                                          • {folder.creatorName || folder.createdBy}
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
                               );
@@ -2067,11 +2085,13 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
               </button>
 
               {/* Custom Folders */}
-              {customFolders.map((folderName) => {
+              {customFolders.map((folder) => {
+                const folderName = folder.name;
                 const isSelected = (moveTargetFile.folder || '').toLowerCase() === folderName.toLowerCase();
+                const isOtherCreator = isDno && folder.createdBy && folder.createdBy.toLowerCase() !== (activeUser?.username || '').toLowerCase();
                 return (
                   <button
-                    key={folderName}
+                    key={folder.id || `${folderName}_${folder.createdBy}`}
                     type="button"
                     onClick={() => handleMoveFileToFolder(moveTargetFile, folderName)}
                     className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
@@ -2083,6 +2103,11 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                     <span className="flex items-center gap-2 truncate">
                       <Folder className="w-3.5 h-3.5 text-amber-500 fill-amber-100 shrink-0" />
                       <span className="truncate">{folderName}</span>
+                      {isOtherCreator && (
+                        <span className="text-[10px] font-normal text-slate-400 truncate">
+                          ({folder.creatorName || folder.createdBy})
+                        </span>
+                      )}
                     </span>
                     {isSelected && <Check className="w-3.5 h-3.5 text-amber-600 shrink-0" />}
                   </button>

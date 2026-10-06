@@ -100,7 +100,9 @@ function broadcastToFileSubscribers(sessionId: string, file: QrUploadedFile) {
 
 async function startServer() {
   const app = express();
-  const PORT = Number(process.env.PORT) || 3000;
+  // Note: Nginx listens on port 8080 (Cloud Run entrypoint) and proxies to localhost:3000.
+  // The Node application must always listen on port 3000.
+  const PORT = process.env.PORT && process.env.PORT !== "8080" ? Number(process.env.PORT) : 3000;
 
   // Configure high body limit for high-resolution images & PDFs uploaded via mobile
   app.use(express.json({ limit: '100mb' }));
@@ -1043,6 +1045,128 @@ async function startServer() {
       return res.json({ success: true });
     } catch (err: any) {
       return res.status(500).json({ error: err?.message || 'Error deleting file' });
+    }
+  });
+
+  // -----------------------------------------------------------------
+  // CUSTOM VAULT FOLDERS API (USER ISOLATION + DNO AUDIT ACCESS)
+  // "dont show the folder of users to each others only dno can see"
+  // -----------------------------------------------------------------
+  const FOLDERS_FILE = path.join(DATA_DIR, "vault_folders.json");
+
+  function getStoredFolders(): any[] {
+    try {
+      if (fs.existsSync(FOLDERS_FILE)) {
+        const raw = fs.readFileSync(FOLDERS_FILE, "utf-8");
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) return list;
+      }
+    } catch {}
+    return [];
+  }
+
+  function saveStoredFolders(list: any[]): void {
+    try {
+      fs.writeFileSync(FOLDERS_FILE, JSON.stringify(list, null, 2), "utf-8");
+    } catch (e) {
+      console.error("Failed to save folders to disk:", e);
+    }
+  }
+
+  app.get("/api/vault-folders", (req, res) => {
+    try {
+      const username = String(req.query.username || "").trim().toLowerCase();
+      const role = String(req.query.role || "").trim().toLowerCase();
+      const district = String(req.query.district || "").trim().toLowerCase();
+
+      const allFolders = getStoredFolders();
+      const isSuperAdmin = role === 'super_admin' || username === 'shrinath';
+      const isDno = role === 'dno' || username === 'dno';
+
+      if (isSuperAdmin) {
+        return res.json({ success: true, folders: allFolders });
+      }
+
+      if (isDno) {
+        if (username === 'dno' && !district) {
+          return res.json({ success: true, folders: allFolders });
+        }
+        const filtered = allFolders.filter((f) => {
+          if (!f.district) return true;
+          return (f.district || '').trim().toLowerCase() === district;
+        });
+        return res.json({ success: true, folders: filtered });
+      }
+
+      // Regular user / counsellor / operator:
+      // "dont show the folder of users to each others only dno can see"
+      const filtered = allFolders.filter((f) => {
+        return (f.createdBy || '').trim().toLowerCase() === username;
+      });
+      return res.json({ success: true, folders: filtered });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Error fetching folders' });
+    }
+  });
+
+  app.post("/api/vault-folders", (req, res) => {
+    try {
+      const { name, createdBy, creatorName, creatorRole, district } = req.body;
+      const cleanName = String(name || '').trim();
+      const cleanCreator = String(createdBy || '').trim();
+      if (!cleanName || !cleanCreator) {
+        return res.status(400).json({ error: 'Name and createdBy are required' });
+      }
+
+      const allFolders = getStoredFolders();
+      const existing = allFolders.find(
+        (f) => f.name.toLowerCase() === cleanName.toLowerCase() && f.createdBy.toLowerCase() === cleanCreator.toLowerCase()
+      );
+
+      if (existing) {
+        return res.json({ success: true, folder: existing });
+      }
+
+      const newFolder = {
+        id: `folder_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        name: cleanName,
+        createdBy: cleanCreator,
+        creatorName: creatorName ? String(creatorName).trim() : cleanCreator,
+        creatorRole: creatorRole ? String(creatorRole).trim() : 'counsellor',
+        district: district ? String(district).trim() : undefined,
+        createdAt: new Date().toISOString(),
+      };
+
+      allFolders.push(newFolder);
+      saveStoredFolders(allFolders);
+      return res.json({ success: true, folder: newFolder });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Error saving folder' });
+    }
+  });
+
+  app.delete("/api/vault-folders/:id", (req, res) => {
+    try {
+      const folderId = req.params.id;
+      const username = String(req.query.username || "").trim().toLowerCase();
+      const role = String(req.query.role || "").trim().toLowerCase();
+
+      const isSuperAdmin = role === 'super_admin' || username === 'shrinath';
+      const isDno = role === 'dno' || username === 'dno';
+
+      const allFolders = getStoredFolders();
+      const idx = allFolders.findIndex((f) => f.id === folderId || f.name.toLowerCase() === folderId.toLowerCase());
+      if (idx >= 0) {
+        const folder = allFolders[idx];
+        if (!isSuperAdmin && !isDno && folder.createdBy.toLowerCase() !== username) {
+          return res.status(403).json({ error: 'Cannot delete folder created by another user' });
+        }
+        allFolders.splice(idx, 1);
+        saveStoredFolders(allFolders);
+      }
+      return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Error deleting folder' });
     }
   });
 
