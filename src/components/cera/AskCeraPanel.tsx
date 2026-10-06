@@ -13,6 +13,7 @@ import {
   CeraCitation,
 } from '../../types/cera';
 import { askCera } from '../../services/ceraService';
+import { APP_ASSETS } from '../../constants/assets';
 
 interface AskCeraPanelProps {
   activeDocument?: CeraDocument | null;
@@ -111,14 +112,14 @@ export const AskCeraPanel: React.FC<AskCeraPanelProps> = ({
 
   return (
     <div className="flex flex-col h-full bg-[#FFFFFF] text-[#172033] border-l border-[#E2E8F0] overflow-hidden select-none">
-      {/* 1. CLEAN ASK CIA HEADER (Section 24 & Header instructions) */}
+      {/* 1. CLEAN ASK SIA HEADER */}
       <div className="px-4 py-3 bg-[#FFFFFF] border-b border-[#E2E8F0] flex items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-2">
-          <div className="w-5 h-5 rounded-md bg-[#FF8A00] flex items-center justify-center text-white font-bold text-[10px] shrink-0">
-            C
+          <div className="w-6 h-6 rounded-md bg-white border border-[#E2E8F0] p-0.5 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
+            <img src={APP_ASSETS.SIA} alt="SIA" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
           </div>
-          <h3 className="text-sm font-semibold text-[#172033]">
-            Ask CIA
+          <h3 className="text-sm font-bold text-[#172033]">
+            Ask SIA
           </h3>
         </div>
 

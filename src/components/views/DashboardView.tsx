@@ -277,8 +277,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   if (onOpenKnowledgeCenter) {
     facilitationTools.push({
       id: 'dashboard-tool-knowledge-center',
-      title: 'CIA',
-      imageSrc: APP_ASSETS.LOGO,
+      title: 'SIA',
+      imageSrc: APP_ASSETS.SIA,
       onClick: onOpenKnowledgeCenter,
     });
   }

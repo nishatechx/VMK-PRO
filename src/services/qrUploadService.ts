@@ -23,6 +23,44 @@ import {
 
 const STORAGE_KEY_PREFIX = 'vmk_qr_files_';
 const VAULT_STORAGE_KEY = 'vmk_in_software_vault_v1';
+const VAULT_FOLDERS_STORAGE_KEY = 'vmk_vault_custom_folders_v1';
+
+export function getCustomVaultFolders(): string[] {
+  try {
+    const raw = safeStorage.getItem(VAULT_FOLDERS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+export function saveCustomVaultFolders(folders: string[]): void {
+  try {
+    const unique = Array.from(new Set(folders.map((f) => f.trim()).filter(Boolean)));
+    safeStorage.setItem(VAULT_FOLDERS_STORAGE_KEY, JSON.stringify(unique));
+  } catch {}
+}
+
+export function addCustomVaultFolder(folderName: string): string[] {
+  const clean = folderName.trim();
+  if (!clean) return getCustomVaultFolders();
+  const current = getCustomVaultFolders();
+  if (!current.includes(clean)) {
+    const updated = [...current, clean];
+    saveCustomVaultFolders(updated);
+    return updated;
+  }
+  return current;
+}
+
+export function removeCustomVaultFolder(folderName: string): string[] {
+  const current = getCustomVaultFolders();
+  const updated = current.filter((f) => f.toLowerCase() !== folderName.trim().toLowerCase());
+  saveCustomVaultFolders(updated);
+  return updated;
+}
 
 // In-memory cache for ultra-fast document access without LocalStorage bloat
 let inMemoryVaultFiles: QrUploadedFile[] = [];
@@ -72,9 +110,14 @@ export function filterVaultFilesForUser(
 
   // Any other counselor / staff / operator:
   const currentUsername = user.username.trim().toLowerCase();
+  const userDist = (user.district || '').trim().toLowerCase();
   return files.filter((f) => {
     const uploader = (f.uploadedBy || '').trim().toLowerCase();
-    return !uploader || uploader === currentUsername || uploader === 'counsellor' || uploader === 'anonymous';
+    const fileDist = (f.district || '').trim().toLowerCase();
+    if (!uploader || uploader === 'anonymous' || uploader === 'counsellor' || uploader === 'mobile') return true;
+    if (uploader === currentUsername) return true;
+    if (userDist && fileDist && userDist === fileDist) return true;
+    return false;
   });
 }
 
@@ -88,6 +131,7 @@ export const qrUploadService = {
       size: number;
       dataUrl: string;
       category?: string;
+      folder?: string;
       uploadedBy?: string;
       uploaderName?: string;
       uploaderRole?: string;
@@ -447,19 +491,21 @@ export const qrUploadService = {
     return newStatus;
   },
 
-  // Update an existing file in session, vault, server, and Firestore (e.g. after Smart Cropping)
+  // Update an existing file in session, vault, server, and Firestore (e.g. after Smart Cropping or moving to folder)
   async updateVaultFile(
     fileId: string,
-    updates: { dataUrl: string; size?: number; name?: string; sessionId?: string }
+    updates: { dataUrl?: string; size?: number; name?: string; sessionId?: string; folder?: string | null }
   ): Promise<QrUploadedFile | null> {
     let updated: QrUploadedFile | null = null;
 
     // 1. Update in Firestore
     try {
       const docRef = doc(db, 'qr_uploads', fileId);
-      const updateData: any = { dataUrl: updates.dataUrl };
+      const updateData: any = {};
+      if (updates.dataUrl) updateData.dataUrl = updates.dataUrl;
       if (updates.size !== undefined) updateData.size = updates.size;
       if (updates.name) updateData.name = updates.name;
+      if (updates.folder !== undefined) updateData.folder = updates.folder || null;
       await updateDoc(docRef, updateData);
     } catch (err) {
       console.warn('[Firebase] Warning updating Firestore document:', err);
@@ -476,6 +522,7 @@ export const qrUploadService = {
           dataUrl: updates.dataUrl,
           size: updates.size,
           name: updates.name,
+          folder: updates.folder !== undefined ? updates.folder : undefined,
         }),
       });
       if (res.ok) {
@@ -494,9 +541,10 @@ export const qrUploadService = {
       if (idx >= 0) {
         inMemoryVaultFiles[idx] = {
           ...inMemoryVaultFiles[idx],
-          dataUrl: updates.dataUrl,
+          dataUrl: updates.dataUrl || inMemoryVaultFiles[idx].dataUrl,
           size: updates.size !== undefined ? updates.size : inMemoryVaultFiles[idx].size,
           name: updates.name || inMemoryVaultFiles[idx].name,
+          folder: updates.folder !== undefined ? (updates.folder || undefined) : inMemoryVaultFiles[idx].folder,
         };
         if (!updated) updated = inMemoryVaultFiles[idx];
         idbSaveFile(inMemoryVaultFiles[idx]).catch(() => {});
@@ -511,9 +559,10 @@ export const qrUploadService = {
           if (sIdx >= 0) {
             list[sIdx] = {
               ...list[sIdx],
-              dataUrl: updates.dataUrl,
+              dataUrl: updates.dataUrl || list[sIdx].dataUrl,
               size: updates.size !== undefined ? updates.size : list[sIdx].size,
               name: updates.name || list[sIdx].name,
+              folder: updates.folder !== undefined ? (updates.folder || undefined) : list[sIdx].folder,
             };
             if (!updated) updated = list[sIdx];
             safeStorage.setItem(key, JSON.stringify(list));

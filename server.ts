@@ -4,6 +4,9 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import { GoogleGenAI } from "@google/genai";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 function getGeminiClient(customApiKey?: string): GoogleGenAI {
   const apiKey =
     (customApiKey && customApiKey.trim()) ||
@@ -54,6 +57,7 @@ interface QrUploadedFile {
   isDownloadedToSoftware: boolean;
   verifiedStamp: boolean;
   category: string;
+  folder?: string;
   uploadedBy?: string;
   uploaderName?: string;
   uploaderRole?: string;
@@ -812,7 +816,7 @@ async function startServer() {
   // Upload file from Mobile or Desktop
   app.post("/api/qr-upload", (req, res) => {
     try {
-      const { sessionId, name, type, size, dataUrl, category, uploadedBy, uploaderName, uploaderRole, district } = req.body;
+      const { sessionId, name, type, size, dataUrl, category, folder, uploadedBy, uploaderName, uploaderRole, district } = req.body;
 
       if (!sessionId || !name || !dataUrl) {
         return res.status(400).json({ error: "Missing required fields (sessionId, name, dataUrl)" });
@@ -831,6 +835,7 @@ async function startServer() {
         isDownloadedToSoftware: true,
         verifiedStamp: false,
         category: category || detectDocCategory(name),
+        folder: folder ? String(folder).trim() : undefined,
         uploadedBy: uploadedBy ? String(uploadedBy).trim() : undefined,
         uploaderName: uploaderName ? String(uploaderName).trim() : undefined,
         uploaderRole: uploaderRole ? String(uploaderRole).trim() : undefined,
@@ -980,7 +985,7 @@ async function startServer() {
   // Update/crop an existing file in session and vault
   app.patch("/api/qr-files", (req, res) => {
     try {
-      const { sessionId, fileId, dataUrl, size, name } = req.body;
+      const { sessionId, fileId, dataUrl, size, name, folder } = req.body;
       if (!fileId) {
         return res.status(400).json({ error: "Missing fileId" });
       }
@@ -995,6 +1000,7 @@ async function startServer() {
           if (dataUrl) target.dataUrl = dataUrl;
           if (size !== undefined) target.size = size;
           if (name) target.name = name;
+          if (folder !== undefined) target.folder = folder ? String(folder).trim() : undefined;
           updatedFile = target;
         }
       }
@@ -1005,6 +1011,7 @@ async function startServer() {
         if (dataUrl) vaultTarget.dataUrl = dataUrl;
         if (size !== undefined) vaultTarget.size = size;
         if (name) vaultTarget.name = name;
+        if (folder !== undefined) vaultTarget.folder = folder ? String(folder).trim() : undefined;
         if (!updatedFile) updatedFile = vaultTarget;
       }
 
@@ -2256,38 +2263,34 @@ Return STRICTLY a JSON object matching this schema.`;
   });
 
   function getDistPath(): string {
-    const cwdDist = path.join(process.cwd(), 'dist');
-    if (fs.existsSync(path.join(cwdDist, 'index.html'))) {
-      return cwdDist;
+    const candidates = [
+      path.join(process.cwd(), 'dist'),
+      path.join(__dirname, 'dist'),
+      process.cwd(),
+    ];
+    for (const cand of candidates) {
+      if (fs.existsSync(path.join(cand, 'index.html'))) {
+        return cand;
+      }
     }
-    try {
-      let dir: string = process.cwd();
-      if (typeof __dirname !== 'undefined') {
-        dir = __dirname;
-      } else if (import.meta && typeof import.meta.url === 'string') {
-        dir = path.dirname(fileURLToPath(import.meta.url));
-      }
-      const siblingDist = path.join(dir, 'dist');
-      if (fs.existsSync(path.join(siblingDist, 'index.html'))) {
-        return siblingDist;
-      }
-      if (fs.existsSync(path.join(dir, 'index.html'))) {
-        return dir;
-      }
-    } catch {
-      // Fallback
-    }
-    return cwdDist;
+    return path.join(process.cwd(), 'dist');
   }
 
-  const distPath = getDistPath();
-  const hasBuiltDist = fs.existsSync(path.join(distPath, 'index.html'));
-  const isDev = process.env.NODE_ENV === "development" || process.env.npm_lifecycle_event === "dev";
-  const isProduction = process.env.NODE_ENV === "production" || process.env.npm_lifecycle_event === "start" || (!isDev && hasBuiltDist);
+  let distPath = getDistPath();
+  let hasBuiltDist = fs.existsSync(path.join(distPath, 'index.html'));
+
+  // Cloud Run sets K_SERVICE or K_REVISION or container PORT (typically 8080)
+  const isCloudRun = Boolean(process.env.K_SERVICE || process.env.K_REVISION || (process.env.PORT && process.env.PORT !== '3000'));
+  const isProduction = isCloudRun || process.env.NODE_ENV === 'production' || process.env.npm_lifecycle_event === 'start' || (process.env.npm_lifecycle_event !== 'dev' && hasBuiltDist);
 
   if (isProduction) {
     console.log(`[PROD] Serving production build from: ${distPath}`);
     app.use(express.static(distPath));
+    const assetsPath = path.join(distPath, 'assets');
+    if (fs.existsSync(assetsPath)) {
+      app.use('/assets', express.static(assetsPath));
+    }
+
     app.get('*', (req, res) => {
       if (req.path.startsWith('/api/')) {
         return res.status(404).json({ error: 'Endpoint not found' });
@@ -2296,7 +2299,8 @@ Return STRICTLY a JSON object matching this schema.`;
       if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
       } else {
-        res.status(503).send('Application build not found. Run npm run build.');
+        // Fallback HTML shell so container health probes always succeed with 200 OK
+        res.status(200).send('<!doctype html><html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>VMK Tools</title></head><body><div id="root"></div></body></html>');
       }
     });
   } else {

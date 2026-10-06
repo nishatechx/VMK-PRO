@@ -130,6 +130,45 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
     }
 
     if (newItems.length > 0) {
+      // If captured directly via Camera, auto-upload immediately to the vault
+      const isFromCamera = e.target === cameraInputRef.current;
+      if (isFromCamera) {
+        setIsUploading(true);
+        setStatusMsg({ text: `Uploading ${newItems.length} scanned document(s) to computer...`, type: '' });
+        try {
+          for (const item of newItems) {
+            const dataUrl = item.previewUrl || (await fileToDataUrl(item.file));
+            await qrUploadService.uploadFile(cleanSessionId, {
+              name: item.file.name.startsWith('image') ? `Scan_${new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14)}.jpg` : item.file.name,
+              type: item.file.type || 'image/jpeg',
+              size: item.file.size,
+              dataUrl,
+              category: 'Camera-Scan',
+              uploadedBy: uploaderParams.uploadedBy,
+              uploaderName: uploaderParams.uploaderName,
+              uploaderRole: uploaderParams.uploaderRole,
+              district: uploaderParams.district,
+            });
+          }
+          setStatusMsg({
+            text: `✓ ${newItems.length} scanned document(s) uploaded to computer vault!`,
+            type: 'success',
+          });
+          await loadFiles();
+        } catch (err) {
+          console.error('Camera auto-upload error:', err);
+          setStagedFiles((prev) => [...prev, ...newItems]);
+          setStatusMsg({
+            text: 'Upload delayed. Tap "Upload" below to finish.',
+            type: 'error',
+          });
+        } finally {
+          setIsUploading(false);
+          if (cameraInputRef.current) cameraInputRef.current.value = '';
+        }
+        return;
+      }
+
       setStagedFiles((prev) => [...prev, ...newItems]);
     }
 

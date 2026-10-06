@@ -200,7 +200,9 @@ export const SmartCropModal: React.FC<SmartCropModalProps> = ({
 
     try {
       const img = new Image();
-      img.crossOrigin = 'anonymous';
+      if (currentPage.sourceDataUrl && !currentPage.sourceDataUrl.startsWith('data:') && !currentPage.sourceDataUrl.startsWith('blob:')) {
+        img.crossOrigin = 'anonymous';
+      }
       await new Promise<void>((resolve, reject) => {
         img.onload = () => resolve();
         img.onerror = () => reject(new Error('Failed to load image for preview'));
@@ -412,7 +414,9 @@ export const SmartCropModal: React.FC<SmartCropModalProps> = ({
     if (!currentPage) return;
     try {
       const img = new Image();
-      img.crossOrigin = 'anonymous';
+      if (currentPage.sourceDataUrl && !currentPage.sourceDataUrl.startsWith('data:') && !currentPage.sourceDataUrl.startsWith('blob:')) {
+        img.crossOrigin = 'anonymous';
+      }
       await new Promise<void>((resolve, reject) => {
         img.onload = () => resolve();
         img.onerror = () => reject(new Error('Image rotate failed'));
@@ -567,7 +571,9 @@ export const SmartCropModal: React.FC<SmartCropModalProps> = ({
   ): Promise<{ dataUrl: string; size: number }> => {
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
       const el = new Image();
-      el.crossOrigin = 'anonymous';
+      if (page.sourceDataUrl && !page.sourceDataUrl.startsWith('data:') && !page.sourceDataUrl.startsWith('blob:')) {
+        el.crossOrigin = 'anonymous';
+      }
       el.onload = () => resolve(el);
       el.onerror = () => reject(new Error('Failed to load page image for rendering'));
       el.src = page.sourceDataUrl;

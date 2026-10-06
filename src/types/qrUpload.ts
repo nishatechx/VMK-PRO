@@ -9,6 +9,7 @@ export interface QrUploadedFile {
   isDownloadedToSoftware?: boolean;
   verifiedStamp?: boolean;
   category?: string;
+  folder?: string; // Optional custom folder assignment
   notes?: string;
   uploadedBy?: string; // username of user who uploaded (e.g. 'counsellor1', 'dno')
   uploaderName?: string; // display name of uploader

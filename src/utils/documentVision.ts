@@ -904,7 +904,9 @@ async function optimizeImageForAiDetection(dataUrl: string): Promise<string> {
   if (!dataUrl || dataUrl.length < 1.2 * 1024 * 1024) return dataUrl;
   return new Promise((resolve) => {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    if (dataUrl && !dataUrl.startsWith('data:') && !dataUrl.startsWith('blob:')) {
+      img.crossOrigin = 'anonymous';
+    }
     img.onload = () => {
       const maxDim = 1600;
       let w = img.width;
@@ -940,6 +942,9 @@ export async function detectDocumentWithAI(
 ): Promise<DetectionResult> {
   try {
     const optimizedImage = await optimizeImageForAiDetection(dataUrl);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
+
     const res = await fetch('/api/ai-document-detect', {
       method: 'POST',
       headers: {
@@ -949,7 +954,8 @@ export async function detectDocumentWithAI(
         image: optimizedImage,
         apiKey: customApiKey,
       }),
-    });
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeoutId));
 
     if (res.ok) {
       const data = await res.json();
@@ -999,7 +1005,9 @@ export async function detectDocumentWithAI(
   // Fast client CV fallback
   return new Promise((resolve) => {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    if (dataUrl && !dataUrl.startsWith('data:') && !dataUrl.startsWith('blob:')) {
+      img.crossOrigin = 'anonymous';
+    }
     img.onload = () => {
       resolve(fastClientCornerDetection(img));
     };
@@ -1108,7 +1116,9 @@ export async function autoCropAndOptimizeDocument(
 
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
       const el = new Image();
-      el.crossOrigin = 'anonymous';
+      if (dataUrl && !dataUrl.startsWith('data:') && !dataUrl.startsWith('blob:')) {
+        el.crossOrigin = 'anonymous';
+      }
       el.onload = () => resolve(el);
       el.onerror = () => reject(new Error('Failed to load image for auto-crop'));
       el.src = dataUrl;
@@ -1184,7 +1194,9 @@ export async function compressImageForUpload(
   }
   return new Promise((resolve) => {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    if (dataUrl && !dataUrl.startsWith('data:') && !dataUrl.startsWith('blob:')) {
+      img.crossOrigin = 'anonymous';
+    }
     img.onload = () => {
       let w = img.naturalWidth || img.width;
       let h = img.naturalHeight || img.height;

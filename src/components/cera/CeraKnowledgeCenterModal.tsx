@@ -25,6 +25,7 @@ import {
   CeraCitation,
   EducationSection,
 } from '../../types/cera';
+import { APP_ASSETS } from '../../constants/assets';
 import {
   getAllCeraDocuments,
   openCeraPdfPage,
@@ -231,11 +232,11 @@ export const CeraKnowledgeCenterModal: React.FC<CeraKnowledgeCenterModalProps> =
 
             {/* Logo */}
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-md bg-[#FF8A00] flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-2xs">
-                C
+              <div className="w-7 h-7 rounded-lg bg-white border border-[#E2E8F0] p-0.5 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
+                <img src={APP_ASSETS.SIA} alt="SIA" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
               </div>
-              <span className="font-semibold text-base tracking-tight text-[#172033]">
-                CIA
+              <span className="font-bold text-base tracking-tight text-[#172033]">
+                SIA
               </span>
             </div>
 

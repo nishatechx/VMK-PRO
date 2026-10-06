@@ -528,16 +528,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onOpenKnowledgeCenter();
                     if (onClose && window.innerWidth < 768) onClose();
                   }}
-                  title={isCollapsed ? 'CIA' : undefined}
+                  title={isCollapsed ? 'SIA' : undefined}
                   className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-[#003B73] hover:text-white bg-[#EAF4FB] hover:bg-[#0056A6] border border-[#BAE0FD] hover:border-[#0056A6] transition-all cursor-pointer shadow-2xs group ${
                     isCollapsed ? 'justify-center px-0 py-2.5' : ''
                   }`}
                 >
                   <div className="w-7 h-7 rounded-xl bg-white border border-[#D9E1EA] p-0.5 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
-                    <img src={APP_ASSETS.LOGO} alt="CIA" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                    <img src={APP_ASSETS.SIA} alt="SIA" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                   </div>
                   {!isCollapsed && (
-                    <span className="flex-1 text-left truncate font-bold">CIA</span>
+                    <span className="flex-1 text-left truncate font-bold">SIA</span>
                   )}
                 </button>
               )}

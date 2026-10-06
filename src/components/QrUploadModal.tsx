@@ -30,6 +30,11 @@ import {
   Sparkles,
   Camera,
   RotateCw,
+  Folder,
+  FolderPlus,
+  FolderOpen,
+  Calendar,
+  ArrowLeft,
 } from 'lucide-react';
 import {
   QrUploadedFile,
@@ -38,7 +43,13 @@ import {
   triggerFileDownload,
   printDocumentDirectly,
 } from '../types/qrUpload';
-import { qrUploadService, filterVaultFilesForUser } from '../services/qrUploadService';
+import {
+  qrUploadService,
+  filterVaultFilesForUser,
+  getCustomVaultFolders,
+  addCustomVaultFolder,
+  removeCustomVaultFolder,
+} from '../services/qrUploadService';
 import { UserProfile } from '../types/auth';
 import { getCurrentUser } from '../services/authService';
 import { InSoftwareDocumentViewer } from './InSoftwareDocumentViewer';
@@ -76,6 +87,64 @@ function formatDocumentDate(isoString: string): string {
   }
 }
 
+function isTodayDate(isoString: string): boolean {
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return false;
+    const now = new Date();
+    return (
+      d.getDate() === now.getDate() &&
+      d.getMonth() === now.getMonth() &&
+      d.getFullYear() === now.getFullYear()
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isYesterdayDate(isoString: string): boolean {
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return false;
+    const yest = new Date();
+    yest.setDate(yest.getDate() - 1);
+    return (
+      d.getDate() === yest.getDate() &&
+      d.getMonth() === yest.getMonth() &&
+      d.getFullYear() === yest.getFullYear()
+    );
+  } catch {
+    return false;
+  }
+}
+
+function getDateKey(isoString: string): string {
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return 'unknown';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  } catch {
+    return 'unknown';
+  }
+}
+
+function formatDateFolderLabel(isoString: string): string {
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return 'Archive';
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    if (isYesterdayDate(isoString)) {
+      return `Yesterday (${d.getDate()} ${months[d.getMonth()]})`;
+    }
+    return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+  } catch {
+    return 'Archive';
+  }
+}
+
 export const QrUploadModal: React.FC<QrUploadModalProps> = ({
   isOpen,
   onClose,
@@ -108,6 +177,17 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
     text: '',
     type: '',
   });
+
+  // Folder navigation and custom folders management
+  const [customFolders, setCustomFolders] = useState<string[]>(() => getCustomVaultFolders());
+  const [activeFolder, setActiveFolder] = useState<{
+    type: 'custom' | 'date';
+    name: string;
+    key: string;
+  } | null>(null);
+  const [showNewFolderModal, setShowNewFolderModal] = useState<boolean>(false);
+  const [newFolderNameInput, setNewFolderNameInput] = useState<string>('');
+  const [moveTargetFile, setMoveTargetFile] = useState<QrUploadedFile | null>(null);
 
   // AI & Computer Vision Auto-Cropping States
   const [autoCropOnUpload, setAutoCropOnUpload] = useState<boolean>(true);
@@ -285,6 +365,7 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
               size: optimized.size,
               dataUrl: optimized.dataUrl,
               category: 'Auto-Cropped',
+              folder: activeFolder?.type === 'custom' ? activeFolder.key : undefined,
               uploadedBy: activeUser?.username,
               uploaderName: activeUser?.fullName || activeUser?.username,
               uploaderRole: activeUser?.role,
@@ -298,6 +379,7 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
               type: file.type || 'image/jpeg',
               size: file.size,
               dataUrl: rawDataUrl,
+              folder: activeFolder?.type === 'custom' ? activeFolder.key : undefined,
               uploadedBy: activeUser?.username,
               uploaderName: activeUser?.fullName || activeUser?.username,
               uploaderRole: activeUser?.role,
@@ -310,6 +392,7 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
             type: file.type || 'application/octet-stream',
             size: file.size,
             dataUrl: rawDataUrl,
+            folder: activeFolder?.type === 'custom' ? activeFolder.key : undefined,
             uploadedBy: activeUser?.username,
             uploaderName: activeUser?.fullName || activeUser?.username,
             uploaderRole: activeUser?.role,
@@ -320,6 +403,7 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
       }
 
       await fetchFiles();
+      setActiveTab('vault');
       if (croppedCount > 0) {
         setStatusMessage({
           text: `✓ ${croppedCount} document(s) perspective-corrected & added to Software Vault!`,
@@ -371,22 +455,56 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
     }
   };
 
-  const handleSaveNewUploadCrop = async (croppedDataUrl: string, croppedSize: number) => {
+  const handleSaveNewUploadCrop = async (
+    croppedDataUrl: string,
+    croppedSize: number,
+    _isNewUpload?: boolean,
+    allPages?: { dataUrl: string; size: number; name?: string }[]
+  ) => {
     if (!newUploadCropFile) return;
     try {
-      await qrUploadService.uploadFile(sessionId, {
-        name: newUploadCropFile.name,
-        type: 'image/jpeg',
-        size: croppedSize,
-        dataUrl: croppedDataUrl,
-        category: 'Auto-Cropped',
-        uploadedBy: activeUser?.username,
-        uploaderName: activeUser?.fullName || activeUser?.username,
-        uploaderRole: activeUser?.role,
-        district: userDistrict,
+      const createdDocs: QrUploadedFile[] = [];
+      if (allPages && allPages.length > 1) {
+        for (let i = 0; i < allPages.length; i++) {
+          const pg = allPages[i];
+          const pageName = pg.name || (i === 0 ? newUploadCropFile.name : `Page_${i + 1}_${newUploadCropFile.name}`);
+          const uploadedDoc = await qrUploadService.uploadFile(sessionId, {
+            name: pageName,
+            type: 'image/jpeg',
+            size: pg.size,
+            dataUrl: pg.dataUrl,
+            category: 'Auto-Cropped',
+            folder: activeFolder?.type === 'custom' ? activeFolder.key : undefined,
+            uploadedBy: activeUser?.username,
+            uploaderName: activeUser?.fullName || activeUser?.username,
+            uploaderRole: activeUser?.role,
+            district: userDistrict,
+          });
+          createdDocs.push(uploadedDoc);
+        }
+      } else {
+        const uploadedDoc = await qrUploadService.uploadFile(sessionId, {
+          name: newUploadCropFile.name,
+          type: 'image/jpeg',
+          size: croppedSize,
+          dataUrl: croppedDataUrl,
+          category: 'Auto-Cropped',
+          folder: activeFolder?.type === 'custom' ? activeFolder.key : undefined,
+          uploadedBy: activeUser?.username,
+          uploaderName: activeUser?.fullName || activeUser?.username,
+          uploaderRole: activeUser?.role,
+          district: userDistrict,
+        });
+        createdDocs.push(uploadedDoc);
+      }
+
+      setVaultFiles((prev) => {
+        const existingIds = new Set(createdDocs.map((d) => d.id));
+        return [...createdDocs, ...prev.filter((f) => !existingIds.has(f.id))];
       });
       await fetchFiles();
       setNewUploadCropFile(null);
+      setActiveTab('vault');
       setStatusMessage({
         text: `✓ Document "${newUploadCropFile.name}" perspective-corrected & added to Software Vault!`,
         type: 'success',
@@ -427,6 +545,7 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
         size: finalSize,
         dataUrl: finalDataUrl,
         category: 'Camera-Scan',
+        folder: activeFolder?.type === 'custom' ? activeFolder.key : undefined,
         uploadedBy: activeUser?.username,
         uploaderName: activeUser?.fullName || activeUser?.username,
         uploaderRole: activeUser?.role,
@@ -452,6 +571,44 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
       setIsProcessingAutoCrop(false);
       setAutoCropProgressText('');
     }
+  };
+
+  const handleCreateFolder = (name: string) => {
+    const clean = name.trim();
+    if (!clean) return;
+    const updated = addCustomVaultFolder(clean);
+    setCustomFolders(updated);
+    setShowNewFolderModal(false);
+    setNewFolderNameInput('');
+    setStatusMessage({ text: `Folder "${clean}" created successfully!`, type: 'success' });
+  };
+
+  const handleDeleteCustomFolder = async (folderName: string) => {
+    const updated = removeCustomVaultFolder(folderName);
+    setCustomFolders(updated);
+    if (activeFolder && activeFolder.key.toLowerCase() === folderName.toLowerCase()) {
+      setActiveFolder(null);
+    }
+    for (const f of vaultFiles) {
+      if ((f.folder || '').toLowerCase() === folderName.toLowerCase()) {
+        await qrUploadService.updateVaultFile(f.id, { folder: null, sessionId: f.sessionId });
+      }
+    }
+    await fetchFiles();
+    setStatusMessage({ text: `Folder "${folderName}" removed. Documents restored to date root.`, type: 'success' });
+  };
+
+  const handleMoveFileToFolder = async (file: QrUploadedFile, targetFolder: string | null) => {
+    await qrUploadService.updateVaultFile(file.id, {
+      folder: targetFolder,
+      sessionId: file.sessionId || sessionId,
+    });
+    await fetchFiles();
+    setMoveTargetFile(null);
+    setStatusMessage({
+      text: targetFolder ? `Moved "${file.name}" to folder "${targetFolder}"` : `Moved "${file.name}" to Root`,
+      type: 'success',
+    });
   };
 
   // Drag and Drop handlers
@@ -528,18 +685,62 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
     await fetchFiles();
   };
 
+  // Counts and Categorization:
+  // Date-wise archive folders for previous days (Yesterday, earlier dates)
+  const dateWiseFolders = React.useMemo(() => {
+    const map = new Map<string, { key: string; label: string; count: number; isYesterday: boolean; latestTime: number }>();
+    vaultFiles.forEach((f) => {
+      if (f.folder && f.folder.trim().length > 0) return; // Belongs to custom folder
+      if (isTodayDate(f.uploadedAt)) return; // Today files are shown directly on root
+      const key = getDateKey(f.uploadedAt);
+      if (key === 'unknown') return;
+      const existing = map.get(key);
+      const fileTime = new Date(f.uploadedAt).getTime() || 0;
+      if (existing) {
+        existing.count += 1;
+        if (fileTime > existing.latestTime) existing.latestTime = fileTime;
+      } else {
+        map.set(key, {
+          key,
+          label: formatDateFolderLabel(f.uploadedAt),
+          count: 1,
+          isYesterday: isYesterdayDate(f.uploadedAt),
+          latestTime: fileTime,
+        });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => b.latestTime - a.latestTime);
+  }, [vaultFiles]);
+
+  // Files in current active category/folder view:
+  // Root Vault: SHOW ONLY TODAY'S UPLOADED FILES!
+  // Custom folder: SHOW FILES IN THAT CUSTOM FOLDER
+  // Date folder: SHOW FILES FROM THAT SPECIFIC DATE
+  const currentCategoryFiles = React.useMemo(() => {
+    if (!activeFolder) {
+      return vaultFiles.filter((f) => (!f.folder || f.folder.trim().length === 0) && isTodayDate(f.uploadedAt));
+    }
+    if (activeFolder.type === 'custom') {
+      return vaultFiles.filter((f) => (f.folder || '').trim().toLowerCase() === activeFolder.key.toLowerCase());
+    }
+    if (activeFolder.type === 'date') {
+      return vaultFiles.filter((f) => (!f.folder || f.folder.trim().length === 0) && getDateKey(f.uploadedAt) === activeFolder.key);
+    }
+    return vaultFiles;
+  }, [vaultFiles, activeFolder]);
+
   // Counts for category tabs
-  const totalCount = vaultFiles.length;
-  const pdfCount = vaultFiles.filter(
+  const totalCount = currentCategoryFiles.length;
+  const pdfCount = currentCategoryFiles.filter(
     (f) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')
   ).length;
-  const imageCount = vaultFiles.filter(
+  const imageCount = currentCategoryFiles.filter(
     (f) => f.type.startsWith('image/') || /\.(jpg|jpeg|png)$/i.test(f.name)
   ).length;
-  const verifiedCount = vaultFiles.filter((f) => !!f.verifiedStamp).length;
+  const verifiedCount = currentCategoryFiles.filter((f) => !!f.verifiedStamp).length;
 
   // Filter & Sort
-  const displayedVaultFiles = vaultFiles
+  const displayedVaultFiles = currentCategoryFiles
     .filter((f) => {
       const matchesSearch =
         f.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -999,7 +1200,7 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                       id="software-vault-panel"
                       className="bg-white rounded-2xl border border-slate-300 shadow-sm flex flex-col overflow-hidden"
                     >
-                      {/* Deep Blue Header */}
+                      {/* Clean Modern Vault Header */}
                       <div className="bg-gradient-to-r from-[#0056A6] to-[#003B73] px-5 sm:px-6 py-3.5 text-white flex items-center justify-between shrink-0 select-none">
                         <div className="flex items-center gap-2.5">
                           <div className="w-9 h-9 rounded-xl bg-white/15 backdrop-blur-xs flex items-center justify-center text-white shadow-xs border border-white/20">
@@ -1009,18 +1210,22 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                             <h2 className="text-base font-bold text-white tracking-wide leading-tight flex items-center gap-2">
                               <span>Software Vault</span>
                               <span className="text-[10px] font-bold bg-white/20 text-white px-2 py-0.5 rounded-md border border-white/20">
-                                {isDno ? `DNO View • ${userDistrict}` : `Private Counselor View`}
+                                {activeFolder ? activeFolder.name : "Today's Uploads"}
                               </span>
                             </h2>
-                            <p className="text-[11px] text-blue-100 font-normal">
-                              {isDno
-                                ? `Supervising verified documents for ${userDistrict} District counselors`
-                                : `Private vault — other counselors cannot access your files`}
-                            </p>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowNewFolderModal(true)}
+                            className="text-xs font-semibold bg-white/15 hover:bg-white/25 border border-white/20 text-white px-3 py-1.5 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                            title="Create New Named Folder"
+                          >
+                            <FolderPlus className="w-3.5 h-3.5" />
+                            <span>+ New Folder</span>
+                          </button>
                           {activeTab !== 'dual' && (
                             <button
                               type="button"
@@ -1034,30 +1239,106 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                         </div>
                       </div>
 
-                      {/* Scoping and Privacy Banner */}
-                      <div className={`px-5 py-2 flex items-center justify-between text-xs border-b shrink-0 ${
-                        isDno 
-                          ? 'bg-blue-50/90 text-blue-900 border-blue-100' 
-                          : 'bg-emerald-50/90 text-emerald-900 border-emerald-100'
-                      }`}>
-                        <div className="flex items-center gap-2">
-                          <ShieldCheck className={`w-4 h-4 shrink-0 ${isDno ? 'text-blue-600' : 'text-emerald-600'}`} />
-                          <span className="text-[11px] leading-tight">
-                            {isDno ? (
-                              <span>
-                                <strong>DNO Supervision Mode:</strong> Showing all uploaded documents across <strong>{userDistrict} District</strong> staff & counselors ({displayedVaultFiles.length} files).
+                      {/* Folder Breadcrumb or Folder Selector */}
+                      {activeFolder ? (
+                        <div className="px-4 sm:px-5 py-2.5 bg-blue-50/80 border-b border-blue-100 flex items-center justify-between text-xs select-none">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <button
+                              type="button"
+                              onClick={() => setActiveFolder(null)}
+                              className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-[#0056A6] font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors shrink-0"
+                            >
+                              <ArrowLeft className="w-3.5 h-3.5" />
+                              <span>Today's Files</span>
+                            </button>
+                            <span className="text-slate-300 shrink-0">/</span>
+                            <div className="flex items-center gap-1.5 font-bold text-slate-800 truncate">
+                              {activeFolder.type === 'custom' ? (
+                                <Folder className="w-4 h-4 text-amber-500 fill-amber-100 shrink-0" />
+                              ) : (
+                                <Calendar className="w-4 h-4 text-blue-600 shrink-0" />
+                              )}
+                              <span className="truncate">{activeFolder.name}</span>
+                            </div>
+                            <span className="text-[11px] font-semibold text-slate-500 bg-white px-2 py-0.5 rounded-full border border-slate-200 shrink-0">
+                              {currentCategoryFiles.length} {currentCategoryFiles.length === 1 ? 'doc' : 'docs'}
+                            </span>
+                          </div>
+
+                          {activeFolder.type === 'custom' && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCustomFolder(activeFolder.name)}
+                              className="text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2.5 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1 font-semibold shrink-0"
+                              title="Delete this folder"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Delete Folder</span>
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 select-none">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-1.5">
+                              <Folder className="w-3.5 h-3.5 text-slate-500" />
+                              <span className="text-xs font-bold text-slate-700">Folders &amp; Archives</span>
+                              <span className="text-[10px] font-semibold text-slate-500 bg-white px-1.5 py-0.2 rounded border border-slate-200">
+                                {customFolders.length + dateWiseFolders.length}
                               </span>
-                            ) : (
-                              <span>
-                                <strong>Strict Privacy Active:</strong> Showing your uploaded vault documents only (<strong>{activeUser?.fullName || activeUser?.username}</strong>). Other counselors cannot see your documents.
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setShowNewFolderModal(true)}
+                              className="text-[11px] font-bold text-[#0056A6] hover:underline flex items-center gap-1 cursor-pointer"
+                            >
+                              <FolderPlus className="w-3 h-3" />
+                              <span>+ Create Folder</span>
+                            </button>
+                          </div>
+
+                          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                            {/* Custom folders created by user */}
+                            {customFolders.map((folderName) => {
+                              const count = vaultFiles.filter((f) => (f.folder || '').trim().toLowerCase() === folderName.toLowerCase()).length;
+                              return (
+                                <div
+                                  key={folderName}
+                                  onClick={() => setActiveFolder({ type: 'custom', name: folderName, key: folderName })}
+                                  className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-white hover:bg-amber-50/50 border border-slate-200 hover:border-amber-400 rounded-xl cursor-pointer transition-all shadow-2xs group"
+                                >
+                                  <Folder className="w-4 h-4 text-amber-500 fill-amber-100 shrink-0" />
+                                  <div className="text-left min-w-0">
+                                    <p className="text-xs font-bold text-slate-800 group-hover:text-amber-900 truncate max-w-[130px]">{folderName}</p>
+                                    <p className="text-[10px] text-slate-400">{count} {count === 1 ? 'doc' : 'docs'}</p>
+                                  </div>
+                                </div>
+                              );
+                            })}
+
+                            {/* Date-wise archive folders (Yesterday, previous dates) */}
+                            {dateWiseFolders.map((dateGrp) => (
+                              <div
+                                key={dateGrp.key}
+                                onClick={() => setActiveFolder({ type: 'date', name: dateGrp.label, key: dateGrp.key })}
+                                className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-white hover:bg-blue-50/50 border border-slate-200 hover:border-blue-400 rounded-xl cursor-pointer transition-all shadow-2xs group"
+                              >
+                                <Calendar className="w-4 h-4 text-blue-600 shrink-0" />
+                                <div className="text-left min-w-0">
+                                  <p className="text-xs font-bold text-slate-800 group-hover:text-blue-900 truncate max-w-[150px]">{dateGrp.label}</p>
+                                  <p className="text-[10px] text-slate-400">{dateGrp.count} {dateGrp.count === 1 ? 'doc' : 'docs'}</p>
+                                </div>
+                              </div>
+                            ))}
+
+                            {customFolders.length === 0 && dateWiseFolders.length === 0 && (
+                              <span className="text-[11px] text-slate-400 py-1">
+                                No past date archives. Click &quot;+ Create Folder&quot; to organize docs separately.
                               </span>
                             )}
-                          </span>
+                          </div>
                         </div>
-                        <span className="text-[10px] font-bold bg-white px-2 py-0.5 rounded-md border border-slate-200 text-slate-700 shrink-0">
-                          {userDistrict} District
-                        </span>
-                      </div>
+                      )}
 
                       {/* Filter Category Tabs */}
                       <div className="flex items-center gap-2 border-b border-slate-200 px-4 pt-2.5 pb-0.5 bg-white overflow-x-auto text-xs font-semibold select-none">
@@ -1175,14 +1456,37 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                         </div>
                       </div>
 
+                      {/* Section Header: Today's Uploads or Current Folder */}
+                      <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs select-none">
+                        <div className="flex items-center gap-2 font-bold text-slate-800">
+                          {activeFolder ? (
+                            activeFolder.type === 'custom' ? (
+                              <Folder className="w-4 h-4 text-amber-500 fill-amber-100" />
+                            ) : (
+                              <Calendar className="w-4 h-4 text-blue-600" />
+                            )
+                          ) : (
+                            <FileText className="w-4 h-4 text-[#0056A6]" />
+                          )}
+                          <span>{activeFolder ? activeFolder.name : "Today's Uploaded Documents"}</span>
+                        </div>
+                        <span className="text-[11px] font-semibold text-slate-500 bg-white px-2.5 py-0.5 rounded-full border border-slate-200">
+                          {displayedVaultFiles.length} {displayedVaultFiles.length === 1 ? 'document' : 'documents'}
+                        </span>
+                      </div>
+
                       {/* Documents List View / Grid View */}
                       <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2.5 max-h-[520px]">
                         {displayedVaultFiles.length === 0 ? (
                           <div className="py-12 text-center text-slate-400 space-y-2">
                             <UploadCloud className="w-10 h-10 mx-auto text-slate-300" />
-                            <p className="text-sm font-semibold text-slate-600">No documents found</p>
-                            <p className="text-xs text-slate-400">
-                              Scan the QR code to upload from your mobile, or click &quot;Upload More&quot;.
+                            <p className="text-sm font-semibold text-slate-600">
+                              {activeFolder ? `No documents in "${activeFolder.name}"` : "No documents uploaded today"}
+                            </p>
+                            <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                              {activeFolder
+                                ? "Use Scan or Upload to add documents to this folder."
+                                : "Upload or scan new documents today, or view older days in the archive folders above."}
                             </p>
                           </div>
                         ) : viewMode === 'list' ? (
@@ -1241,6 +1545,12 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                                       <span className="inline-block text-[10px] font-semibold text-[#0056A6] bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-md">
                                         {file.category || 'Candidate Document'}
                                       </span>
+                                      {file.folder && (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                                          <Folder className="w-3 h-3 text-amber-500 fill-amber-100" />
+                                          <span>{file.folder}</span>
+                                        </span>
+                                      )}
                                       {file.uploadedBy && (
                                         <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
                                           <span>By: {file.uploaderName || file.uploadedBy}</span>
@@ -1282,6 +1592,16 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                                     <span className="hidden sm:inline">View</span>
                                   </button>
 
+                                  {/* Move to Folder Button */}
+                                  <button
+                                    onClick={() => setMoveTargetFile(file)}
+                                    className="px-2.5 sm:px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-amber-50 hover:border-amber-300 text-slate-700 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                                    title="Move to named folder"
+                                  >
+                                    <Folder className="w-3.5 h-3.5 text-amber-500" />
+                                    <span className="hidden sm:inline">Move</span>
+                                  </button>
+
                                   {/* Crop Button for Images */}
                                   {!isPdf && (
                                     <button
@@ -1293,7 +1613,6 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                                       <span className="hidden sm:inline">Crop</span>
                                     </button>
                                   )}
-
 
                                   {/* Download Button */}
                                   <button
@@ -1332,6 +1651,16 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                                         className="absolute right-0 top-full mt-1 w-44 bg-white border border-slate-200 rounded-xl shadow-lg z-20 py-1 text-xs"
                                         onClick={(e) => e.stopPropagation()}
                                       >
+                                        <button
+                                          onClick={() => {
+                                            setMoveTargetFile(file);
+                                            setActiveDropdownId(null);
+                                          }}
+                                          className="w-full text-left px-3 py-1.5 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+                                        >
+                                          <Folder className="w-3.5 h-3.5 text-amber-500" />
+                                          <span>Move to Folder...</span>
+                                        </button>
                                         <button
                                           onClick={() => {
                                             printDocumentDirectly(file.dataUrl, file.name, !isPdf);
@@ -1418,17 +1747,30 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                                   >
                                     {file.name}
                                   </h4>
-                                  <p className="text-[10px] text-slate-400 mt-0.5">
-                                    {formatBytes(file.size)}
-                                  </p>
+                                  <div className="flex items-center justify-between text-[10px] text-slate-400 mt-0.5">
+                                    <span>{formatBytes(file.size)}</span>
+                                    {file.folder && (
+                                      <span className="text-amber-700 font-semibold truncate max-w-[80px]">
+                                        📁 {file.folder}
+                                      </span>
+                                    )}
+                                  </div>
 
                                   <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-1.5">
                                       <button
                                         onClick={() => setPreviewFile(file)}
                                         className="text-[11px] font-semibold text-[#0056A6] hover:underline"
                                       >
                                         View
+                                      </button>
+                                      <button
+                                        onClick={() => setMoveTargetFile(file)}
+                                        className="text-[11px] font-semibold text-amber-700 hover:underline flex items-center gap-0.5 cursor-pointer"
+                                        title="Move to Folder"
+                                      >
+                                        <Folder className="w-3 h-3 text-amber-500" />
+                                        <span>Move</span>
                                       </button>
                                       {!isPdf && (
                                         <button
@@ -1528,8 +1870,8 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
           title="Auto-Crop & Verify Document"
           actionButtonLabel="Add to Software Vault"
           onClose={() => setNewUploadCropFile(null)}
-          onSaveCrop={async (croppedDataUrl, croppedSize) => {
-            await handleSaveNewUploadCrop(croppedDataUrl, croppedSize);
+          onSaveCrop={async (croppedDataUrl, croppedSize, isNewUpload, processedPages) => {
+            await handleSaveNewUploadCrop(croppedDataUrl, croppedSize, isNewUpload, processedPages);
           }}
         />
       )}
@@ -1613,6 +1955,177 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                 type="button"
                 onClick={() => setShowScanChoiceModal(false)}
                 className="px-5 py-2 rounded-full text-xs font-medium text-[#444746] hover:bg-[#F2F2F2] transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create New Named Folder Modal */}
+      {showNewFolderModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <FolderPlus className="w-5 h-5 text-[#0056A6]" />
+                <h3 className="text-sm font-bold text-slate-900">New Folder</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowNewFolderModal(false);
+                  setNewFolderNameInput('');
+                }}
+                className="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Folder Name
+              </label>
+              <input
+                type="text"
+                autoFocus
+                value={newFolderNameInput}
+                onChange={(e) => setNewFolderNameInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newFolderNameInput.trim()) {
+                    handleCreateFolder(newFolderNameInput);
+                  }
+                }}
+                placeholder="e.g. Caste Certificate, Income Proof"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-[#0056A6] focus:border-[#0056A6]"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowNewFolderModal(false);
+                  setNewFolderNameInput('');
+                }}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!newFolderNameInput.trim()}
+                onClick={() => handleCreateFolder(newFolderNameInput)}
+                className="px-4 py-1.5 rounded-xl text-xs font-bold bg-[#0056A6] text-white hover:bg-[#003B73] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer shadow-xs"
+              >
+                Create Folder
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Move Document to Folder Dialog */}
+      {moveTargetFile && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2 min-w-0">
+                <Folder className="w-5 h-5 text-amber-500 fill-amber-100 shrink-0" />
+                <div className="min-w-0">
+                  <h3 className="text-sm font-bold text-slate-900">Move to Folder</h3>
+                  <p className="text-[11px] text-slate-500 truncate max-w-[200px]">{moveTargetFile.name}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMoveTargetFile(null)}
+                className="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+              {/* Root option (Remove from folder) */}
+              <button
+                type="button"
+                onClick={() => handleMoveFileToFolder(moveTargetFile, null)}
+                className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                  !moveTargetFile.folder
+                    ? 'bg-blue-50 text-[#0056A6] border border-blue-200'
+                    : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Today's Files (No Folder)</span>
+                </span>
+                {!moveTargetFile.folder && <Check className="w-3.5 h-3.5 text-[#0056A6]" />}
+              </button>
+
+              {/* Custom Folders */}
+              {customFolders.map((folderName) => {
+                const isSelected = (moveTargetFile.folder || '').toLowerCase() === folderName.toLowerCase();
+                return (
+                  <button
+                    key={folderName}
+                    type="button"
+                    onClick={() => handleMoveFileToFolder(moveTargetFile, folderName)}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                      isSelected
+                        ? 'bg-amber-50 text-amber-900 border border-amber-300'
+                        : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 truncate">
+                      <Folder className="w-3.5 h-3.5 text-amber-500 fill-amber-100 shrink-0" />
+                      <span className="truncate">{folderName}</span>
+                    </span>
+                    {isSelected && <Check className="w-3.5 h-3.5 text-amber-600 shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Quick new folder create inside move dialog */}
+            <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Or create new folder..."
+                value={newFolderNameInput}
+                onChange={(e) => setNewFolderNameInput(e.target.value)}
+                onKeyDown={async (e) => {
+                  if (e.key === 'Enter' && newFolderNameInput.trim()) {
+                    const fName = newFolderNameInput.trim();
+                    handleCreateFolder(fName);
+                    await handleMoveFileToFolder(moveTargetFile, fName);
+                  }
+                }}
+                className="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-[#0056A6]"
+              />
+              <button
+                type="button"
+                disabled={!newFolderNameInput.trim()}
+                onClick={async () => {
+                  const fName = newFolderNameInput.trim();
+                  if (!fName) return;
+                  handleCreateFolder(fName);
+                  await handleMoveFileToFolder(moveTargetFile, fName);
+                }}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#0056A6] text-white hover:bg-[#003B73] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer shrink-0"
+              >
+                Create & Move
+              </button>
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setMoveTargetFile(null)}
+                className="px-4 py-1.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
