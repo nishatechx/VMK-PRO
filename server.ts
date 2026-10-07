@@ -138,6 +138,43 @@ async function startServer() {
 
   const USERS_FILE = path.join(DATA_DIR, "users.json");
   const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
+  const VAULT_FILE = path.join(DATA_DIR, "vault.json");
+
+  function getStoredVaultFiles(): QrUploadedFile[] {
+    try {
+      if (fs.existsSync(VAULT_FILE)) {
+        const raw = fs.readFileSync(VAULT_FILE, "utf-8");
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) return list;
+      }
+    } catch (e) {
+      console.error("Error reading vault file:", e);
+    }
+    return [];
+  }
+
+  function saveStoredVaultFiles(files: QrUploadedFile[]) {
+    try {
+      fs.writeFileSync(VAULT_FILE, JSON.stringify(files.slice(0, 300), null, 2), "utf-8");
+    } catch (e) {
+      console.error("Failed to write to vault file:", e);
+    }
+  }
+
+  // Populate vaultStore and sessionStore on startup from persistent disk
+  try {
+    const savedVault = getStoredVaultFiles();
+    savedVault.forEach((f) => {
+      vaultStore.push(f);
+      if (f.sessionId) {
+        const norm = f.sessionId.trim().toUpperCase();
+        if (!sessionStore.has(norm)) sessionStore.set(norm, []);
+        sessionStore.get(norm)!.push(f);
+      }
+    });
+  } catch (e) {
+    console.error("Error populating vault store:", e);
+  }
 
   const DEFAULT_INITIAL_USERS = [
     {
@@ -529,11 +566,17 @@ async function startServer() {
     }
 
     const users = getStoredUsers();
-    let matched = users.find((u: any) => u.username?.toLowerCase() === cleanUser);
+    let matched = users.find(
+      (u: any) =>
+        u.username?.toLowerCase() === cleanUser ||
+        u.id?.toLowerCase() === cleanUser
+    );
 
     if (!matched) {
       const defaultUser = DEFAULT_INITIAL_USERS.find(
-        (u) => u.username.toLowerCase() === cleanUser
+        (u) =>
+          u.username.toLowerCase() === cleanUser ||
+          u.id.toLowerCase() === cleanUser
       );
       if (defaultUser) {
         matched = { ...defaultUser };
@@ -545,18 +588,18 @@ async function startServer() {
     if (!matched) {
       return res.status(401).json({
         success: false,
-        message: "Invalid User ID. Please check your username.",
+        message: "Invalid User ID. Please check the login ID provided by Super Administrator.",
       });
     }
 
-    if (matched.password !== cleanPass) {
+    if (String(matched.password).trim() !== cleanPass) {
       return res.status(401).json({
         success: false,
-        message: "Invalid password. Please try again.",
+        message: "Invalid password. Please enter the correct password provided by Super Administrator.",
       });
     }
 
-    if (!matched.isActive) {
+    if (matched.isActive === false) {
       return res.status(403).json({
         success: false,
         message: "This account has been disabled. Please contact Super Administrator.",
@@ -858,9 +901,10 @@ async function startServer() {
         sessionStore.get(rawSession)!.unshift(file);
       }
 
-      // Store in global vault
+      // Store in global vault and persist to disk
       vaultStore.unshift(file);
-      if (vaultStore.length > 100) vaultStore.pop();
+      if (vaultStore.length > 250) vaultStore.pop();
+      saveStoredVaultFiles(vaultStore);
 
       // Realtime push to any listening desktop clients
       broadcastToFileSubscribers(normSessionId, file);
@@ -892,12 +936,13 @@ async function startServer() {
     }
   });
 
-  // Get all vault files (Strictly scoped: counselors only see their own files; DNO can see their district or all files)
+  // Get all vault files (Strictly scoped: counselors see their own files + active session files; DNO can see their district or all files)
   app.get("/api/qr-vault", (req, res) => {
     try {
       const username = ((req.query.username as string) || '').trim().toLowerCase();
       const role = ((req.query.role as string) || '').trim().toLowerCase();
       const district = ((req.query.district as string) || '').trim().toLowerCase();
+      const sessionId = ((req.query.sessionId as string) || '').trim().toUpperCase();
 
       let files = vaultStore;
 
@@ -916,9 +961,19 @@ async function startServer() {
         return res.json({ success: true, files });
       }
 
-      // Counselor / Staff: see their own files or unassigned/intake files
+      // Counselor / Staff / Portal users:
+      // Always include files uploaded in this active session!
+      // Plus files uploaded by this user, files for their district, or common intake files
       if (username) {
-        files = files.filter(f => !f.uploadedBy || (f.uploadedBy || '').trim().toLowerCase() === username || (f.uploadedBy || '').trim().toLowerCase() === 'counsellor' || (f.uploadedBy || '').trim().toLowerCase() === 'anonymous');
+        files = files.filter(f => {
+          if (sessionId && f.sessionId && f.sessionId.toUpperCase() === sessionId) return true;
+          const uploader = (f.uploadedBy || '').trim().toLowerCase();
+          const fileDist = (f.district || '').trim().toLowerCase();
+          if (!uploader || uploader === 'anonymous' || uploader === 'counsellor' || uploader === 'counselor' || uploader === 'mobile' || uploader === 'staff') return true;
+          if (uploader === username) return true;
+          if (district && fileDist && district === fileDist) return true;
+          return false;
+        });
       }
 
       return res.json({ success: true, files });
@@ -2390,7 +2445,6 @@ Return STRICTLY a JSON object matching this schema.`;
     const candidates = [
       path.join(process.cwd(), 'dist'),
       path.join(__dirname, 'dist'),
-      process.cwd(),
     ];
     for (const cand of candidates) {
       if (fs.existsSync(path.join(cand, 'index.html'))) {
@@ -2400,14 +2454,26 @@ Return STRICTLY a JSON object matching this schema.`;
     return path.join(process.cwd(), 'dist');
   }
 
-  let distPath = getDistPath();
+  const distPath = getDistPath();
   let hasBuiltDist = fs.existsSync(path.join(distPath, 'index.html'));
 
   // Cloud Run sets K_SERVICE or K_REVISION or container PORT (typically 8080)
   const isCloudRun = Boolean(process.env.K_SERVICE || process.env.K_REVISION || (process.env.PORT && process.env.PORT !== '3000'));
-  const isProduction = isCloudRun || process.env.NODE_ENV === 'production' || process.env.npm_lifecycle_event === 'start' || (process.env.npm_lifecycle_event !== 'dev' && hasBuiltDist);
+  const isExplicitDev = process.env.NODE_ENV === 'development' || process.env.npm_lifecycle_event === 'dev';
+  const isProduction = !isExplicitDev && (isCloudRun || process.env.NODE_ENV === 'production' || process.env.npm_lifecycle_event === 'start');
 
   if (isProduction) {
+    if (!hasBuiltDist) {
+      try {
+        console.log('[PROD] Missing dist/index.html in production, triggering vite build...');
+        const { execSync } = await import('child_process');
+        execSync('npx vite build', { stdio: 'inherit' });
+        hasBuiltDist = fs.existsSync(path.join(distPath, 'index.html'));
+      } catch (buildErr) {
+        console.error('[PROD] Vite auto-build failed:', buildErr);
+      }
+    }
+
     console.log(`[PROD] Serving production build from: ${distPath}`);
     app.use(express.static(distPath));
     const assetsPath = path.join(distPath, 'assets');

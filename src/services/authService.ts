@@ -354,10 +354,15 @@ export function initFirestoreDataSync() {
       (snapshot) => {
         if (!snapshot.empty) {
           const firestoreUsers: UserProfile[] = [];
+          const seen = new Set<string>();
           snapshot.forEach((d) => {
             const data = d.data() as UserProfile;
             if (data && data.username) {
-              firestoreUsers.push({ ...data, id: d.id });
+              const uname = data.username.toLowerCase().trim();
+              if (!seen.has(uname)) {
+                seen.add(uname);
+                firestoreUsers.push({ ...data, id: data.id || d.id });
+              }
             }
           });
 
@@ -372,7 +377,6 @@ export function initFirestoreDataSync() {
           const hasDno = firestoreUsers.some((u) => u.username.toLowerCase() === 'dno');
           if (!hasDno) {
             firestoreUsers.push(DNO_USER);
-            // Also write DNO to Firestore for consistency
             setDoc(doc(db, 'users', DNO_USER.id), sanitizeForFirestore(DNO_USER), { merge: true }).catch(() => {});
           }
 
@@ -385,6 +389,13 @@ export function initFirestoreDataSync() {
 
           safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(firestoreUsers));
           notifyUserSubscribers(firestoreUsers);
+
+          // Push to backend server sync to guarantee cross-device availability
+          fetch('/api/users/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ users: firestoreUsers }),
+          }).catch(() => {});
 
           // Update current active user session if modified
           const current = getCurrentUser();
@@ -776,7 +787,31 @@ export async function authenticateWithResultAsync(
     return { user: updated };
   }
 
-  // 2. Query persistent server authentication endpoint first
+  // 2. Check local memory / storage cache FIRST for instant 0ms authentication
+  const localUsers = getAllUsers();
+  const localMatched = localUsers.find(
+    (u) => u.username?.toLowerCase() === trimmedUser || u.id?.toLowerCase() === trimmedUser
+  );
+
+  if (localMatched) {
+    if (localMatched.password === trimmedPass) {
+      if (localMatched.isActive === false) {
+        return { user: null, error: 'This account has been disabled. Please contact Super Administrator.' };
+      }
+      const updated = { ...localMatched, lastLogin: new Date().toISOString() };
+      saveUser(updated);
+      setCurrentUser(updated);
+      // Sync login time in background to server
+      fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: trimmedUser, password: trimmedPass }),
+      }).catch(() => {});
+      return { user: updated };
+    }
+  }
+
+  // 3. Query persistent server authentication endpoint (handles logins across devices)
   try {
     const resp = await fetch('/api/auth/login', {
       method: 'POST',
@@ -790,7 +825,7 @@ export async function authenticateWithResultAsync(
       // Update local cache
       const all = getAllUsers();
       const idx = all.findIndex(
-        (u) => u.id === authedUser.id || u.username.toLowerCase() === authedUser.username.toLowerCase()
+        (u) => u.id === authedUser.id || u.username?.toLowerCase() === authedUser.username?.toLowerCase()
       );
       if (idx >= 0) {
         all[idx] = authedUser;
@@ -802,48 +837,33 @@ export async function authenticateWithResultAsync(
       setCurrentUser(authedUser);
       return { user: authedUser };
     } else if (data && !data.success && data.message) {
-      // If server returned invalid password or disabled account for an existing user, return error
+      // If server returned invalid password or disabled account for an existing user, return error immediately
       if (data.message.toLowerCase().includes('password')) {
         return { user: null, error: data.message };
       }
       if (data.message.toLowerCase().includes('disabled')) {
         return { user: null, error: data.message };
       }
-      // If server said user not found, continue to local and Firestore checks!
     }
   } catch (err) {
     console.warn('Server auth call failed, trying local/firestore fallback:', err);
   }
 
-  // 3. Try local cache
-  const localUsers = getAllUsers();
-  const matchedUser = localUsers.find(
-    (u) => u.username.toLowerCase() === trimmedUser || u.id.toLowerCase() === trimmedUser
-  );
-
-  if (matchedUser) {
-    if (matchedUser.password !== trimmedPass) {
-      return { user: null, error: 'Invalid password. Please try again.' };
-    }
-    if (matchedUser.isActive === false) {
-      return { user: null, error: 'This account has been disabled. Please contact Super Administrator.' };
-    }
-    const updated = { ...matchedUser, lastLogin: new Date().toISOString() };
-    saveUser(updated);
-    setCurrentUser(updated);
-    return { user: updated };
-  }
-
-  // 4. Try Firestore directly (gracefully handles quota limits)
-  // Check direct document by username first
+  // 4. Try Firestore directly with timeout protection (guarantees fresh cloud accounts can log in anywhere)
   try {
-    const directDoc = await getDoc(doc(db, 'users', trimmedUser));
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Firestore timeout')), 2500)
+    );
+
+    // Check direct document by username
+    const directDocPromise = getDoc(doc(db, 'users', trimmedUser));
+    const directDoc = await Promise.race([directDocPromise, timeoutPromise]);
     if (directDoc.exists()) {
       const d = directDoc.data() as UserProfile;
       if (d && d.username) {
         const found = { ...d, id: d.id || directDoc.id };
         if (found.password !== trimmedPass) {
-          return { user: null, error: 'Invalid password. Please try again.' };
+          return { user: null, error: 'Invalid password. Please enter the correct password provided by Super Administrator.' };
         }
         if (found.isActive === false) {
           return { user: null, error: 'This account has been disabled. Please contact Super Administrator.' };
@@ -863,30 +883,45 @@ export async function authenticateWithResultAsync(
     // direct get fallback
   }
 
-  // Check entire Firestore users collection
+  // Check entire Firestore users collection with timeout protection
   try {
-    const snapshot = await getDocs(collection(db, 'users'));
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Firestore timeout')), 2500)
+    );
+    const snapPromise = getDocs(collection(db, 'users'));
+    const snapshot = await Promise.race([snapPromise, timeoutPromise]);
+
     if (!snapshot.empty) {
       const cloudUsers: UserProfile[] = [];
+      const seen = new Set<string>();
       snapshot.forEach((d) => {
         const data = d.data() as UserProfile;
         if (data && data.username) {
-          cloudUsers.push({ ...data, id: data.id || d.id });
+          const uname = data.username.toLowerCase().trim();
+          if (!seen.has(uname)) {
+            seen.add(uname);
+            cloudUsers.push({ ...data, id: data.id || d.id });
+          }
         }
       });
 
       if (cloudUsers.length > 0) {
         safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(cloudUsers));
         notifyUserSubscribers(cloudUsers);
+        fetch('/api/users/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ users: cloudUsers }),
+        }).catch(() => {});
       }
 
       const cloudMatch = cloudUsers.find(
-        (u) => u.username.toLowerCase() === trimmedUser || u.id.toLowerCase() === trimmedUser
+        (u) => u.username?.toLowerCase() === trimmedUser || u.id?.toLowerCase() === trimmedUser
       );
 
       if (cloudMatch) {
         if (cloudMatch.password !== trimmedPass) {
-          return { user: null, error: 'Invalid password. Please try again.' };
+          return { user: null, error: 'Invalid password. Please enter the correct password provided by Super Administrator.' };
         }
         if (cloudMatch.isActive === false) {
           return { user: null, error: 'This account has been disabled. Please contact Super Administrator.' };
@@ -914,22 +949,27 @@ export async function authenticateWithResultAsync(
       setCurrentUser(updated);
       return { user: updated };
     } else {
-      return { user: null, error: 'Invalid password. Please try again.' };
+      return { user: null, error: 'Invalid password. Please enter the correct password provided by Super Administrator.' };
     }
   }
 
   if (trimmedUser === 'staff') {
-    if (trimmedPass === 'staff1' || trimmedPass === '123456') {
+    if (trimmedPass === 'staff123' || trimmedPass === 'staff1' || trimmedPass === '123456') {
       const updated = { ...DEFAULT_STAFF_USER, lastLogin: new Date().toISOString() };
       saveUser(updated);
       setCurrentUser(updated);
       return { user: updated };
     } else {
-      return { user: null, error: 'Invalid password. Please try again.' };
+      return { user: null, error: 'Invalid password. Please enter the correct password provided by Super Administrator.' };
     }
   }
 
-  return { user: null, error: 'Invalid User ID. Please check your username.' };
+  // If local user was found earlier but password failed:
+  if (localMatched && localMatched.password !== trimmedPass) {
+    return { user: null, error: 'Invalid password. Please enter the correct password provided by Super Administrator.' };
+  }
+
+  return { user: null, error: 'Invalid User ID. Please check the login ID provided by Super Administrator.' };
 }
 
 /**
@@ -955,9 +995,11 @@ export function authenticate(username: string, pass: string): UserProfile | null
   }
 
   const users = getAllUsers();
-
   const user = users.find(
-    (u) => u.username.toLowerCase() === trimmedUser && u.password === trimmedPass && u.isActive
+    (u) =>
+      (u.username?.toLowerCase() === trimmedUser || u.id?.toLowerCase() === trimmedUser) &&
+      u.password === trimmedPass &&
+      u.isActive !== false
   );
 
   if (user) {
@@ -967,8 +1009,15 @@ export function authenticate(username: string, pass: string): UserProfile | null
     return updated;
   }
 
-  if (trimmedUser === 'dno' && trimmedPass === 'dno1') {
+  if (trimmedUser === 'dno' && (trimmedPass === 'dno1' || trimmedPass === '123456')) {
     const updated = { ...DNO_USER, lastLogin: new Date().toISOString() };
+    saveUser(updated);
+    setCurrentUser(updated);
+    return updated;
+  }
+
+  if (trimmedUser === 'staff' && (trimmedPass === 'staff123' || trimmedPass === 'staff1' || trimmedPass === '123456')) {
+    const updated = { ...DEFAULT_STAFF_USER, lastLogin: new Date().toISOString() };
     saveUser(updated);
     setCurrentUser(updated);
     return updated;
@@ -983,8 +1032,16 @@ export async function findUserByUsername(username: string): Promise<UserProfile 
 
   if (trimmed === 'shrinath' || trimmed === 'shri123') return SUPER_ADMIN_USER;
   if (trimmed === 'dno') return DNO_USER;
+  if (trimmed === 'staff') return DEFAULT_STAFF_USER;
 
-  // 1. Check persistent server lookup
+  // 1. Check local memory/storage first (instant 0ms)
+  const localUsers = getAllUsers();
+  const localFound = localUsers.find(
+    (u) => u.username?.toLowerCase() === trimmed || u.id?.toLowerCase() === trimmed
+  );
+  if (localFound) return localFound;
+
+  // 2. Check persistent server lookup
   try {
     const resp = await fetch(`/api/users/lookup/${encodeURIComponent(trimmed)}`);
     if (resp.ok) {
@@ -997,20 +1054,17 @@ export async function findUserByUsername(username: string): Promise<UserProfile 
     // Ignore server error and fallback
   }
 
-  // 2. Check local memory/storage
-  const localUsers = getAllUsers();
-  const localFound = localUsers.find(
-    (u) => u.username.toLowerCase() === trimmed || u.id.toLowerCase() === trimmed
-  );
-  if (localFound) return localFound;
-
-  // 3. Query Firestore directly if not found locally
+  // 3. Query Firestore directly if not found locally (with timeout)
   try {
-    const snap = await getDocs(collection(db, 'users'));
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Firestore timeout')), 2000)
+    );
+    const snapPromise = getDocs(collection(db, 'users'));
+    const snap = await Promise.race([snapPromise, timeoutPromise]);
     let found: UserProfile | null = null;
     snap.forEach((d) => {
       const data = d.data() as UserProfile;
-      if (data && (data.username?.toLowerCase() === trimmed || d.id.toLowerCase() === trimmed)) {
+      if (data && (data.username?.toLowerCase() === trimmed || d.id?.toLowerCase() === trimmed)) {
         found = { ...data, id: d.id };
       }
     });

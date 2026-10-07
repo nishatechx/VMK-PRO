@@ -319,6 +319,9 @@ export function filterVaultFilesForUser(
   }
 
   const isDno = user.role === 'dno' || user.username.toLowerCase() === 'dno';
+  const userDist = (user.district || '').trim().toLowerCase();
+  const currentUsername = (user.username || '').trim().toLowerCase();
+  const currentUserId = (user.id || '').trim().toLowerCase();
 
   if (isDno) {
     // Root master DNO ('dno' without district) can see all files across Maharashtra
@@ -326,22 +329,29 @@ export function filterVaultFilesForUser(
       return files;
     }
     // Respective district DNO can see files belonging to their assigned district
-    const dnoDistrict = (user.district || 'Washim').trim().toLowerCase();
     return files.filter((f) => {
       if (!f.district) return true; // Legacy/unassigned files visible to DNO
-      return f.district.trim().toLowerCase() === dnoDistrict;
+      const fileDist = (f.district || '').trim().toLowerCase();
+      return !userDist || fileDist === userDist;
     });
   }
 
-  // Any other counselor / staff / operator:
-  const currentUsername = user.username.trim().toLowerCase();
-  const userDist = (user.district || '').trim().toLowerCase();
+  // Any counselor / staff / operator / portal user:
   return files.filter((f) => {
     const uploader = (f.uploadedBy || '').trim().toLowerCase();
     const fileDist = (f.district || '').trim().toLowerCase();
-    if (!uploader || uploader === 'anonymous' || uploader === 'counsellor' || uploader === 'mobile') return true;
-    if (uploader === currentUsername) return true;
-    if (userDist && fileDist && userDist === fileDist) return true;
+    // Allow intake, anonymous, mobile, or default uploads
+    if (!uploader || uploader === 'anonymous' || uploader === 'counsellor' || uploader === 'counselor' || uploader === 'mobile' || uploader === 'staff') {
+      return true;
+    }
+    // Match current user
+    if (uploader === currentUsername || uploader === currentUserId) {
+      return true;
+    }
+    // Match district
+    if (userDist && fileDist && userDist === fileDist) {
+      return true;
+    }
     return false;
   });
 }
@@ -394,6 +404,7 @@ export const qrUploadService = {
       isDownloadedToSoftware: true,
       verifiedStamp: false,
       category: fileData.category || this.detectCategory(fileData.name),
+      folder: fileData.folder ? String(fileData.folder).trim() : undefined,
       uploadedBy,
       uploaderName,
       uploaderRole,
@@ -417,6 +428,7 @@ export const qrUploadService = {
           size: newFile.size,
           dataUrl: newFile.dataUrl,
           category: newFile.category,
+          folder: newFile.folder,
           uploadedBy: newFile.uploadedBy,
           uploaderName: newFile.uploaderName,
           uploaderRole: newFile.uploaderRole,
@@ -518,10 +530,10 @@ export const qrUploadService = {
   },
 
   // Get all files stored inside the software vault across all sessions (Strictly scoped by user and district)
-  async getAllVaultFilesAsync(forUser?: UserProfile | null): Promise<QrUploadedFile[]> {
+  async getAllVaultFilesAsync(forUser?: UserProfile | null, sessionId?: string): Promise<QrUploadedFile[]> {
     const targetUser = forUser !== undefined ? forUser : getCurrentUser();
 
-    // 1. Query Server API with user identity
+    // 1. Query Server API with user identity and session ID
     try {
       const params = new URLSearchParams();
       if (targetUser) {
@@ -529,10 +541,13 @@ export const qrUploadService = {
         params.set('role', targetUser.role);
         if (targetUser.district) params.set('district', targetUser.district);
       }
+      if (sessionId) {
+        params.set('sessionId', sessionId);
+      }
       const res = await fetch(`/api/qr-vault?${params.toString()}`);
       if (res.ok) {
         const json = await res.json();
-        if (Array.isArray(json.files)) {
+        if (Array.isArray(json.files) && json.files.length > 0) {
           json.files.forEach((f: QrUploadedFile) => this.saveToSoftwareVault(f));
           return filterVaultFilesForUser(json.files, targetUser);
         }
@@ -541,7 +556,7 @@ export const qrUploadService = {
       // ignore
     }
 
-    // 2. Query Firestore
+    // 2. Query Firestore with short timeout to prevent 10s offline stall
     try {
       const isSuperAdmin = targetUser?.role === 'super_admin' || targetUser?.username?.toLowerCase() === 'shrinath';
       const isDno = targetUser?.role === 'dno' || targetUser?.username?.toLowerCase() === 'dno';
@@ -549,14 +564,17 @@ export const qrUploadService = {
       if (isSuperAdmin) {
         q = query(collection(db, 'qr_uploads'), limit(150));
       } else if (isDno) {
-        q = query(collection(db, 'qr_uploads'), limit(100));
-      } else if (targetUser?.username) {
-        q = query(collection(db, 'qr_uploads'), where('uploadedBy', '==', targetUser.username), limit(100));
+        q = query(collection(db, 'qr_uploads'), limit(120));
       } else {
-        q = query(collection(db, 'qr_uploads'), limit(50));
+        q = query(collection(db, 'qr_uploads'), limit(100));
       }
 
-      const snapshot = await getDocs(q);
+      const snapPromise = getDocs(q);
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Firestore timeout')), 2500)
+      );
+      const snapshot = await Promise.race([snapPromise, timeoutPromise]);
+
       if (!snapshot.empty) {
         const list: QrUploadedFile[] = [];
         snapshot.forEach((d) => list.push(d.data() as QrUploadedFile));
@@ -565,7 +583,7 @@ export const qrUploadService = {
         return filterVaultFilesForUser(list, targetUser);
       }
     } catch (e) {
-      // ignore
+      // ignore timeout or offline
     }
 
     return this.getAllVaultFiles(targetUser);

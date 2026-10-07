@@ -92,15 +92,19 @@ function formatDocumentDate(isoString: string): string {
 function isTodayDate(isoString: string): boolean {
   try {
     const d = new Date(isoString);
-    if (isNaN(d.getTime())) return false;
+    if (isNaN(d.getTime())) return true;
     const now = new Date();
+    // Files within 24 hours are always treated as today / current
+    if (Math.abs(now.getTime() - d.getTime()) < 24 * 60 * 60 * 1000) {
+      return true;
+    }
     return (
       d.getDate() === now.getDate() &&
       d.getMonth() === now.getMonth() &&
       d.getFullYear() === now.getFullYear()
     );
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -209,7 +213,7 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
 
   // Derive mobile upload URL with counselor and district context for strict isolation
   const uploadUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}${window.location.pathname}?qrSession=${sessionId}&uploader=${encodeURIComponent(activeUser?.username || '')}&uploaderName=${encodeURIComponent(activeUser?.fullName || activeUser?.username || '')}&uploaderRole=${encodeURIComponent(activeUser?.role || 'counsellor')}&district=${encodeURIComponent(userDistrict)}`
+    ? `${window.location.origin}${window.location.pathname}?qrSession=${sessionId}&uploader=${encodeURIComponent(activeUser?.username || 'counsellor')}&uploaderName=${encodeURIComponent(activeUser?.fullName || activeUser?.username || 'Counselor')}&uploaderRole=${encodeURIComponent(activeUser?.role || 'counsellor')}&district=${encodeURIComponent(userDistrict)}`
     : `https://vmkwashim.gov.in/?qrSession=${sessionId}`;
 
   // Fetch session & vault files filtered strictly by user role and district
@@ -217,7 +221,7 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
     try {
       const [sessionFiles, allVault, remoteFolders] = await Promise.all([
         qrUploadService.getFiles(sessionId),
-        qrUploadService.getAllVaultFilesAsync(activeUser),
+        qrUploadService.getAllVaultFilesAsync(activeUser, sessionId),
         fetchCustomVaultFoldersAsync(activeUser),
       ]);
       const mergedMap = new Map<string, QrUploadedFile>();
@@ -228,6 +232,9 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
       );
       setVaultFiles(merged);
       setCustomFolders(remoteFolders);
+      if (sessionFiles.length > 0) {
+        setActiveTab((prev) => (prev === 'upload' ? 'dual' : prev));
+      }
     } catch {
       // fallback to sync cache
       const cached = qrUploadService.getAllVaultFiles(activeUser);
@@ -254,6 +261,9 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
         const filtered = filterVaultFilesForUser([newFile], activeUser);
         if (filtered.length === 0) return;
       }
+
+      // Reset any active subfolder so user immediately sees the fresh incoming file
+      setActiveFolder(null);
 
       setVaultFiles((prev) => {
         if (prev.some((f) => f.id === newFile.id)) return prev;
@@ -727,7 +737,14 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
   // Date folder: SHOW FILES FROM THAT SPECIFIC DATE
   const currentCategoryFiles = React.useMemo(() => {
     if (!activeFolder) {
-      return vaultFiles.filter((f) => (!f.folder || f.folder.trim().length === 0) && isTodayDate(f.uploadedAt));
+      return vaultFiles.filter((f) => {
+        // Documents placed into custom named folders show in those folders
+        if (f.folder && f.folder.trim().length > 0) return false;
+        // Documents uploaded during the active session ALWAYS show on root!
+        if (f.sessionId && sessionId && f.sessionId.trim().toUpperCase() === sessionId.trim().toUpperCase()) return true;
+        // Today's and recent documents show on root
+        return isTodayDate(f.uploadedAt);
+      });
     }
     if (activeFolder.type === 'custom') {
       return vaultFiles.filter((f) => (f.folder || '').trim().toLowerCase() === activeFolder.key.toLowerCase());
@@ -736,7 +753,7 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
       return vaultFiles.filter((f) => (!f.folder || f.folder.trim().length === 0) && getDateKey(f.uploadedAt) === activeFolder.key);
     }
     return vaultFiles;
-  }, [vaultFiles, activeFolder]);
+  }, [vaultFiles, activeFolder, sessionId]);
 
   // Counts for category tabs
   const totalCount = currentCategoryFiles.length;

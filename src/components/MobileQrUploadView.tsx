@@ -42,14 +42,22 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
   }>(() => {
     if (typeof window !== 'undefined') {
       const sp = new URLSearchParams(window.location.search);
+      const uploader = (sp.get('uploader') || '').trim();
+      const uploaderName = (sp.get('uploaderName') || '').trim();
+      const uploaderRole = (sp.get('uploaderRole') || '').trim();
+      const district = (sp.get('district') || '').trim();
       return {
-        uploadedBy: sp.get('uploader') || undefined,
-        uploaderName: sp.get('uploaderName') || sp.get('uploader') || undefined,
-        uploaderRole: sp.get('uploaderRole') || 'counsellor',
-        district: sp.get('district') || undefined,
+        uploadedBy: uploader || 'counsellor',
+        uploaderName: uploaderName || uploader || 'Counselor',
+        uploaderRole: uploaderRole || 'counsellor',
+        district: district || undefined,
       };
     }
-    return {};
+    return {
+      uploadedBy: 'counsellor',
+      uploaderName: 'Counselor',
+      uploaderRole: 'counsellor',
+    };
   });
 
   const [stagedFiles, setStagedFiles] = useState<StagedFileItem[]>([]);
