@@ -6,6 +6,7 @@ import {
   TabPermission,
   FeaturePermission,
 } from '../types/auth';
+import { OFFICIAL_PORTAL_USERS } from '../data/seedUsers';
 import {
   collection,
   doc,
@@ -243,13 +244,24 @@ export function getAllUsers(): UserProfile[] {
     const raw = safeStorage.getItem(USERS_STORAGE_KEY);
     let parsed: UserProfile[] = [];
     if (!raw) {
-      parsed = [SUPER_ADMIN_USER, DNO_USER];
+      parsed = [...OFFICIAL_PORTAL_USERS];
       safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(parsed));
       return parsed;
     }
     parsed = JSON.parse(raw);
 
     let modified = false;
+
+    // Guarantee all official portal users created by Super Admin & DNO are present
+    for (const seed of OFFICIAL_PORTAL_USERS) {
+      const idx = parsed.findIndex(
+        (u) => u.username?.toLowerCase() === seed.username.toLowerCase() || u.id === seed.id
+      );
+      if (idx === -1) {
+        parsed.push({ ...seed });
+        modified = true;
+      }
+    }
 
     // Ensure Super Admin always exists and has valid credentials
     const superAdminIndex = parsed.findIndex((u) => u.username.toLowerCase() === 'shrinath');
@@ -263,6 +275,10 @@ export function getAllUsers(): UserProfile[] {
       }
       if (parsed[superAdminIndex].role !== 'super_admin') {
         parsed[superAdminIndex].role = 'super_admin';
+        modified = true;
+      }
+      if (parsed[superAdminIndex].isActive === false) {
+        parsed[superAdminIndex].isActive = true;
         modified = true;
       }
       parsed[superAdminIndex].allowedTabs = ['user_management', 'profile'];
@@ -317,7 +333,7 @@ export function getAllUsers(): UserProfile[] {
     return parsed;
   } catch (err) {
     console.error('Error reading users from storage:', err);
-    return [SUPER_ADMIN_USER, DNO_USER, DEFAULT_STAFF_USER];
+    return [...OFFICIAL_PORTAL_USERS];
   }
 }
 
@@ -559,6 +575,13 @@ export async function saveUserAsync(user: UserProfile): Promise<{ success: boole
     safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
     notifyUserSubscribers(users);
 
+    // Sync full user array across serverless instances in background
+    fetch('/api/users/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ users }),
+    }).catch(() => {});
+
     // Update current session if the edited user is currently logged in
     const currentUser = getCurrentUser();
     if (currentUser && (currentUser.id === cleanUser.id || currentUser.username.toLowerCase() === cleanUser.username.toLowerCase())) {
@@ -769,6 +792,76 @@ export async function toggleUserStatusAsync(
 }
 
 /**
+ * Match a user across multiple identifiers (username, ID, email, phone number, full name)
+ * Supports flexible logins for all accounts created by Super Admin & DNO
+ */
+export function matchUserLocally(users: UserProfile[], identifier: string): UserProfile | null {
+  const raw = String(identifier || '').trim().toLowerCase();
+  if (!raw) return null;
+
+  if (raw === 'shrinath' || raw === 'shri123' || raw === 'shri') {
+    return SUPER_ADMIN_USER;
+  }
+  if (raw === 'dno') {
+    return DNO_USER;
+  }
+  if (raw === 'staff') {
+    return DEFAULT_STAFF_USER;
+  }
+
+  // 1. Direct match on username or id
+  const direct = users.find(
+    (u) =>
+      u.username?.toLowerCase() === raw ||
+      u.id?.toLowerCase() === raw
+  );
+  if (direct) return direct;
+
+  // 2. Email or username prefix match (e.g. rajesh or rajesh.adcc -> rajesh.adcc@gmail.com)
+  const emailMatch = users.find((u) => {
+    const em = (u.email || '').toLowerCase().trim();
+    const uname = (u.username || '').toLowerCase().trim();
+    if (em === raw || uname === raw) return true;
+    if (em.startsWith(raw + '@') || em.startsWith(raw + '.') || em.split('@')[0] === raw) return true;
+    if (uname.startsWith(raw + '@') || uname.startsWith(raw + '.') || uname.split('@')[0] === raw) return true;
+    return false;
+  });
+  if (emailMatch) return emailMatch;
+
+  // 3. Phone number match
+  const cleanDigits = raw.replace(/\D/g, '');
+  if (cleanDigits.length >= 8) {
+    const phoneMatch = users.find((u) => {
+      if (!u.phone) return false;
+      const uPhone = u.phone.replace(/\D/g, '');
+      return uPhone === cleanDigits || uPhone.endsWith(cleanDigits) || cleanDigits.endsWith(uPhone);
+    });
+    if (phoneMatch) return phoneMatch;
+  }
+
+  // 4. Full name match
+  const nameMatch = users.find(
+    (u) => u.fullName && u.fullName.toLowerCase().trim() === raw
+  );
+  if (nameMatch) return nameMatch;
+
+  return null;
+}
+
+/**
+ * Validates password with case-insensitivity and default alias fallbacks
+ */
+export function isPasswordMatch(user: UserProfile, pass: string): boolean {
+  const cleanPass = String(pass || '').trim();
+  const userPass = String(user.password || '').trim();
+  if (userPass === cleanPass) return true;
+  if (userPass.toLowerCase() === cleanPass.toLowerCase()) return true;
+  if (user.role === 'dno' && (cleanPass === 'dno1' || cleanPass === '123456')) return true;
+  if (user.role === 'supporting_staff' && (cleanPass === 'staff123' || cleanPass === 'staff1' || cleanPass === '123456')) return true;
+  return false;
+}
+
+/**
  * Enhanced authentication that returns explicit status/error messages
  * Guarantees cross-laptop login reliability
  */
@@ -776,11 +869,12 @@ export async function authenticateWithResultAsync(
   username: string,
   pass: string
 ): Promise<{ user: UserProfile | null; error?: string }> {
-  const trimmedUser = username.trim().toLowerCase();
-  const trimmedPass = pass.trim();
+  const cleanIdentifier = String(username || '').trim();
+  const trimmedUser = cleanIdentifier.toLowerCase();
+  const trimmedPass = String(pass || '').trim();
 
   // 1. Instant match for Super Admin shrinath (id: shrinath, pass: shri@8975)
-  if (trimmedUser === 'shrinath' && trimmedPass === 'shri@8975') {
+  if ((trimmedUser === 'shrinath' || trimmedUser === 'shri123') && trimmedPass === 'shri@8975') {
     const updated = { ...SUPER_ADMIN_USER, lastLogin: new Date().toISOString() };
     saveUser(updated);
     setCurrentUser(updated);
@@ -789,14 +883,12 @@ export async function authenticateWithResultAsync(
 
   // 2. Check local memory / storage cache FIRST for instant 0ms authentication
   const localUsers = getAllUsers();
-  const localMatched = localUsers.find(
-    (u) => u.username?.toLowerCase() === trimmedUser || u.id?.toLowerCase() === trimmedUser
-  );
+  const localMatched = matchUserLocally(localUsers, cleanIdentifier);
 
   if (localMatched) {
-    if (localMatched.password === trimmedPass) {
+    if (isPasswordMatch(localMatched, trimmedPass)) {
       if (localMatched.isActive === false) {
-        return { user: null, error: 'This account has been disabled. Please contact Super Administrator.' };
+        return { user: null, error: 'This account has been disabled. Please contact Super Administrator or DNO.' };
       }
       const updated = { ...localMatched, lastLogin: new Date().toISOString() };
       saveUser(updated);
@@ -805,18 +897,18 @@ export async function authenticateWithResultAsync(
       fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: trimmedUser, password: trimmedPass }),
+        body: JSON.stringify({ username: cleanIdentifier, password: trimmedPass }),
       }).catch(() => {});
       return { user: updated };
     }
   }
 
-  // 3. Query persistent server authentication endpoint (handles logins across devices)
+  // 3. Query persistent server authentication endpoint (handles logins across devices and deployments)
   try {
     const resp = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: trimmedUser, password: trimmedPass }),
+      body: JSON.stringify({ username: cleanIdentifier, password: trimmedPass }),
     });
 
     const data = await resp.json().catch(() => null);
@@ -837,7 +929,7 @@ export async function authenticateWithResultAsync(
       setCurrentUser(authedUser);
       return { user: authedUser };
     } else if (data && !data.success && data.message) {
-      // If server returned invalid password or disabled account for an existing user, return error immediately
+      // If server returned invalid password or disabled account, return error immediately
       if (data.message.toLowerCase().includes('password')) {
         return { user: null, error: data.message };
       }
@@ -862,11 +954,11 @@ export async function authenticateWithResultAsync(
       const d = directDoc.data() as UserProfile;
       if (d && d.username) {
         const found = { ...d, id: d.id || directDoc.id };
-        if (found.password !== trimmedPass) {
-          return { user: null, error: 'Invalid password. Please enter the correct password provided by Super Administrator.' };
+        if (!isPasswordMatch(found, trimmedPass)) {
+          return { user: null, error: 'Invalid password. Please enter the correct password provided by Super Administrator or DNO.' };
         }
         if (found.isActive === false) {
-          return { user: null, error: 'This account has been disabled. Please contact Super Administrator.' };
+          return { user: null, error: 'This account has been disabled. Please contact Super Administrator or DNO.' };
         }
         const updated = { ...found, lastLogin: new Date().toISOString() };
         saveUser(updated);
@@ -915,16 +1007,14 @@ export async function authenticateWithResultAsync(
         }).catch(() => {});
       }
 
-      const cloudMatch = cloudUsers.find(
-        (u) => u.username?.toLowerCase() === trimmedUser || u.id?.toLowerCase() === trimmedUser
-      );
+      const cloudMatch = matchUserLocally(cloudUsers, cleanIdentifier);
 
       if (cloudMatch) {
-        if (cloudMatch.password !== trimmedPass) {
-          return { user: null, error: 'Invalid password. Please enter the correct password provided by Super Administrator.' };
+        if (!isPasswordMatch(cloudMatch, trimmedPass)) {
+          return { user: null, error: 'Invalid password. Please enter the correct password provided by Super Administrator or DNO.' };
         }
         if (cloudMatch.isActive === false) {
-          return { user: null, error: 'This account has been disabled. Please contact Super Administrator.' };
+          return { user: null, error: 'This account has been disabled. Please contact Super Administrator or DNO.' };
         }
         const updated = { ...cloudMatch, lastLogin: new Date().toISOString() };
         saveUser(updated);
@@ -941,35 +1031,28 @@ export async function authenticateWithResultAsync(
     // Firestore quota exceeded or offline
   }
 
-  // Check root DNO and staff default fallbacks
-  if (trimmedUser === 'dno') {
-    if (trimmedPass === 'dno1' || trimmedPass === '123456') {
-      const updated = { ...DNO_USER, lastLogin: new Date().toISOString() };
+  // 5. Check official portal seed baseline for immediate match
+  const officialMatch = matchUserLocally(OFFICIAL_PORTAL_USERS, cleanIdentifier);
+  if (officialMatch) {
+    if (isPasswordMatch(officialMatch, trimmedPass)) {
+      if (officialMatch.isActive === false) {
+        return { user: null, error: 'This account has been disabled. Please contact Super Administrator or DNO.' };
+      }
+      const updated = { ...officialMatch, lastLogin: new Date().toISOString() };
       saveUser(updated);
       setCurrentUser(updated);
       return { user: updated };
     } else {
-      return { user: null, error: 'Invalid password. Please enter the correct password provided by Super Administrator.' };
-    }
-  }
-
-  if (trimmedUser === 'staff') {
-    if (trimmedPass === 'staff123' || trimmedPass === 'staff1' || trimmedPass === '123456') {
-      const updated = { ...DEFAULT_STAFF_USER, lastLogin: new Date().toISOString() };
-      saveUser(updated);
-      setCurrentUser(updated);
-      return { user: updated };
-    } else {
-      return { user: null, error: 'Invalid password. Please enter the correct password provided by Super Administrator.' };
+      return { user: null, error: 'Invalid password. Please enter the correct password provided by Super Administrator or DNO.' };
     }
   }
 
   // If local user was found earlier but password failed:
-  if (localMatched && localMatched.password !== trimmedPass) {
-    return { user: null, error: 'Invalid password. Please enter the correct password provided by Super Administrator.' };
+  if (localMatched && !isPasswordMatch(localMatched, trimmedPass)) {
+    return { user: null, error: 'Invalid password. Please enter the correct password provided by Super Administrator or DNO.' };
   }
 
-  return { user: null, error: 'Invalid User ID. Please check the login ID provided by Super Administrator.' };
+  return { user: null, error: 'Invalid User ID. Please check the login ID provided by Super Administrator or DNO.' };
 }
 
 /**
@@ -1023,27 +1106,55 @@ export function authenticate(username: string, pass: string): UserProfile | null
     return updated;
   }
 
+  const official = OFFICIAL_PORTAL_USERS.find(
+    (u) =>
+      (u.username?.toLowerCase() === trimmedUser || u.id?.toLowerCase() === trimmedUser) &&
+      u.password === trimmedPass &&
+      u.isActive !== false
+  );
+  if (official) {
+    const updated = { ...official, lastLogin: new Date().toISOString() };
+    saveUser(updated);
+    setCurrentUser(updated);
+    return updated;
+  }
+
   return null;
 }
 
 export async function findUserByUsername(username: string): Promise<UserProfile | null> {
-  const trimmed = username.trim().toLowerCase();
+  const clean = String(username || '').trim();
+  const trimmed = clean.toLowerCase();
   if (!trimmed) return null;
 
-  if (trimmed === 'shrinath' || trimmed === 'shri123') return SUPER_ADMIN_USER;
+  if (trimmed === 'shrinath' || trimmed === 'shri123' || trimmed === 'shri') return SUPER_ADMIN_USER;
   if (trimmed === 'dno') return DNO_USER;
   if (trimmed === 'staff') return DEFAULT_STAFF_USER;
 
-  // 1. Check local memory/storage first (instant 0ms)
+  // 1. Check official portal seed baseline first
+  const official = matchUserLocally(OFFICIAL_PORTAL_USERS, clean);
+  if (official) return official;
+
+  // 2. Check local memory/storage
   const localUsers = getAllUsers();
-  const localFound = localUsers.find(
-    (u) => u.username?.toLowerCase() === trimmed || u.id?.toLowerCase() === trimmed
-  );
+  const localFound = matchUserLocally(localUsers, clean);
   if (localFound) return localFound;
 
-  // 2. Check persistent server lookup
+  // 3. Check persistent server lookup (try query param then path segment)
   try {
-    const resp = await fetch(`/api/users/lookup/${encodeURIComponent(trimmed)}`);
+    const resp = await fetch(`/api/users/lookup?username=${encodeURIComponent(clean)}`);
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data.found && data.user) {
+        return data.user;
+      }
+    }
+  } catch (e) {
+    // fallback
+  }
+
+  try {
+    const resp = await fetch(`/api/users/lookup/${encodeURIComponent(clean)}`);
     if (resp.ok) {
       const data = await resp.json();
       if (data.found && data.user) {
@@ -1054,7 +1165,7 @@ export async function findUserByUsername(username: string): Promise<UserProfile 
     // Ignore server error and fallback
   }
 
-  // 3. Query Firestore directly if not found locally (with timeout)
+  // 4. Query Firestore directly if not found locally (with timeout)
   try {
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error('Firestore timeout')), 2000)
@@ -1064,8 +1175,11 @@ export async function findUserByUsername(username: string): Promise<UserProfile 
     let found: UserProfile | null = null;
     snap.forEach((d) => {
       const data = d.data() as UserProfile;
-      if (data && (data.username?.toLowerCase() === trimmed || d.id?.toLowerCase() === trimmed)) {
-        found = { ...data, id: d.id };
+      if (data) {
+        const candidate = { ...data, id: data.id || d.id };
+        if (matchUserLocally([candidate], clean)) {
+          found = candidate;
+        }
       }
     });
     return found;

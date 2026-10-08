@@ -129,9 +129,9 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     setIsLoading(true);
 
     try {
-      // Authenticate with user ID or normalized alias
-      let authId = cleanId;
-      if (cleanId.toLowerCase() === "shri123") {
+      // Authenticate with resolved user profile or entered identifier
+      let authId = resolvedUser?.username || cleanId;
+      if (cleanId.toLowerCase() === "shri123" || cleanId.toLowerCase() === "shri") {
         authId = "shrinath";
       }
 

@@ -22,7 +22,24 @@ export default async function handler(req: any, res: any) {
         return res.status(200).json({ success: true, files: [] });
       }
 
-      const files = sessionStore.get(String(sessionId).trim()) || [];
+      const normSessionId = String(sessionId).trim().toUpperCase();
+      const rawSessionId = String(sessionId).trim();
+
+      const sessionList = sessionStore.get(normSessionId) || sessionStore.get(rawSessionId) || [];
+      const vaultMatches = vaultStore.filter((f) => {
+        const fNorm = (f.sessionId || '').trim().toUpperCase();
+        return fNorm === normSessionId || f.sessionId === rawSessionId;
+      });
+
+      // Merge by ID
+      const mergedMap = new Map<string, QrUploadedFile>();
+      vaultMatches.forEach((f) => mergedMap.set(f.id, f));
+      sessionList.forEach((f) => mergedMap.set(f.id, f));
+
+      const files = Array.from(mergedMap.values()).sort(
+        (a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
+      );
+
       return res.status(200).json({ success: true, files });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || 'Error fetching files' });
@@ -40,14 +57,17 @@ export default async function handler(req: any, res: any) {
 
       let updatedFile: QrUploadedFile | null = null;
 
-      if (sessionId && sessionStore.has(sessionId)) {
-        const list = sessionStore.get(sessionId)!;
-        const target = list.find((f) => f.id === fileId);
-        if (target) {
-          if (dataUrl) target.dataUrl = dataUrl;
-          if (size !== undefined) target.size = size;
-          if (name) target.name = name;
-          updatedFile = target;
+      if (sessionId) {
+        const norm = String(sessionId).trim().toUpperCase();
+        const list = sessionStore.get(norm) || sessionStore.get(String(sessionId).trim());
+        if (list) {
+          const target = list.find((f) => f.id === fileId);
+          if (target) {
+            if (dataUrl) target.dataUrl = dataUrl;
+            if (size !== undefined) target.size = size;
+            if (name) target.name = name;
+            updatedFile = target;
+          }
         }
       }
 
@@ -59,28 +79,39 @@ export default async function handler(req: any, res: any) {
         if (!updatedFile) updatedFile = vaultTarget;
       }
 
+      if (!updatedFile) {
+        return res.status(404).json({ success: false, error: "File not found" });
+      }
+
       return res.status(200).json({ success: true, file: updatedFile });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || 'Error updating file' });
     }
   }
 
-  // DELETE: Delete a file
+  // DELETE: Remove a file
   if (req.method === 'DELETE') {
     try {
-      const sessionId = (req.query?.sessionId as string) || '';
-      const fileId = (req.query?.fileId as string) || '';
+      const { sessionId, fileId } = req.query || {};
+      if (!fileId) {
+        return res.status(400).json({ success: false, error: "Missing fileId" });
+      }
 
-      if (sessionId && sessionStore.has(sessionId)) {
-        const list = sessionStore.get(sessionId)!;
-        const idx = list.findIndex((f) => f.id === fileId);
-        if (idx >= 0) list.splice(idx, 1);
+      if (sessionId) {
+        const norm = String(sessionId).trim().toUpperCase();
+        const list = sessionStore.get(norm);
+        if (list) {
+          const idx = list.findIndex((f) => f.id === fileId);
+          if (idx !== -1) list.splice(idx, 1);
+        }
       }
 
       const vaultIdx = vaultStore.findIndex((f) => f.id === fileId);
-      if (vaultIdx >= 0) vaultStore.splice(vaultIdx, 1);
+      if (vaultIdx !== -1) {
+        vaultStore.splice(vaultIdx, 1);
+      }
 
-      return res.status(200).json({ success: true });
+      return res.status(200).json({ success: true, message: "File deleted successfully" });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || 'Error deleting file' });
     }

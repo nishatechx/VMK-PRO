@@ -237,7 +237,7 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
       }
     } catch {
       // fallback to sync cache
-      const cached = qrUploadService.getAllVaultFiles(activeUser);
+      const cached = qrUploadService.getAllVaultFiles(activeUser, sessionId);
       setVaultFiles(cached);
       setCustomFolders(getCustomVaultFolders(activeUser));
     }
@@ -258,9 +258,12 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
       const isCurrentSession = normFileSession === normActiveSession;
 
       if (!isCurrentSession) {
-        const filtered = filterVaultFilesForUser([newFile], activeUser);
+        const filtered = filterVaultFilesForUser([newFile], activeUser, sessionId);
         if (filtered.length === 0) return;
       }
+
+      // Ensure file is persisted to software vault cache immediately
+      qrUploadService.saveToSoftwareVault(newFile);
 
       // Reset any active subfolder so user immediately sees the fresh incoming file
       setActiveFolder(null);
@@ -742,6 +745,8 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
         if (f.folder && f.folder.trim().length > 0) return false;
         // Documents uploaded during the active session ALWAYS show on root!
         if (f.sessionId && sessionId && f.sessionId.trim().toUpperCase() === sessionId.trim().toUpperCase()) return true;
+        // Documents uploaded by current user show on root
+        if (activeUser?.username && f.uploadedBy && f.uploadedBy.trim().toLowerCase() === activeUser.username.trim().toLowerCase()) return true;
         // Today's and recent documents show on root
         return isTodayDate(f.uploadedAt);
       });

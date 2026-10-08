@@ -5,6 +5,14 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/api/users/lookup/:username",
+      "destination": "/api/users/lookup/[username]"
+    },
+    {
+      "source": "/api/users/:id",
+      "destination": "/api/users/[id]"
+    },
+    {
       "source": "/((?!api/.*).*)",
       "destination": "/index.html"
     }

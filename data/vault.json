@@ -1,0 +1,16 @@
+[
+  {
+    "id": "doc-1791439117090-6yxhb",
+    "sessionId": "TEST1234",
+    "name": "HSC_MarkSheet.pdf",
+    "type": "application/pdf",
+    "size": 12400,
+    "dataUrl": "data:application/pdf;base64,JVBERi0xLjQK",
+    "uploadedAt": "2026-10-08T05:58:37.090Z",
+    "isDownloadedToSoftware": true,
+    "verifiedStamp": false,
+    "category": "Mark Sheet / Result",
+    "uploadedBy": "testcounselor",
+    "district": "Washim"
+  }
+]

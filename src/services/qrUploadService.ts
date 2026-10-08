@@ -309,7 +309,8 @@ try {
  */
 export function filterVaultFilesForUser(
   files: QrUploadedFile[],
-  user: UserProfile | null | undefined
+  user: UserProfile | null | undefined,
+  activeSessionId?: string
 ): QrUploadedFile[] {
   if (!user) return files;
 
@@ -322,6 +323,7 @@ export function filterVaultFilesForUser(
   const userDist = (user.district || '').trim().toLowerCase();
   const currentUsername = (user.username || '').trim().toLowerCase();
   const currentUserId = (user.id || '').trim().toLowerCase();
+  const normSessionId = (activeSessionId || '').trim().toUpperCase();
 
   if (isDno) {
     // Root master DNO ('dno' without district) can see all files across Maharashtra
@@ -330,6 +332,7 @@ export function filterVaultFilesForUser(
     }
     // Respective district DNO can see files belonging to their assigned district
     return files.filter((f) => {
+      if (normSessionId && f.sessionId && f.sessionId.trim().toUpperCase() === normSessionId) return true;
       if (!f.district) return true; // Legacy/unassigned files visible to DNO
       const fileDist = (f.district || '').trim().toLowerCase();
       return !userDist || fileDist === userDist;
@@ -338,17 +341,23 @@ export function filterVaultFilesForUser(
 
   // Any counselor / staff / operator / portal user:
   return files.filter((f) => {
+    // 1. Files from the active QR upload session are ALWAYS visible!
+    if (normSessionId && f.sessionId && f.sessionId.trim().toUpperCase() === normSessionId) {
+      return true;
+    }
+
     const uploader = (f.uploadedBy || '').trim().toLowerCase();
     const fileDist = (f.district || '').trim().toLowerCase();
-    // Allow intake, anonymous, mobile, or default uploads
+
+    // 2. Allow intake, anonymous, mobile, or default uploads
     if (!uploader || uploader === 'anonymous' || uploader === 'counsellor' || uploader === 'counselor' || uploader === 'mobile' || uploader === 'staff') {
       return true;
     }
-    // Match current user
+    // 3. Match current user username or user ID
     if (uploader === currentUsername || uploader === currentUserId) {
       return true;
     }
-    // Match district
+    // 4. Match district
     if (userDist && fileDist && userDist === fileDist) {
       return true;
     }
@@ -486,7 +495,7 @@ export const qrUploadService = {
       const res = await fetch(`/api/qr-files?sessionId=${encodeURIComponent(cleanSessionId)}`);
       if (res.ok) {
         const json = await res.json();
-        if (Array.isArray(json.files) && json.files.length > 0) {
+        if (json?.success && Array.isArray(json.files)) {
           const serverFiles: QrUploadedFile[] = json.files.map((f: QrUploadedFile) => ({
             ...f,
             isDownloadedToSoftware: true,
@@ -547,9 +556,9 @@ export const qrUploadService = {
       const res = await fetch(`/api/qr-vault?${params.toString()}`);
       if (res.ok) {
         const json = await res.json();
-        if (Array.isArray(json.files) && json.files.length > 0) {
+        if (json?.success && Array.isArray(json.files)) {
           json.files.forEach((f: QrUploadedFile) => this.saveToSoftwareVault(f));
-          return filterVaultFilesForUser(json.files, targetUser);
+          return filterVaultFilesForUser(json.files, targetUser, sessionId);
         }
       }
     } catch {
@@ -580,17 +589,17 @@ export const qrUploadService = {
         snapshot.forEach((d) => list.push(d.data() as QrUploadedFile));
         list.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
         list.forEach((f) => this.saveToSoftwareVault(f));
-        return filterVaultFilesForUser(list, targetUser);
+        return filterVaultFilesForUser(list, targetUser, sessionId);
       }
     } catch (e) {
       // ignore timeout or offline
     }
 
-    return this.getAllVaultFiles(targetUser);
+    return this.getAllVaultFiles(targetUser, sessionId);
   },
 
   // Synchronous read from local vault cache (Strictly scoped by user and district)
-  getAllVaultFiles(forUser?: UserProfile | null): QrUploadedFile[] {
+  getAllVaultFiles(forUser?: UserProfile | null, sessionId?: string): QrUploadedFile[] {
     const targetUser = forUser !== undefined ? forUser : getCurrentUser();
     try {
       if (inMemoryVaultFiles.length === 0) {
@@ -617,9 +626,9 @@ export const qrUploadService = {
         }
       }
 
-      return filterVaultFilesForUser(inMemoryVaultFiles, targetUser);
+      return filterVaultFilesForUser(inMemoryVaultFiles, targetUser, sessionId);
     } catch {
-      return filterVaultFilesForUser(getDefaultVaultFiles(), targetUser);
+      return filterVaultFilesForUser(getDefaultVaultFiles(), targetUser, sessionId);
     }
   },
 
@@ -892,7 +901,7 @@ export const qrUploadService = {
       } else {
         inMemoryVaultFiles.unshift(file);
       }
-      if (inMemoryVaultFiles.length > 60) inMemoryVaultFiles.pop();
+      if (inMemoryVaultFiles.length > 250) inMemoryVaultFiles.pop();
 
       // Persist full base64 file to high-capacity IndexedDB
       idbSaveFile(file).catch(() => {});

@@ -8,6 +8,12 @@ import qrFilesHandler from "./qr-files";
 import qrVaultHandler from "./qr-vault";
 import qrVerifyHandler from "./qr-verify";
 import qrEventsHandler from "./qr-events";
+import authLoginHandler from "./auth/login";
+import usersHandler from "./users";
+import usersSyncHandler from "./users/sync";
+import usersLookupHandler from "./users/lookup";
+import usersToggleStatusHandler from "./users/toggle-status";
+import usersToggleApiKeyHandler from "./users/toggle-api-key";
 
 export const config = {
   maxDuration: 60,
@@ -16,6 +22,24 @@ export const config = {
 export default async function handler(req: any, res: any) {
   const url = req.url || '';
   
+  if (url.includes('auth/login')) {
+    return authLoginHandler(req, res);
+  }
+  if (url.includes('users/sync')) {
+    return usersSyncHandler(req, res);
+  }
+  if (url.includes('users/lookup')) {
+    return usersLookupHandler(req, res);
+  }
+  if (url.includes('users/toggle-status')) {
+    return usersToggleStatusHandler(req, res);
+  }
+  if (url.includes('users/toggle-api-key')) {
+    return usersToggleApiKeyHandler(req, res);
+  }
+  if (url.includes('users')) {
+    return usersHandler(req, res);
+  }
   if (url.includes('image-to-text')) {
     return imageToTextHandler(req, res);
   }
@@ -58,17 +82,6 @@ export default async function handler(req: any, res: any) {
   return res.status(200).json({
     message: 'FC Admission Portal API Gateway',
     status: 'online',
-    endpoints: [
-      '/api/ai-document-detect',
-      '/api/image-to-text',
-      '/api/translate-text',
-      '/api/cetcell-notices',
-      '/api/qr-upload',
-      '/api/qr-files',
-      '/api/qr-vault',
-      '/api/qr-verify',
-      '/api/qr-events',
-      '/api/health',
-    ],
+    timestamp: new Date().toISOString(),
   });
 }
