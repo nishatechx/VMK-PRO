@@ -8,6 +8,7 @@ import {
   persistentMultipleTabManager,
   setLogLevel,
 } from 'firebase/firestore';
+import { getAuth, Auth } from 'firebase/auth';
 import firebaseConfigData from '../../firebase-applet-config.json';
 
 // Your web app's Firebase configuration loaded from provisioned config
@@ -59,5 +60,6 @@ function createFirestoreInstance(): Firestore {
 }
 
 export const db: Firestore = createFirestoreInstance();
+export const auth: Auth = getAuth(firebaseApp);
 
 

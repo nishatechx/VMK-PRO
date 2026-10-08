@@ -135,7 +135,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         authId = "shrinath";
       }
 
-      const result = await authenticateWithResultAsync(authId, cleanPass);
+      const result = await authenticateWithResultAsync(authId, cleanPass, resolvedUser);
       if (result.user) {
         if (onLoginSuccess) {
           onLoginSuccess(result.user);

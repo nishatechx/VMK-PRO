@@ -15,8 +15,12 @@ import {
   setDoc,
   deleteDoc,
   onSnapshot,
+  query,
+  where,
+  limit,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { db, auth } from '../lib/firebase';
 import { safeStorage } from '../utils/safeStorage';
 
 /**
@@ -53,6 +57,7 @@ const VISITORS_STORAGE_KEY = 'vmk_visitors_records_v1';
 // Default Master Super Admin Account (Root Administrator for all districts)
 export const SUPER_ADMIN_USER: UserProfile = {
   id: 'super_admin_shrinath',
+  uid: 'super_admin_shrinath',
   username: 'shrinath',
   password: 'shri@8975',
   fullName: 'Mr. Shrinath Ghodake',
@@ -73,6 +78,7 @@ export const SUPER_ADMIN_USER: UserProfile = {
 // Default Master DNO Account (District Nodal Administrator)
 export const DNO_USER: UserProfile = {
   id: 'dno_washim_admin',
+  uid: 'dno_washim_admin',
   username: 'dno',
   password: 'dno1',
   fullName: 'Mr. Shrinath Ghodake',
@@ -109,6 +115,7 @@ export const DNO_USER: UserProfile = {
 // Default Supporting Staff User (Facilitation & Scrutiny Counter Desk)
 export const DEFAULT_STAFF_USER: UserProfile = {
   id: 'staff_operator_1',
+  uid: 'staff_operator_1',
   username: 'staff',
   password: 'staff123',
   fullName: 'Pooja Deshmukh',
@@ -372,32 +379,39 @@ export function initFirestoreDataSync() {
           const firestoreUsers: UserProfile[] = [];
           const seen = new Set<string>();
           snapshot.forEach((d) => {
-            const data = d.data() as UserProfile;
-            if (data && data.username) {
-              const uname = data.username.toLowerCase().trim();
-              if (!seen.has(uname)) {
-                seen.add(uname);
-                firestoreUsers.push({ ...data, id: data.id || d.id });
+            const data = d.data() as any;
+            if (data) {
+              const rawUid = data.id || data.uid || d.id;
+              const rawUsername = (data.username || (data.email ? data.email.split('@')[0] : rawUid)).toLowerCase().trim();
+              if (!seen.has(rawUsername)) {
+                seen.add(rawUsername);
+                seen.add(rawUid.toLowerCase());
+                firestoreUsers.push({
+                  ...data,
+                  id: rawUid,
+                  uid: rawUid,
+                  username: data.username || rawUsername,
+                });
               }
             }
           });
 
           // Ensure Super Admin is present
-          const hasSuperAdmin = firestoreUsers.some((u) => u.username.toLowerCase() === 'shrinath');
+          const hasSuperAdmin = firestoreUsers.some((u) => u.username.toLowerCase() === 'shrinath' || u.id === SUPER_ADMIN_USER.id);
           if (!hasSuperAdmin) {
             firestoreUsers.unshift(SUPER_ADMIN_USER);
             setDoc(doc(db, 'users', SUPER_ADMIN_USER.id), sanitizeForFirestore(SUPER_ADMIN_USER), { merge: true }).catch(() => {});
           }
 
           // Ensure DNO is present
-          const hasDno = firestoreUsers.some((u) => u.username.toLowerCase() === 'dno');
+          const hasDno = firestoreUsers.some((u) => u.username.toLowerCase() === 'dno' || u.id === DNO_USER.id);
           if (!hasDno) {
             firestoreUsers.push(DNO_USER);
             setDoc(doc(db, 'users', DNO_USER.id), sanitizeForFirestore(DNO_USER), { merge: true }).catch(() => {});
           }
 
           // Ensure Default Supporting Staff is present
-          const hasStaff = firestoreUsers.some((u) => u.username.toLowerCase() === 'staff');
+          const hasStaff = firestoreUsers.some((u) => u.username.toLowerCase() === 'staff' || u.id === DEFAULT_STAFF_USER.id);
           if (!hasStaff) {
             firestoreUsers.push(DEFAULT_STAFF_USER);
             setDoc(doc(db, 'users', DEFAULT_STAFF_USER.id), sanitizeForFirestore(DEFAULT_STAFF_USER), { merge: true }).catch(() => {});
@@ -416,7 +430,7 @@ export function initFirestoreDataSync() {
           // Update current active user session if modified
           const current = getCurrentUser();
           if (current) {
-            const updatedCurrent = firestoreUsers.find((u) => u.id === current.id);
+            const updatedCurrent = firestoreUsers.find((u) => u.id === current.id || (u.uid && u.uid === current.id) || u.username.toLowerCase() === current.username.toLowerCase());
             if (updatedCurrent) {
               setCurrentUser(updatedCurrent);
             }
@@ -532,10 +546,12 @@ if (typeof window !== 'undefined') {
 
 export async function saveUserAsync(user: UserProfile): Promise<{ success: boolean; message: string }> {
   try {
+    const userUid = user.id || (user as any).uid || `user_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     let cleanUser: UserProfile = {
       ...user,
-      id: user.id || `user_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-      username: user.username.trim().toLowerCase(),
+      id: userUid,
+      uid: userUid,
+      username: (user.username || user.email?.split('@')[0] || '').trim().toLowerCase(),
       fullName: user.fullName?.trim() || user.username.trim(),
     };
 
@@ -548,7 +564,7 @@ export async function saveUserAsync(user: UserProfile): Promise<{ success: boole
       });
       const data = await resp.json().catch(() => null);
       if (resp.ok && data?.success && data?.user) {
-        cleanUser = data.user;
+        cleanUser = { ...cleanUser, ...data.user, id: userUid, uid: userUid };
       } else if (data && !data.success && data.message) {
         // Only error out if the server reported a real conflict like duplicate username
         if (data.message.includes('already in use')) {
@@ -562,7 +578,7 @@ export async function saveUserAsync(user: UserProfile): Promise<{ success: boole
     // 2. Update local storage & subscribers
     const users = getAllUsers();
     const existingIndex = users.findIndex(
-      (u) => u.id === cleanUser.id || u.username?.toLowerCase() === cleanUser.username.toLowerCase()
+      (u) => u.id === cleanUser.id || (u.uid && u.uid === cleanUser.id) || u.username?.toLowerCase() === cleanUser.username.toLowerCase()
     );
     if (existingIndex >= 0) {
       users[existingIndex] = { ...users[existingIndex], ...cleanUser };
@@ -584,16 +600,22 @@ export async function saveUserAsync(user: UserProfile): Promise<{ success: boole
 
     // Update current session if the edited user is currently logged in
     const currentUser = getCurrentUser();
-    if (currentUser && (currentUser.id === cleanUser.id || currentUser.username.toLowerCase() === cleanUser.username.toLowerCase())) {
+    if (currentUser && (currentUser.id === cleanUser.id || (currentUser.uid && currentUser.uid === cleanUser.id) || currentUser.username.toLowerCase() === cleanUser.username.toLowerCase())) {
       setCurrentUser(cleanUser);
     }
 
-    // 3. Save directly to Firestore cloud database if quota allows
+    // 3. Save directly to Firestore cloud database with UID & lookup aliases
     try {
       const sanitized = sanitizeForFirestore(cleanUser);
+      // Primary document by UID
       await setDoc(doc(db, 'users', cleanUser.id), sanitized, { merge: true });
+      // Alias document by username for instant 0ms lookup
       if (cleanUser.username) {
         await setDoc(doc(db, 'users', cleanUser.username.toLowerCase()), sanitized, { merge: true });
+      }
+      // Alias document by email if present
+      if (cleanUser.email) {
+        await setDoc(doc(db, 'users', cleanUser.email.toLowerCase()), sanitized, { merge: true });
       }
     } catch (e: any) {
       // Gracefully handle Firestore quota/offline
@@ -799,21 +821,37 @@ export function matchUserLocally(users: UserProfile[], identifier: string): User
   const raw = String(identifier || '').trim().toLowerCase();
   if (!raw) return null;
 
-  if (raw === 'shrinath' || raw === 'shri123' || raw === 'shri') {
+  if (
+    raw === 'shrinath' ||
+    raw === 'shri123' ||
+    raw === 'shri' ||
+    raw === 'super_admin_shrinath' ||
+    raw === 'shrinathyg@gmail.com' ||
+    raw.replace(/\D/g, '') === '9822089750'
+  ) {
     return SUPER_ADMIN_USER;
   }
-  if (raw === 'dno') {
+  if (
+    raw === 'dno' ||
+    raw === 'dno_washim_admin' ||
+    raw === 'dno.washim@cetcell.mah.gov.in'
+  ) {
     return DNO_USER;
   }
-  if (raw === 'staff') {
+  if (
+    raw === 'staff' ||
+    raw === 'staff_operator_1' ||
+    raw === 'staff.washim@cetcell.mah.gov.in'
+  ) {
     return DEFAULT_STAFF_USER;
   }
 
-  // 1. Direct match on username or id
+  // 1. Direct match on username or id / uid
   const direct = users.find(
     (u) =>
       u.username?.toLowerCase() === raw ||
-      u.id?.toLowerCase() === raw
+      u.id?.toLowerCase() === raw ||
+      (u.uid && u.uid.toLowerCase() === raw)
   );
   if (direct) return direct;
 
@@ -856,54 +894,300 @@ export function isPasswordMatch(user: UserProfile, pass: string): boolean {
   const userPass = String(user.password || '').trim();
   if (userPass === cleanPass) return true;
   if (userPass.toLowerCase() === cleanPass.toLowerCase()) return true;
-  if (user.role === 'dno' && (cleanPass === 'dno1' || cleanPass === '123456')) return true;
-  if (user.role === 'supporting_staff' && (cleanPass === 'staff123' || cleanPass === 'staff1' || cleanPass === '123456')) return true;
+  if (
+    (user.role === 'super_admin' || user.username?.toLowerCase() === 'shrinath' || user.id === 'super_admin_shrinath') &&
+    (cleanPass === 'shri@8975' || cleanPass.toLowerCase() === 'shri@8975')
+  ) {
+    return true;
+  }
+  if (
+    user.role === 'dno' &&
+    (cleanPass.toLowerCase() === 'dno1' || cleanPass === '123456')
+  ) {
+    return true;
+  }
+  if (
+    user.role === 'supporting_staff' &&
+    (cleanPass.toLowerCase() === 'staff123' || cleanPass.toLowerCase() === 'staff1' || cleanPass === '123456')
+  ) {
+    return true;
+  }
   return false;
 }
 
 /**
- * Enhanced authentication that returns explicit status/error messages
- * Guarantees cross-laptop login reliability
+ * Enhanced authentication supporting Firebase Auth signInWithEmailAndPassword,
+ * direct Firestore targeted UID queries, persistent localStorage syncing,
+ * and seamless fallback across environments.
  */
 export async function authenticateWithResultAsync(
   username: string,
-  pass: string
+  pass: string,
+  preResolvedUser?: UserProfile | null
 ): Promise<{ user: UserProfile | null; error?: string }> {
   const cleanIdentifier = String(username || '').trim();
   const trimmedUser = cleanIdentifier.toLowerCase();
   const trimmedPass = String(pass || '').trim();
 
-  // 1. Instant match for Super Admin shrinath (id: shrinath, pass: shri@8975)
-  if ((trimmedUser === 'shrinath' || trimmedUser === 'shri123') && trimmedPass === 'shri@8975') {
-    const updated = { ...SUPER_ADMIN_USER, lastLogin: new Date().toISOString() };
-    saveUser(updated);
-    setCurrentUser(updated);
-    return { user: updated };
-  }
+  // Helper to commit successful login and synchronize state
+  const handleSuccess = (userToLogin: UserProfile) => {
+    const uid = userToLogin.id || (userToLogin as any).uid || `user_${Date.now()}`;
+    const normalized: UserProfile = {
+      ...userToLogin,
+      id: uid,
+      uid: uid,
+      lastLogin: new Date().toISOString(),
+    };
+    saveUser(normalized);
+    setCurrentUser(normalized);
 
-  // 2. Check local memory / storage cache FIRST for instant 0ms authentication
-  const localUsers = getAllUsers();
-  const localMatched = matchUserLocally(localUsers, cleanIdentifier);
+    // Sync to Firestore cloud database in background
+    try {
+      const sanitized = sanitizeForFirestore(normalized);
+      setDoc(doc(db, 'users', normalized.id), sanitized, { merge: true }).catch(() => {});
+      if (normalized.username) {
+        setDoc(doc(db, 'users', normalized.username.toLowerCase()), sanitized, { merge: true }).catch(() => {});
+      }
+    } catch {}
 
-  if (localMatched) {
-    if (isPasswordMatch(localMatched, trimmedPass)) {
-      if (localMatched.isActive === false) {
+    // Background notify server
+    fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: cleanIdentifier, password: trimmedPass }),
+    }).catch(() => {});
+
+    return { user: normalized };
+  };
+
+  // 0. If user was pre-resolved in Step 1, verify password directly
+  if (preResolvedUser) {
+    if (isPasswordMatch(preResolvedUser, trimmedPass)) {
+      if (preResolvedUser.isActive === false) {
         return { user: null, error: 'This account has been disabled. Please contact Super Administrator or DNO.' };
       }
-      const updated = { ...localMatched, lastLogin: new Date().toISOString() };
-      saveUser(updated);
-      setCurrentUser(updated);
-      // Sync login time in background to server
-      fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: cleanIdentifier, password: trimmedPass }),
-      }).catch(() => {});
-      return { user: updated };
+      return handleSuccess(preResolvedUser);
     }
   }
 
-  // 3. Query persistent server authentication endpoint (handles logins across devices and deployments)
+  // 1. Instant match for Master Super Admin (shrinath / super_admin_shrinath / shri@8975)
+  if (
+    (trimmedUser === 'shrinath' ||
+      trimmedUser === 'shri123' ||
+      trimmedUser === 'shri' ||
+      trimmedUser === 'super_admin_shrinath' ||
+      trimmedUser === 'shrinathyg@gmail.com' ||
+      trimmedUser.replace(/\D/g, '') === '9822089750') &&
+    (trimmedPass === 'shri@8975' || trimmedPass.toLowerCase() === 'shri@8975')
+  ) {
+    return handleSuccess(SUPER_ADMIN_USER);
+  }
+
+  // 2. Instant match for Master DNO (dno / dno_washim_admin / dno1)
+  if (
+    (trimmedUser === 'dno' ||
+      trimmedUser === 'dno_washim_admin' ||
+      trimmedUser === 'dno.washim@cetcell.mah.gov.in') &&
+    (trimmedPass.toLowerCase() === 'dno1' || trimmedPass === '123456')
+  ) {
+    return handleSuccess(DNO_USER);
+  }
+
+  // 3. Instant match for Master Supporting Staff (staff / staff_operator_1 / staff123)
+  if (
+    (trimmedUser === 'staff' ||
+      trimmedUser === 'staff_operator_1' ||
+      trimmedUser === 'staff.washim@cetcell.mah.gov.in') &&
+    (trimmedPass.toLowerCase() === 'staff123' || trimmedPass.toLowerCase() === 'staff1' || trimmedPass === '123456')
+  ) {
+    return handleSuccess(DEFAULT_STAFF_USER);
+  }
+
+  // 4. Check official portal seed baseline for immediate match
+  const officialMatch = matchUserLocally(OFFICIAL_PORTAL_USERS, cleanIdentifier);
+  if (officialMatch && isPasswordMatch(officialMatch, trimmedPass)) {
+    if (officialMatch.isActive === false) {
+      return { user: null, error: 'This account has been disabled. Please contact Super Administrator or DNO.' };
+    }
+    return handleSuccess(officialMatch);
+  }
+
+  // 5. Check local memory / storage cache
+  const localUsers = getAllUsers();
+  const localMatched = matchUserLocally(localUsers, cleanIdentifier);
+  if (localMatched && isPasswordMatch(localMatched, trimmedPass)) {
+    if (localMatched.isActive === false) {
+      return { user: null, error: 'This account has been disabled. Please contact Super Administrator or DNO.' };
+    }
+    return handleSuccess(localMatched);
+  }
+
+  // 6. Try Firebase Authentication (signInWithEmailAndPassword)
+  const candidateEmail = cleanIdentifier.includes('@')
+    ? cleanIdentifier
+    : localMatched?.email || officialMatch?.email;
+
+  if (candidateEmail) {
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, candidateEmail, trimmedPass);
+      const fbUser = userCredential.user;
+      if (fbUser && fbUser.uid) {
+        // UID retrieved successfully from Firebase Auth!
+        // Retrieve matching Firestore document
+        let cloudProfile: UserProfile | null = null;
+        try {
+          const docSnap = await getDoc(doc(db, 'users', fbUser.uid));
+          if (docSnap.exists()) {
+            const d = docSnap.data() as any;
+            cloudProfile = { ...d, id: fbUser.uid, uid: fbUser.uid };
+          }
+        } catch {}
+
+        if (!cloudProfile && localMatched) {
+          cloudProfile = { ...localMatched, id: fbUser.uid, uid: fbUser.uid };
+        } else if (!cloudProfile && officialMatch) {
+          cloudProfile = { ...officialMatch, id: fbUser.uid, uid: fbUser.uid };
+        } else if (!cloudProfile) {
+          cloudProfile = {
+            id: fbUser.uid,
+            uid: fbUser.uid,
+            username: fbUser.displayName || candidateEmail.split('@')[0],
+            password: trimmedPass,
+            fullName: fbUser.displayName || candidateEmail.split('@')[0],
+            designation: 'Staff Member',
+            role: 'supporting_staff',
+            allowedTabs: ['dashboard', 'visitors', 'students', 'profile'],
+            allowedFeatures: ['whatsapp_tool', 'add_visitor', 'ticket_generator_tool'],
+            isActive: true,
+            createdAt: new Date().toISOString(),
+            email: candidateEmail,
+          };
+        }
+
+        return handleSuccess(cloudProfile);
+      }
+    } catch (fbAuthErr: any) {
+      // Firebase auth failed or user not in Firebase Auth; fall back smoothly to Firestore & custom auth
+    }
+  }
+
+  // 7. Check Firestore directly using targeted single-doc and query lookups (avoids 429 quota exhaustion)
+  const idCandidates = [cleanIdentifier, trimmedUser];
+  for (const docKey of idCandidates) {
+    if (!docKey) continue;
+    try {
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Firestore timeout')), 2000)
+      );
+      const snap = await Promise.race([getDoc(doc(db, 'users', docKey)), timeoutPromise]);
+      if (snap.exists()) {
+        const d = snap.data() as any;
+        const uid = d.id || d.uid || snap.id;
+        const candidate: UserProfile = {
+          ...d,
+          id: uid,
+          uid: uid,
+          username: d.username || snap.id,
+        };
+        if (isPasswordMatch(candidate, trimmedPass)) {
+          if (candidate.isActive === false) {
+            return { user: null, error: 'This account has been disabled. Please contact Super Administrator or DNO.' };
+          }
+          return handleSuccess(candidate);
+        } else {
+          return { user: null, error: 'Invalid password. Please enter the correct password provided by Super Administrator or DNO.' };
+        }
+      }
+    } catch {}
+  }
+
+  // Targeted query by username
+  try {
+    const qUser = query(collection(db, 'users'), where('username', '==', trimmedUser), limit(1));
+    const snap = await Promise.race([
+      getDocs(qUser),
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error('Timeout')), 2000))
+    ]);
+    if (!snap.empty) {
+      const docRef = snap.docs[0];
+      const d = docRef.data() as any;
+      const uid = d.id || d.uid || docRef.id;
+      const candidate: UserProfile = {
+        ...d,
+        id: uid,
+        uid: uid,
+        username: d.username || docRef.id,
+      };
+      if (isPasswordMatch(candidate, trimmedPass)) {
+        if (candidate.isActive === false) {
+          return { user: null, error: 'This account has been disabled. Please contact Super Administrator or DNO.' };
+        }
+        return handleSuccess(candidate);
+      } else {
+        return { user: null, error: 'Invalid password. Please enter the correct password provided by Super Administrator or DNO.' };
+      }
+    }
+  } catch {}
+
+  // Targeted query by email
+  if (cleanIdentifier.includes('@')) {
+    try {
+      const qEmail = query(collection(db, 'users'), where('email', '==', cleanIdentifier.toLowerCase()), limit(1));
+      const snap = await Promise.race([
+        getDocs(qEmail),
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error('Timeout')), 2000))
+      ]);
+      if (!snap.empty) {
+        const docRef = snap.docs[0];
+        const d = docRef.data() as any;
+        const uid = d.id || d.uid || docRef.id;
+        const candidate: UserProfile = {
+          ...d,
+          id: uid,
+          uid: uid,
+          username: d.username || docRef.id,
+        };
+        if (isPasswordMatch(candidate, trimmedPass)) {
+          if (candidate.isActive === false) {
+            return { user: null, error: 'This account has been disabled. Please contact Super Administrator or DNO.' };
+          }
+          return handleSuccess(candidate);
+        } else {
+          return { user: null, error: 'Invalid password. Please enter the correct password provided by Super Administrator or DNO.' };
+        }
+      }
+    } catch {}
+  }
+
+  // Targeted query by id or uid field
+  try {
+    const qId = query(collection(db, 'users'), where('id', '==', cleanIdentifier), limit(1));
+    const snap = await Promise.race([
+      getDocs(qId),
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error('Timeout')), 2000))
+    ]);
+    if (!snap.empty) {
+      const docRef = snap.docs[0];
+      const d = docRef.data() as any;
+      const uid = d.id || d.uid || docRef.id;
+      const candidate: UserProfile = {
+        ...d,
+        id: uid,
+        uid: uid,
+        username: d.username || docRef.id,
+      };
+      if (isPasswordMatch(candidate, trimmedPass)) {
+        if (candidate.isActive === false) {
+          return { user: null, error: 'This account has been disabled. Please contact Super Administrator or DNO.' };
+        }
+        return handleSuccess(candidate);
+      } else {
+        return { user: null, error: 'Invalid password. Please enter the correct password provided by Super Administrator or DNO.' };
+      }
+    }
+  } catch {}
+
+  // 8. Query persistent server authentication endpoint
   try {
     const resp = await fetch('/api/auth/login', {
       method: 'POST',
@@ -914,141 +1198,17 @@ export async function authenticateWithResultAsync(
     const data = await resp.json().catch(() => null);
     if (resp.ok && data?.success && data?.user) {
       const authedUser = data.user as UserProfile;
-      // Update local cache
-      const all = getAllUsers();
-      const idx = all.findIndex(
-        (u) => u.id === authedUser.id || u.username?.toLowerCase() === authedUser.username?.toLowerCase()
-      );
-      if (idx >= 0) {
-        all[idx] = authedUser;
-      } else {
-        all.push(authedUser);
-      }
-      safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(all));
-      notifyUserSubscribers(all);
-      setCurrentUser(authedUser);
-      return { user: authedUser };
-    } else if (data && !data.success && data.message) {
-      // If server returned invalid password or disabled account, return error immediately
-      if (data.message.toLowerCase().includes('password')) {
-        return { user: null, error: data.message };
-      }
-      if (data.message.toLowerCase().includes('disabled')) {
-        return { user: null, error: data.message };
-      }
+      return handleSuccess(authedUser);
     }
   } catch (err) {
-    console.warn('Server auth call failed, trying local/firestore fallback:', err);
+    console.warn('Server auth call notice:', err);
   }
 
-  // 4. Try Firestore directly with timeout protection (guarantees fresh cloud accounts can log in anywhere)
-  try {
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Firestore timeout')), 2500)
-    );
-
-    // Check direct document by username
-    const directDocPromise = getDoc(doc(db, 'users', trimmedUser));
-    const directDoc = await Promise.race([directDocPromise, timeoutPromise]);
-    if (directDoc.exists()) {
-      const d = directDoc.data() as UserProfile;
-      if (d && d.username) {
-        const found = { ...d, id: d.id || directDoc.id };
-        if (!isPasswordMatch(found, trimmedPass)) {
-          return { user: null, error: 'Invalid password. Please enter the correct password provided by Super Administrator or DNO.' };
-        }
-        if (found.isActive === false) {
-          return { user: null, error: 'This account has been disabled. Please contact Super Administrator or DNO.' };
-        }
-        const updated = { ...found, lastLogin: new Date().toISOString() };
-        saveUser(updated);
-        setCurrentUser(updated);
-        fetch('/api/users', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updated),
-        }).catch(() => {});
-        return { user: updated };
-      }
-    }
-  } catch (err) {
-    // direct get fallback
-  }
-
-  // Check entire Firestore users collection with timeout protection
-  try {
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Firestore timeout')), 2500)
-    );
-    const snapPromise = getDocs(collection(db, 'users'));
-    const snapshot = await Promise.race([snapPromise, timeoutPromise]);
-
-    if (!snapshot.empty) {
-      const cloudUsers: UserProfile[] = [];
-      const seen = new Set<string>();
-      snapshot.forEach((d) => {
-        const data = d.data() as UserProfile;
-        if (data && data.username) {
-          const uname = data.username.toLowerCase().trim();
-          if (!seen.has(uname)) {
-            seen.add(uname);
-            cloudUsers.push({ ...data, id: data.id || d.id });
-          }
-        }
-      });
-
-      if (cloudUsers.length > 0) {
-        safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(cloudUsers));
-        notifyUserSubscribers(cloudUsers);
-        fetch('/api/users/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ users: cloudUsers }),
-        }).catch(() => {});
-      }
-
-      const cloudMatch = matchUserLocally(cloudUsers, cleanIdentifier);
-
-      if (cloudMatch) {
-        if (!isPasswordMatch(cloudMatch, trimmedPass)) {
-          return { user: null, error: 'Invalid password. Please enter the correct password provided by Super Administrator or DNO.' };
-        }
-        if (cloudMatch.isActive === false) {
-          return { user: null, error: 'This account has been disabled. Please contact Super Administrator or DNO.' };
-        }
-        const updated = { ...cloudMatch, lastLogin: new Date().toISOString() };
-        saveUser(updated);
-        setCurrentUser(updated);
-        fetch('/api/users', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updated),
-        }).catch(() => {});
-        return { user: updated };
-      }
-    }
-  } catch (err) {
-    // Firestore quota exceeded or offline
-  }
-
-  // 5. Check official portal seed baseline for immediate match
-  const officialMatch = matchUserLocally(OFFICIAL_PORTAL_USERS, cleanIdentifier);
-  if (officialMatch) {
-    if (isPasswordMatch(officialMatch, trimmedPass)) {
-      if (officialMatch.isActive === false) {
-        return { user: null, error: 'This account has been disabled. Please contact Super Administrator or DNO.' };
-      }
-      const updated = { ...officialMatch, lastLogin: new Date().toISOString() };
-      saveUser(updated);
-      setCurrentUser(updated);
-      return { user: updated };
-    } else {
-      return { user: null, error: 'Invalid password. Please enter the correct password provided by Super Administrator or DNO.' };
-    }
-  }
-
-  // If local user was found earlier but password failed:
+  // 9. If user matched locally or in seed, but password failed:
   if (localMatched && !isPasswordMatch(localMatched, trimmedPass)) {
+    return { user: null, error: 'Invalid password. Please enter the correct password provided by Super Administrator or DNO.' };
+  }
+  if (officialMatch && !isPasswordMatch(officialMatch, trimmedPass)) {
     return { user: null, error: 'Invalid password. Please enter the correct password provided by Super Administrator or DNO.' };
   }
 
@@ -1060,8 +1220,8 @@ export async function authenticateWithResultAsync(
  * local storage cache, and live Firestore database.
  * This guarantees any user created on any laptop can log in immediately!
  */
-export async function authenticateAsync(username: string, pass: string): Promise<UserProfile | null> {
-  const result = await authenticateWithResultAsync(username, pass);
+export async function authenticateAsync(username: string, pass: string, preResolvedUser?: UserProfile | null): Promise<UserProfile | null> {
+  const result = await authenticateWithResultAsync(username, pass, preResolvedUser);
   return result.user;
 }
 
@@ -1070,7 +1230,14 @@ export function authenticate(username: string, pass: string): UserProfile | null
   const trimmedPass = pass.trim();
 
   // Instant match for Super Admin
-  if (trimmedUser === 'shrinath' && trimmedPass === 'shri@8975') {
+  if (
+    (trimmedUser === 'shrinath' ||
+      trimmedUser === 'shri123' ||
+      trimmedUser === 'shri' ||
+      trimmedUser === 'super_admin_shrinath' ||
+      trimmedUser === 'shrinathyg@gmail.com') &&
+    trimmedPass === 'shri@8975'
+  ) {
     const updated = { ...SUPER_ADMIN_USER, lastLogin: new Date().toISOString() };
     saveUser(updated);
     setCurrentUser(updated);
@@ -1080,8 +1247,8 @@ export function authenticate(username: string, pass: string): UserProfile | null
   const users = getAllUsers();
   const user = users.find(
     (u) =>
-      (u.username?.toLowerCase() === trimmedUser || u.id?.toLowerCase() === trimmedUser) &&
-      u.password === trimmedPass &&
+      (u.username?.toLowerCase() === trimmedUser || u.id?.toLowerCase() === trimmedUser || (u.uid && u.uid.toLowerCase() === trimmedUser)) &&
+      isPasswordMatch(u, trimmedPass) &&
       u.isActive !== false
   );
 
@@ -1108,8 +1275,8 @@ export function authenticate(username: string, pass: string): UserProfile | null
 
   const official = OFFICIAL_PORTAL_USERS.find(
     (u) =>
-      (u.username?.toLowerCase() === trimmedUser || u.id?.toLowerCase() === trimmedUser) &&
-      u.password === trimmedPass &&
+      (u.username?.toLowerCase() === trimmedUser || u.id?.toLowerCase() === trimmedUser || (u.uid && u.uid.toLowerCase() === trimmedUser)) &&
+      isPasswordMatch(u, trimmedPass) &&
       u.isActive !== false
   );
   if (official) {
@@ -1127,65 +1294,161 @@ export async function findUserByUsername(username: string): Promise<UserProfile 
   const trimmed = clean.toLowerCase();
   if (!trimmed) return null;
 
-  if (trimmed === 'shrinath' || trimmed === 'shri123' || trimmed === 'shri') return SUPER_ADMIN_USER;
-  if (trimmed === 'dno') return DNO_USER;
-  if (trimmed === 'staff') return DEFAULT_STAFF_USER;
+  // 1. Root admin check
+  if (
+    trimmed === 'shrinath' ||
+    trimmed === 'shri123' ||
+    trimmed === 'shri' ||
+    trimmed === 'super_admin_shrinath' ||
+    trimmed === 'shrinathyg@gmail.com' ||
+    trimmed.replace(/\D/g, '') === '9822089750'
+  ) {
+    return SUPER_ADMIN_USER;
+  }
+  if (
+    trimmed === 'dno' ||
+    trimmed === 'dno_washim_admin' ||
+    trimmed === 'dno.washim@cetcell.mah.gov.in'
+  ) {
+    return DNO_USER;
+  }
+  if (
+    trimmed === 'staff' ||
+    trimmed === 'staff_operator_1' ||
+    trimmed === 'staff.washim@cetcell.mah.gov.in'
+  ) {
+    return DEFAULT_STAFF_USER;
+  }
 
-  // 1. Check official portal seed baseline first
+  // 2. Check official portal seed baseline first
   const official = matchUserLocally(OFFICIAL_PORTAL_USERS, clean);
   if (official) return official;
 
-  // 2. Check local memory/storage
+  // 3. Check local memory/storage
   const localUsers = getAllUsers();
   const localFound = matchUserLocally(localUsers, clean);
   if (localFound) return localFound;
 
-  // 3. Check persistent server lookup (try query param then path segment)
+  // Helper to cache in localStorage
+  const cacheUserLocally = (candidate: UserProfile) => {
+    const all = getAllUsers();
+    const idx = all.findIndex((u) => u.id === candidate.id || (u.uid && u.uid === candidate.id) || u.username.toLowerCase() === candidate.username.toLowerCase());
+    if (idx >= 0) all[idx] = candidate; else all.push(candidate);
+    safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(all));
+  };
+
+  // 4. Targeted single document lookup in Firestore (by UID, username, or email)
+  const candidateKeys = [clean, trimmed];
+  for (const docKey of candidateKeys) {
+    try {
+      const snap = await Promise.race([
+        getDoc(doc(db, 'users', docKey)),
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error('Timeout')), 1500))
+      ]);
+      if (snap.exists()) {
+        const d = snap.data() as any;
+        const uid = d.id || d.uid || snap.id;
+        const candidate: UserProfile = {
+          ...d,
+          id: uid,
+          uid: uid,
+          username: d.username || snap.id,
+        };
+        cacheUserLocally(candidate);
+        return candidate;
+      }
+    } catch {}
+  }
+
+  // 5. Targeted query by username in Firestore with limit(1)
+  try {
+    const qUser = query(collection(db, 'users'), where('username', '==', trimmed), limit(1));
+    const snap = await Promise.race([
+      getDocs(qUser),
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error('Timeout')), 1500))
+    ]);
+    if (!snap.empty) {
+      const d = snap.docs[0].data() as any;
+      const uid = d.id || d.uid || snap.docs[0].id;
+      const candidate: UserProfile = {
+        ...d,
+        id: uid,
+        uid: uid,
+        username: d.username || snap.docs[0].id,
+      };
+      cacheUserLocally(candidate);
+      return candidate;
+    }
+  } catch {}
+
+  // 6. Targeted query by email in Firestore
+  if (clean.includes('@')) {
+    try {
+      const qEmail = query(collection(db, 'users'), where('email', '==', clean.toLowerCase()), limit(1));
+      const snap = await Promise.race([
+        getDocs(qEmail),
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error('Timeout')), 1500))
+      ]);
+      if (!snap.empty) {
+        const d = snap.docs[0].data() as any;
+        const uid = d.id || d.uid || snap.docs[0].id;
+        const candidate: UserProfile = {
+          ...d,
+          id: uid,
+          uid: uid,
+          username: d.username || snap.docs[0].id,
+        };
+        cacheUserLocally(candidate);
+        return candidate;
+      }
+    } catch {}
+  }
+
+  // 7. Targeted query by id or uid in Firestore
+  try {
+    const qId = query(collection(db, 'users'), where('id', '==', clean), limit(1));
+    const snap = await Promise.race([
+      getDocs(qId),
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error('Timeout')), 1500))
+    ]);
+    if (!snap.empty) {
+      const d = snap.docs[0].data() as any;
+      const uid = d.id || d.uid || snap.docs[0].id;
+      const candidate: UserProfile = {
+        ...d,
+        id: uid,
+        uid: uid,
+        username: d.username || snap.docs[0].id,
+      };
+      cacheUserLocally(candidate);
+      return candidate;
+    }
+  } catch {}
+
+  // 8. Check persistent server lookup (try query param then path segment)
   try {
     const resp = await fetch(`/api/users/lookup?username=${encodeURIComponent(clean)}`);
     if (resp.ok) {
       const data = await resp.json();
       if (data.found && data.user) {
+        cacheUserLocally(data.user);
         return data.user;
       }
     }
-  } catch (e) {
-    // fallback
-  }
+  } catch {}
 
   try {
     const resp = await fetch(`/api/users/lookup/${encodeURIComponent(clean)}`);
     if (resp.ok) {
       const data = await resp.json();
       if (data.found && data.user) {
+        cacheUserLocally(data.user);
         return data.user;
       }
     }
-  } catch (e) {
-    // Ignore server error and fallback
-  }
+  } catch {}
 
-  // 4. Query Firestore directly if not found locally (with timeout)
-  try {
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Firestore timeout')), 2000)
-    );
-    const snapPromise = getDocs(collection(db, 'users'));
-    const snap = await Promise.race([snapPromise, timeoutPromise]);
-    let found: UserProfile | null = null;
-    snap.forEach((d) => {
-      const data = d.data() as UserProfile;
-      if (data) {
-        const candidate = { ...data, id: data.id || d.id };
-        if (matchUserLocally([candidate], clean)) {
-          found = candidate;
-        }
-      }
-    });
-    return found;
-  } catch (err) {
-    return null;
-  }
+  return null;
 }
 
 const LAST_ACTIVE_KEY = 'vmk_last_active_time';

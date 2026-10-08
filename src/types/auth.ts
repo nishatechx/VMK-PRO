@@ -50,7 +50,8 @@ export interface TicketRecord {
 }
 
 export interface UserProfile {
-  id: string;
+  id: string; // Unique user identifier (synced with Firebase UID)
+  uid?: string; // Firebase Auth UID alias for seamless cross-environment compatibility
   username: string;
   password: string;
   fullName: string;

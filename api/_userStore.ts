@@ -273,13 +273,27 @@ export function findUserByIdentifier(identifier: string): StoredUser | null {
   if (!raw) return null;
 
   // Support Super Admin aliases
-  if (raw === "shri123" || raw === "shri" || raw === "shrinath") {
+  if (
+    raw === "shri123" ||
+    raw === "shri" ||
+    raw === "shrinath" ||
+    raw === "super_admin_shrinath" ||
+    raw === "shrinathyg@gmail.com"
+  ) {
     return DEFAULT_INITIAL_USERS[0];
   }
-  if (raw === "dno") {
+  if (
+    raw === "dno" ||
+    raw === "dno_washim_admin" ||
+    raw === "dno.washim@cetcell.mah.gov.in"
+  ) {
     return DEFAULT_INITIAL_USERS[1];
   }
-  if (raw === "staff") {
+  if (
+    raw === "staff" ||
+    raw === "staff_operator_1" ||
+    raw === "staff.washim@cetcell.mah.gov.in"
+  ) {
     return DEFAULT_INITIAL_USERS[2];
   }
 
@@ -337,9 +351,34 @@ export function authenticateUser(
 
   // Support Super Admin instant match
   const lowerId = cleanIdentifier.toLowerCase();
-  if ((lowerId === "shrinath" || lowerId === "shri123") && cleanPass === "shri@8975") {
+  if (
+    (lowerId === "shrinath" ||
+      lowerId === "shri123" ||
+      lowerId === "shri" ||
+      lowerId === "super_admin_shrinath" ||
+      lowerId === "shrinathyg@gmail.com") &&
+    (cleanPass === "shri@8975" || cleanPass.toLowerCase() === "shri@8975")
+  ) {
     const admin = { ...DEFAULT_INITIAL_USERS[0], lastLogin: new Date().toISOString() };
     return { success: true, user: admin };
+  }
+  if (
+    (lowerId === "dno" ||
+      lowerId === "dno_washim_admin" ||
+      lowerId === "dno.washim@cetcell.mah.gov.in") &&
+    (cleanPass.toLowerCase() === "dno1" || cleanPass === "123456")
+  ) {
+    const dno = { ...DEFAULT_INITIAL_USERS[1], lastLogin: new Date().toISOString() };
+    return { success: true, user: dno };
+  }
+  if (
+    (lowerId === "staff" ||
+      lowerId === "staff_operator_1" ||
+      lowerId === "staff.washim@cetcell.mah.gov.in") &&
+    (cleanPass.toLowerCase() === "staff123" || cleanPass.toLowerCase() === "staff1" || cleanPass === "123456")
+  ) {
+    const staff = { ...DEFAULT_INITIAL_USERS[2], lastLogin: new Date().toISOString() };
+    return { success: true, user: staff };
   }
 
   const matched = findUserByIdentifier(cleanIdentifier);
