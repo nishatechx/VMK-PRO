@@ -46,6 +46,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // User daily motivational quote display logs
+    match /user_daily_quotes/{recordId} {
+      allow read, write: if true;
+    }
+
     // Fallback collection match
     match /{document=**} {
       allow read, write: if true;

@@ -1,0 +1,2198 @@
+{
+  "name": "VMK-PRO Daily Motivation",
+  "version": 1,
+  "language": "en",
+  "description": "365 original motivational quote posters with supporting lines. Stored locally; no external API required.",
+  "quotes": [
+    {
+      "id": 1,
+      "category": "Discipline",
+      "quote": "Discipline is the promise you keep when motivation goes quiet.",
+      "supportingLine": "Keep your standards steady, even on ordinary days."
+    },
+    {
+      "id": 2,
+      "category": "Discipline",
+      "quote": "Your habits are votes for the person you are becoming.",
+      "supportingLine": "Choose one small action today that your future self will thank you for."
+    },
+    {
+      "id": 3,
+      "category": "Discipline",
+      "quote": "Consistency turns intention into evidence.",
+      "supportingLine": "Let your actions prove what your goals mean to you."
+    },
+    {
+      "id": 4,
+      "category": "Discipline",
+      "quote": "The work you repeat becomes the strength you trust.",
+      "supportingLine": "Practice the basics until they become part of who you are."
+    },
+    {
+      "id": 5,
+      "category": "Discipline",
+      "quote": "A strong routine makes room for remarkable results.",
+      "supportingLine": "Protect the habits that move your priorities forward."
+    },
+    {
+      "id": 6,
+      "category": "Discipline",
+      "quote": "Discipline is freedom built one decision at a time.",
+      "supportingLine": "Choose what matters over what is merely easy."
+    },
+    {
+      "id": 7,
+      "category": "Discipline",
+      "quote": "Progress respects the person who keeps showing up.",
+      "supportingLine": "Return to the task, even if yesterday was imperfect."
+    },
+    {
+      "id": 8,
+      "category": "Discipline",
+      "quote": "Small commitments become a powerful character.",
+      "supportingLine": "Keep the promises you make to yourself."
+    },
+    {
+      "id": 9,
+      "category": "Discipline",
+      "quote": "Your standard is shaped by what you allow repeatedly.",
+      "supportingLine": "Raise it through one deliberate choice at a time."
+    },
+    {
+      "id": 10,
+      "category": "Discipline",
+      "quote": "The quiet work counts, even when nobody applauds.",
+      "supportingLine": "Do the right thing without waiting for recognition."
+    },
+    {
+      "id": 11,
+      "category": "Discipline",
+      "quote": "Focus grows when distractions stop making the decisions.",
+      "supportingLine": "Decide what deserves your attention before the day decides for you."
+    },
+    {
+      "id": 12,
+      "category": "Discipline",
+      "quote": "A dependable process beats a perfect intention.",
+      "supportingLine": "Build a routine you can repeat on difficult days."
+    },
+    {
+      "id": 13,
+      "category": "Discipline",
+      "quote": "Self-control is a skill strengthened by practice.",
+      "supportingLine": "Pause, choose deliberately, and keep your priorities in view."
+    },
+    {
+      "id": 14,
+      "category": "Discipline",
+      "quote": "The finish line is reached by ordinary steps taken faithfully.",
+      "supportingLine": "Make today's step clear, realistic, and non-negotiable."
+    },
+    {
+      "id": 15,
+      "category": "Discipline",
+      "quote": "Your future responds to the patterns you practice today.",
+      "supportingLine": "Repeat the actions that align with the life you want."
+    },
+    {
+      "id": 16,
+      "category": "Discipline",
+      "quote": "A disciplined day is a quiet investment in tomorrow.",
+      "supportingLine": "Spend your time on actions that compound."
+    },
+    {
+      "id": 17,
+      "category": "Discipline",
+      "quote": "The strongest commitment is the one renewed daily.",
+      "supportingLine": "Begin again without making a ceremony of it."
+    },
+    {
+      "id": 18,
+      "category": "Discipline",
+      "quote": "Consistency gives talent a place to grow.",
+      "supportingLine": "Show up often enough for your ability to develop."
+    },
+    {
+      "id": 19,
+      "category": "Discipline",
+      "quote": "Your calendar reveals what your priorities truly are.",
+      "supportingLine": "Give your most important work a real place in the day."
+    },
+    {
+      "id": 20,
+      "category": "Discipline",
+      "quote": "Do it with care, even when the task feels routine.",
+      "supportingLine": "Excellence is often built in the details nobody notices."
+    },
+    {
+      "id": 21,
+      "category": "Discipline",
+      "quote": "Discipline carries you when excitement runs out.",
+      "supportingLine": "Use your plan when your mood changes."
+    },
+    {
+      "id": 22,
+      "category": "Discipline",
+      "quote": "A little order can unlock a lot of progress.",
+      "supportingLine": "Make the next step simple enough to start now."
+    },
+    {
+      "id": 23,
+      "category": "Discipline",
+      "quote": "Your choices are shaping you while you shape your goals.",
+      "supportingLine": "Choose the version of yourself you want to reinforce."
+    },
+    {
+      "id": 24,
+      "category": "Discipline",
+      "quote": "Be faithful to the process, not obsessed with the applause.",
+      "supportingLine": "Measure effort and learning, not only attention."
+    },
+    {
+      "id": 25,
+      "category": "Discipline",
+      "quote": "The habit of beginning is a strength of its own.",
+      "supportingLine": "Start before you feel perfectly ready."
+    },
+    {
+      "id": 26,
+      "category": "Discipline",
+      "quote": "Repeated effort makes difficult things more familiar.",
+      "supportingLine": "Give practice time to turn discomfort into competence."
+    },
+    {
+      "id": 27,
+      "category": "Discipline",
+      "quote": "A focused hour can change the direction of a day.",
+      "supportingLine": "Guard a block of time for work that matters."
+    },
+    {
+      "id": 28,
+      "category": "Discipline",
+      "quote": "The best routine is one you can sustain.",
+      "supportingLine": "Build consistency before chasing intensity."
+    },
+    {
+      "id": 29,
+      "category": "Discipline",
+      "quote": "Responsibility begins where excuses end.",
+      "supportingLine": "Name the next action and take ownership of it."
+    },
+    {
+      "id": 30,
+      "category": "Discipline",
+      "quote": "Every disciplined choice makes the next one easier.",
+      "supportingLine": "Create momentum by making one good decision now."
+    },
+    {
+      "id": 31,
+      "category": "Hard Work",
+      "quote": "Effort becomes powerful when it has a clear direction.",
+      "supportingLine": "Work hard on the right thing, then review what the work is teaching you."
+    },
+    {
+      "id": 32,
+      "category": "Hard Work",
+      "quote": "The hours you invest today can become tomorrow's options.",
+      "supportingLine": "Give your effort a purpose beyond simply staying busy."
+    },
+    {
+      "id": 33,
+      "category": "Hard Work",
+      "quote": "Hard work is most valuable when paired with learning.",
+      "supportingLine": "Notice what works, adjust what does not, and keep improving."
+    },
+    {
+      "id": 34,
+      "category": "Hard Work",
+      "quote": "Results are built long before they are visible.",
+      "supportingLine": "Respect the preparation that happens away from the spotlight."
+    },
+    {
+      "id": 35,
+      "category": "Hard Work",
+      "quote": "Do not confuse a slow season with a wasted season.",
+      "supportingLine": "Use this time to strengthen your skills and foundations."
+    },
+    {
+      "id": 36,
+      "category": "Hard Work",
+      "quote": "Meaningful work asks for patience as well as energy.",
+      "supportingLine": "Keep going, but keep learning how to go better."
+    },
+    {
+      "id": 37,
+      "category": "Hard Work",
+      "quote": "Your effort deserves a plan, not just pressure.",
+      "supportingLine": "Break the big goal into actions you can complete."
+    },
+    {
+      "id": 38,
+      "category": "Hard Work",
+      "quote": "The work that stretches you can also strengthen you.",
+      "supportingLine": "Meet the challenge with curiosity instead of fear."
+    },
+    {
+      "id": 39,
+      "category": "Hard Work",
+      "quote": "Success is often the sum of unremarkable tasks done well.",
+      "supportingLine": "Treat each small responsibility as part of the bigger result."
+    },
+    {
+      "id": 40,
+      "category": "Hard Work",
+      "quote": "Work with urgency, but think with clarity.",
+      "supportingLine": "Move quickly on priorities without sacrificing judgment."
+    },
+    {
+      "id": 41,
+      "category": "Hard Work",
+      "quote": "Persistence turns setbacks into information.",
+      "supportingLine": "Study the obstacle and choose a smarter next move."
+    },
+    {
+      "id": 42,
+      "category": "Hard Work",
+      "quote": "The quality of your effort shapes the quality of your growth.",
+      "supportingLine": "Bring attention and care to the task in front of you."
+    },
+    {
+      "id": 43,
+      "category": "Hard Work",
+      "quote": "Ambition needs action to become more than a wish.",
+      "supportingLine": "Translate today's goal into a task you can begin."
+    },
+    {
+      "id": 44,
+      "category": "Hard Work",
+      "quote": "A difficult beginning can lead to a capable future.",
+      "supportingLine": "Accept the learning curve and keep practicing."
+    },
+    {
+      "id": 45,
+      "category": "Hard Work",
+      "quote": "The work nobody sees can prepare you for the opportunity everyone sees.",
+      "supportingLine": "Build your readiness before the invitation arrives."
+    },
+    {
+      "id": 46,
+      "category": "Hard Work",
+      "quote": "Effort is never wasted when it improves your judgment.",
+      "supportingLine": "Carry the lesson forward, even when the result disappoints."
+    },
+    {
+      "id": 47,
+      "category": "Hard Work",
+      "quote": "Make your work useful, not merely impressive.",
+      "supportingLine": "Solve a real problem and let the value speak."
+    },
+    {
+      "id": 48,
+      "category": "Hard Work",
+      "quote": "A strong finish starts with a clear next step.",
+      "supportingLine": "Define the next action before you leave the task."
+    },
+    {
+      "id": 49,
+      "category": "Hard Work",
+      "quote": "Keep your ambition high and your daily plan practical.",
+      "supportingLine": "Let a realistic schedule carry a bold goal."
+    },
+    {
+      "id": 50,
+      "category": "Hard Work",
+      "quote": "Work steadily enough to trust your own progress.",
+      "supportingLine": "Track what you complete, not only what remains."
+    },
+    {
+      "id": 51,
+      "category": "Hard Work",
+      "quote": "Challenge can reveal capacity you have not used yet.",
+      "supportingLine": "Give yourself a fair chance to learn before you judge your ability."
+    },
+    {
+      "id": 52,
+      "category": "Hard Work",
+      "quote": "The effort you repeat becomes experience.",
+      "supportingLine": "Choose deliberate practice over frantic activity."
+    },
+    {
+      "id": 53,
+      "category": "Hard Work",
+      "quote": "Great work combines patience, skill, and follow-through.",
+      "supportingLine": "Finish carefully, review honestly, and improve the next attempt."
+    },
+    {
+      "id": 54,
+      "category": "Hard Work",
+      "quote": "The road gets clearer when you keep moving thoughtfully.",
+      "supportingLine": "Take the next useful step, then reassess with better information."
+    },
+    {
+      "id": 55,
+      "category": "Hard Work",
+      "quote": "Your best work begins with taking the task seriously.",
+      "supportingLine": "Bring preparation, focus, and respect to what you do."
+    },
+    {
+      "id": 56,
+      "category": "Hard Work",
+      "quote": "Be proud of effort, and stay curious about outcomes.",
+      "supportingLine": "Celebrate commitment while remaining open to better methods."
+    },
+    {
+      "id": 57,
+      "category": "Hard Work",
+      "quote": "The goal is not to look busy; it is to create value.",
+      "supportingLine": "Prioritize work that makes a meaningful difference."
+    },
+    {
+      "id": 58,
+      "category": "Hard Work",
+      "quote": "A strong work ethic includes knowing what to improve.",
+      "supportingLine": "Ask for feedback and turn it into a concrete action."
+    },
+    {
+      "id": 59,
+      "category": "Hard Work",
+      "quote": "Keep building even when progress arrives quietly.",
+      "supportingLine": "Trust the process enough to give it time."
+    },
+    {
+      "id": 60,
+      "category": "Confidence",
+      "quote": "Confidence grows when you keep evidence of your own effort.",
+      "supportingLine": "Remember what you have learned, then take the next brave step."
+    },
+    {
+      "id": 61,
+      "category": "Confidence",
+      "quote": "You do not need certainty to begin; you need willingness.",
+      "supportingLine": "Start with what you know and learn your way forward."
+    },
+    {
+      "id": 62,
+      "category": "Confidence",
+      "quote": "Your voice deserves preparation, and your ideas deserve a chance.",
+      "supportingLine": "Speak clearly, listen well, and contribute with purpose."
+    },
+    {
+      "id": 63,
+      "category": "Confidence",
+      "quote": "Believe in your ability to improve, not in being perfect.",
+      "supportingLine": "Let practice build the confidence that perfection cannot provide."
+    },
+    {
+      "id": 64,
+      "category": "Confidence",
+      "quote": "You can be a work in progress and still move with courage.",
+      "supportingLine": "Take action while leaving room to learn."
+    },
+    {
+      "id": 65,
+      "category": "Confidence",
+      "quote": "Self-trust is built by following through on small promises.",
+      "supportingLine": "Choose one promise today and keep it."
+    },
+    {
+      "id": 66,
+      "category": "Confidence",
+      "quote": "Do not let one difficult moment define your ability.",
+      "supportingLine": "Treat the moment as feedback, not a final verdict."
+    },
+    {
+      "id": 67,
+      "category": "Confidence",
+      "quote": "Courage often sounds like a quiet decision to try again.",
+      "supportingLine": "Take the step that fear has been postponing."
+    },
+    {
+      "id": 68,
+      "category": "Confidence",
+      "quote": "You are allowed to learn in public and improve over time.",
+      "supportingLine": "Ask questions, accept feedback, and keep participating."
+    },
+    {
+      "id": 69,
+      "category": "Confidence",
+      "quote": "A confident person can stay curious.",
+      "supportingLine": "You can stand by your values while learning a better approach."
+    },
+    {
+      "id": 70,
+      "category": "Confidence",
+      "quote": "Your worth is not measured by one result.",
+      "supportingLine": "Review the outcome without reducing yourself to it."
+    },
+    {
+      "id": 71,
+      "category": "Confidence",
+      "quote": "Take up responsibility before waiting to feel fully ready.",
+      "supportingLine": "Preparation and action can grow together."
+    },
+    {
+      "id": 72,
+      "category": "Confidence",
+      "quote": "You become more capable each time you face what you avoided.",
+      "supportingLine": "Approach one uncomfortable task with a plan."
+    },
+    {
+      "id": 73,
+      "category": "Confidence",
+      "quote": "Confidence is calm commitment, not loud certainty.",
+      "supportingLine": "Let your preparation speak through your actions."
+    },
+    {
+      "id": 74,
+      "category": "Confidence",
+      "quote": "Your next chapter is not limited to your last mistake.",
+      "supportingLine": "Use what happened to make a wiser next choice."
+    },
+    {
+      "id": 75,
+      "category": "Confidence",
+      "quote": "You can respect others without shrinking yourself.",
+      "supportingLine": "Be kind, clear, and honest about what you bring."
+    },
+    {
+      "id": 76,
+      "category": "Confidence",
+      "quote": "Trust the work you have put into becoming better.",
+      "supportingLine": "Enter the challenge prepared to learn and contribute."
+    },
+    {
+      "id": 77,
+      "category": "Confidence",
+      "quote": "A setback can challenge your plan without erasing your potential.",
+      "supportingLine": "Adjust the method and keep your purpose."
+    },
+    {
+      "id": 78,
+      "category": "Confidence",
+      "quote": "You do not need everyone to understand your direction.",
+      "supportingLine": "Stay open to advice while owning your decision."
+    },
+    {
+      "id": 79,
+      "category": "Confidence",
+      "quote": "The brave step is often smaller than the fear makes it seem.",
+      "supportingLine": "Reduce the task to a first move you can take today."
+    },
+    {
+      "id": 80,
+      "category": "Confidence",
+      "quote": "Let your standards guide you more than comparison does.",
+      "supportingLine": "Measure yourself against your growth and your values."
+    },
+    {
+      "id": 81,
+      "category": "Confidence",
+      "quote": "Confidence gets stronger when honesty leads the way.",
+      "supportingLine": "Know your strengths, acknowledge your gaps, and keep developing."
+    },
+    {
+      "id": 82,
+      "category": "Confidence",
+      "quote": "You can be nervous and still be effective.",
+      "supportingLine": "Breathe, prepare, and focus on the person or task in front of you."
+    },
+    {
+      "id": 83,
+      "category": "Confidence",
+      "quote": "Your experience has value when you share it thoughtfully.",
+      "supportingLine": "Offer what you know and remain willing to learn."
+    },
+    {
+      "id": 84,
+      "category": "Confidence",
+      "quote": "Do not wait for permission to improve your craft.",
+      "supportingLine": "Practice, seek feedback, and take responsibility for your growth."
+    },
+    {
+      "id": 85,
+      "category": "Confidence",
+      "quote": "You are more than the opinion formed in a single moment.",
+      "supportingLine": "Keep building a body of work that reflects your values."
+    },
+    {
+      "id": 86,
+      "category": "Confidence",
+      "quote": "Let courage make the introduction; let character do the rest.",
+      "supportingLine": "Act boldly without abandoning humility."
+    },
+    {
+      "id": 87,
+      "category": "Confidence",
+      "quote": "You can begin again without starting from zero.",
+      "supportingLine": "Carry forward the skills and lessons you already earned."
+    },
+    {
+      "id": 88,
+      "category": "Confidence",
+      "quote": "Stand firmly in your values and flexibly in your methods.",
+      "supportingLine": "Protect your purpose while adapting your approach."
+    },
+    {
+      "id": 89,
+      "category": "Leadership",
+      "quote": "Leadership begins with the responsibility you accept.",
+      "supportingLine": "Make the next decision fair, clear, and useful."
+    },
+    {
+      "id": 90,
+      "category": "Leadership",
+      "quote": "A good leader makes progress easier for others.",
+      "supportingLine": "Remove confusion, share context, and help people do their best work."
+    },
+    {
+      "id": 91,
+      "category": "Leadership",
+      "quote": "Trust grows when words and actions travel together.",
+      "supportingLine": "Follow through, especially on small commitments."
+    },
+    {
+      "id": 92,
+      "category": "Leadership",
+      "quote": "The strongest voice in the room is not always the wisest.",
+      "supportingLine": "Listen fully before choosing a direction."
+    },
+    {
+      "id": 93,
+      "category": "Leadership",
+      "quote": "Lead with standards, and support people in reaching them.",
+      "supportingLine": "Be clear about expectations and generous with useful guidance."
+    },
+    {
+      "id": 94,
+      "category": "Leadership",
+      "quote": "Responsibility is measured by what you do when things go wrong.",
+      "supportingLine": "Own the issue, communicate honestly, and help repair it."
+    },
+    {
+      "id": 95,
+      "category": "Leadership",
+      "quote": "Respect is a leadership tool, not a reward.",
+      "supportingLine": "Treat every person with dignity, regardless of role."
+    },
+    {
+      "id": 96,
+      "category": "Leadership",
+      "quote": "Good leadership turns pressure into priorities.",
+      "supportingLine": "Clarify what matters now and what can wait."
+    },
+    {
+      "id": 97,
+      "category": "Leadership",
+      "quote": "A team grows when credit is shared and lessons are owned.",
+      "supportingLine": "Celebrate contributions and take responsibility for mistakes."
+    },
+    {
+      "id": 98,
+      "category": "Leadership",
+      "quote": "Be decisive about purpose and thoughtful about methods.",
+      "supportingLine": "Move forward while remaining open to evidence."
+    },
+    {
+      "id": 99,
+      "category": "Leadership",
+      "quote": "Leadership is service with accountability.",
+      "supportingLine": "Help others succeed without avoiding difficult decisions."
+    },
+    {
+      "id": 100,
+      "category": "Leadership",
+      "quote": "People remember how clearly you helped them move forward.",
+      "supportingLine": "Offer specific guidance instead of vague criticism."
+    },
+    {
+      "id": 101,
+      "category": "Leadership",
+      "quote": "Consistency makes leadership believable.",
+      "supportingLine": "Apply your values even when it is inconvenient."
+    },
+    {
+      "id": 102,
+      "category": "Leadership",
+      "quote": "A calm response can steady a difficult situation.",
+      "supportingLine": "Pause, gather facts, and speak with intention."
+    },
+    {
+      "id": 103,
+      "category": "Leadership",
+      "quote": "A leader builds capability, not dependence.",
+      "supportingLine": "Teach the reasoning so others can make good decisions too."
+    },
+    {
+      "id": 104,
+      "category": "Leadership",
+      "quote": "Make expectations visible and feedback actionable.",
+      "supportingLine": "Explain what good looks like and how to reach it."
+    },
+    {
+      "id": 105,
+      "category": "Leadership",
+      "quote": "The best decisions balance courage with evidence.",
+      "supportingLine": "Be willing to act and willing to revise."
+    },
+    {
+      "id": 106,
+      "category": "Leadership",
+      "quote": "Your example sets a tone before your words do.",
+      "supportingLine": "Model the focus, honesty, and respect you expect."
+    },
+    {
+      "id": 107,
+      "category": "Leadership",
+      "quote": "Leadership means facing the conversation that progress requires.",
+      "supportingLine": "Address issues early, directly, and respectfully."
+    },
+    {
+      "id": 108,
+      "category": "Leadership",
+      "quote": "A reliable leader makes uncertainty easier to navigate.",
+      "supportingLine": "Share what is known, what is not, and what happens next."
+    },
+    {
+      "id": 109,
+      "category": "Leadership",
+      "quote": "Good teams need clarity more than constant urgency.",
+      "supportingLine": "Set priorities that people can understand and act on."
+    },
+    {
+      "id": 110,
+      "category": "Leadership",
+      "quote": "Humility keeps authority connected to reality.",
+      "supportingLine": "Invite dissent and learn from the people closest to the work."
+    },
+    {
+      "id": 111,
+      "category": "Leadership",
+      "quote": "Accountability is a path to improvement, not blame.",
+      "supportingLine": "Focus on ownership, causes, and practical corrections."
+    },
+    {
+      "id": 112,
+      "category": "Leadership",
+      "quote": "Give people both a meaningful goal and room to contribute.",
+      "supportingLine": "Explain the why, then trust them with the how."
+    },
+    {
+      "id": 113,
+      "category": "Leadership",
+      "quote": "Leadership is proven in ordinary moments.",
+      "supportingLine": "Be dependable when the stakes seem small."
+    },
+    {
+      "id": 114,
+      "category": "Leadership",
+      "quote": "Fairness means applying principles consistently.",
+      "supportingLine": "Explain decisions and listen to concerns without defensiveness."
+    },
+    {
+      "id": 115,
+      "category": "Leadership",
+      "quote": "A leader protects focus from unnecessary noise.",
+      "supportingLine": "Keep the team aligned on the work that matters most."
+    },
+    {
+      "id": 116,
+      "category": "Leadership",
+      "quote": "Make success repeatable by sharing what you learn.",
+      "supportingLine": "Document useful practices and help others apply them."
+    },
+    {
+      "id": 117,
+      "category": "Leadership",
+      "quote": "Courageous leadership can be both kind and direct.",
+      "supportingLine": "Tell the truth with respect and a clear intention to help."
+    },
+    {
+      "id": 118,
+      "category": "Leadership",
+      "quote": "Leave people and systems stronger than you found them.",
+      "supportingLine": "Use your influence to build lasting capability."
+    },
+    {
+      "id": 119,
+      "category": "Resilience",
+      "quote": "A setback is an event, not your entire identity.",
+      "supportingLine": "Take the lesson without carrying the label."
+    },
+    {
+      "id": 120,
+      "category": "Resilience",
+      "quote": "Resilience is the art of adjusting without abandoning your values.",
+      "supportingLine": "Change the route while keeping your purpose clear."
+    },
+    {
+      "id": 121,
+      "category": "Resilience",
+      "quote": "A hard day does not cancel the progress you have made.",
+      "supportingLine": "Rest, reset, and return with a practical next step."
+    },
+    {
+      "id": 122,
+      "category": "Resilience",
+      "quote": "You can recover your direction one decision at a time.",
+      "supportingLine": "Focus on what is still within your control."
+    },
+    {
+      "id": 123,
+      "category": "Resilience",
+      "quote": "Strength includes knowing when to pause and rebuild.",
+      "supportingLine": "Protect your energy so you can continue sustainably."
+    },
+    {
+      "id": 124,
+      "category": "Resilience",
+      "quote": "Failure can give useful feedback when you examine it honestly.",
+      "supportingLine": "Ask what happened, what you learned, and what you will change."
+    },
+    {
+      "id": 125,
+      "category": "Resilience",
+      "quote": "The path forward may be different from the path you planned.",
+      "supportingLine": "Stay flexible enough to recognize a better route."
+    },
+    {
+      "id": 126,
+      "category": "Resilience",
+      "quote": "Do not demand a perfect response from yourself in a hard moment.",
+      "supportingLine": "Choose the next helpful action and learn as you go."
+    },
+    {
+      "id": 127,
+      "category": "Resilience",
+      "quote": "Persistence is not repeating the same mistake forever.",
+      "supportingLine": "Keep the commitment; improve the strategy."
+    },
+    {
+      "id": 128,
+      "category": "Resilience",
+      "quote": "You can feel disappointed and still act wisely.",
+      "supportingLine": "Give the feeling room, then choose your next step."
+    },
+    {
+      "id": 129,
+      "category": "Resilience",
+      "quote": "Difficult seasons can teach skills comfort never asks for.",
+      "supportingLine": "Notice the strength and judgment you are developing."
+    },
+    {
+      "id": 130,
+      "category": "Resilience",
+      "quote": "Starting again is a skill, not a defeat.",
+      "supportingLine": "Return with what experience has taught you."
+    },
+    {
+      "id": 131,
+      "category": "Resilience",
+      "quote": "Hope becomes practical when it points toward action.",
+      "supportingLine": "Identify one thing you can improve today."
+    },
+    {
+      "id": 132,
+      "category": "Resilience",
+      "quote": "Your pace can change without your purpose disappearing.",
+      "supportingLine": "Adapt to your circumstances and keep moving."
+    },
+    {
+      "id": 133,
+      "category": "Resilience",
+      "quote": "The obstacle is real, but so is your ability to respond.",
+      "supportingLine": "Gather support, assess options, and take one step."
+    },
+    {
+      "id": 134,
+      "category": "Resilience",
+      "quote": "A mistake becomes more useful when it changes your next attempt.",
+      "supportingLine": "Turn regret into a specific improvement."
+    },
+    {
+      "id": 135,
+      "category": "Resilience",
+      "quote": "You are allowed to rebuild with patience.",
+      "supportingLine": "Strengthen the foundation before demanding speed."
+    },
+    {
+      "id": 136,
+      "category": "Resilience",
+      "quote": "Hard moments do not require you to solve everything at once.",
+      "supportingLine": "Handle the next decision, then reassess."
+    },
+    {
+      "id": 137,
+      "category": "Resilience",
+      "quote": "Resilience grows through recovery as well as effort.",
+      "supportingLine": "Make room for rest, reflection, and renewed focus."
+    },
+    {
+      "id": 138,
+      "category": "Resilience",
+      "quote": "You can lose a round and still learn how to play better.",
+      "supportingLine": "Study the experience and prepare for the next opportunity."
+    },
+    {
+      "id": 139,
+      "category": "Resilience",
+      "quote": "A changed plan can still lead to meaningful progress.",
+      "supportingLine": "Keep your goal visible and your options open."
+    },
+    {
+      "id": 140,
+      "category": "Resilience",
+      "quote": "Do not confuse today's struggle with tomorrow's limit.",
+      "supportingLine": "Give learning and recovery the time they need."
+    },
+    {
+      "id": 141,
+      "category": "Resilience",
+      "quote": "The comeback begins with an honest look at reality.",
+      "supportingLine": "Name the challenge clearly, then choose what to do next."
+    },
+    {
+      "id": 142,
+      "category": "Resilience",
+      "quote": "You have solved difficult things before; use that experience wisely.",
+      "supportingLine": "Recall the strategies that helped and adapt them to today."
+    },
+    {
+      "id": 143,
+      "category": "Resilience",
+      "quote": "When the old way stops working, curiosity opens another door.",
+      "supportingLine": "Experiment thoughtfully instead of surrendering to frustration."
+    },
+    {
+      "id": 144,
+      "category": "Resilience",
+      "quote": "Strength is continuing with wisdom, not ignoring every warning.",
+      "supportingLine": "Know when to persist, ask for help, or change direction."
+    },
+    {
+      "id": 145,
+      "category": "Resilience",
+      "quote": "A difficult result can still produce a valuable lesson.",
+      "supportingLine": "Write down the insight before moving on."
+    },
+    {
+      "id": 146,
+      "category": "Resilience",
+      "quote": "You can rebuild momentum with one completed task.",
+      "supportingLine": "Make the first step small and finish it fully."
+    },
+    {
+      "id": 147,
+      "category": "Resilience",
+      "quote": "Let adversity refine your approach, not harden your character.",
+      "supportingLine": "Stay determined while keeping compassion alive."
+    },
+    {
+      "id": 148,
+      "category": "Resilience",
+      "quote": "Progress after a setback is still progress.",
+      "supportingLine": "Count the recovery steps as part of the achievement."
+    },
+    {
+      "id": 149,
+      "category": "Learning",
+      "quote": "Every skill begins as something you cannot yet do comfortably.",
+      "supportingLine": "Give practice enough time to turn unfamiliar into familiar."
+    },
+    {
+      "id": 150,
+      "category": "Learning",
+      "quote": "Curiosity keeps your future larger than your current knowledge.",
+      "supportingLine": "Ask better questions and explore the answers."
+    },
+    {
+      "id": 151,
+      "category": "Learning",
+      "quote": "Feedback is information you can use, not a definition of you.",
+      "supportingLine": "Separate the useful insight from the discomfort of hearing it."
+    },
+    {
+      "id": 152,
+      "category": "Learning",
+      "quote": "Learning accelerates when ego makes room for questions.",
+      "supportingLine": "Be willing to say, 'I don't know yet.'"
+    },
+    {
+      "id": 153,
+      "category": "Learning",
+      "quote": "A beginner's mistake can be the first page of expertise.",
+      "supportingLine": "Review it, correct it, and try again."
+    },
+    {
+      "id": 154,
+      "category": "Learning",
+      "quote": "Knowledge matters most when it changes how you act.",
+      "supportingLine": "Apply one lesson before collecting another."
+    },
+    {
+      "id": 155,
+      "category": "Learning",
+      "quote": "Your ability can grow beyond your first estimate.",
+      "supportingLine": "Practice deliberately and measure progress over time."
+    },
+    {
+      "id": 156,
+      "category": "Learning",
+      "quote": "Ask why until the process makes sense.",
+      "supportingLine": "Understanding the reason makes the skill easier to adapt."
+    },
+    {
+      "id": 157,
+      "category": "Learning",
+      "quote": "Good learners are willing to update their opinions.",
+      "supportingLine": "Follow the evidence even when it challenges your first answer."
+    },
+    {
+      "id": 158,
+      "category": "Learning",
+      "quote": "The question you ask can improve the work you do.",
+      "supportingLine": "Clarify the problem before rushing toward a solution."
+    },
+    {
+      "id": 159,
+      "category": "Learning",
+      "quote": "Learning is progress that continues after the lesson ends.",
+      "supportingLine": "Use what you learn in a real situation."
+    },
+    {
+      "id": 160,
+      "category": "Learning",
+      "quote": "A new perspective can reveal an option you missed.",
+      "supportingLine": "Listen to experiences different from your own."
+    },
+    {
+      "id": 161,
+      "category": "Learning",
+      "quote": "Practice turns information into usable judgment.",
+      "supportingLine": "Repeat the skill in varied situations, not only easy ones."
+    },
+    {
+      "id": 162,
+      "category": "Learning",
+      "quote": "Mistakes are expensive only when you refuse to learn from them.",
+      "supportingLine": "Identify the cause and build a safeguard for next time."
+    },
+    {
+      "id": 163,
+      "category": "Learning",
+      "quote": "Stay teachable as your responsibilities grow.",
+      "supportingLine": "Experience is valuable when it remains open to new evidence."
+    },
+    {
+      "id": 164,
+      "category": "Learning",
+      "quote": "Reading opens doors; application helps you walk through them.",
+      "supportingLine": "Turn one useful idea into a concrete action."
+    },
+    {
+      "id": 165,
+      "category": "Learning",
+      "quote": "Your questions are tools for finding a better way.",
+      "supportingLine": "Ask with curiosity, test with care, and share what works."
+    },
+    {
+      "id": 166,
+      "category": "Learning",
+      "quote": "Expertise is built by revisiting fundamentals.",
+      "supportingLine": "Strengthen the basics whenever complexity increases."
+    },
+    {
+      "id": 167,
+      "category": "Learning",
+      "quote": "The fastest learner is not always the one who rushes.",
+      "supportingLine": "Pause to understand, then practice with intention."
+    },
+    {
+      "id": 168,
+      "category": "Learning",
+      "quote": "A useful lesson can come from an unexpected source.",
+      "supportingLine": "Pay attention to people, outcomes, and patterns."
+    },
+    {
+      "id": 169,
+      "category": "Learning",
+      "quote": "Improvement begins when you notice the gap without shame.",
+      "supportingLine": "Choose one skill to strengthen and practice it consistently."
+    },
+    {
+      "id": 170,
+      "category": "Learning",
+      "quote": "Learn the principle, not only the steps.",
+      "supportingLine": "Understanding the logic helps you solve new problems."
+    },
+    {
+      "id": 171,
+      "category": "Learning",
+      "quote": "Your next breakthrough may begin with a better question.",
+      "supportingLine": "Replace assumption with investigation."
+    },
+    {
+      "id": 172,
+      "category": "Learning",
+      "quote": "Teaching a concept can reveal what you truly understand.",
+      "supportingLine": "Explain it simply and notice where your reasoning needs work."
+    },
+    {
+      "id": 173,
+      "category": "Learning",
+      "quote": "Be proud of what you know and curious about what you do not.",
+      "supportingLine": "Keep confidence and humility in the same room."
+    },
+    {
+      "id": 174,
+      "category": "Learning",
+      "quote": "Every review is a chance to make experience more useful.",
+      "supportingLine": "Reflect on what to repeat, stop, and change."
+    },
+    {
+      "id": 175,
+      "category": "Learning",
+      "quote": "Build skills that make you more helpful to others.",
+      "supportingLine": "Let learning create value beyond your own progress."
+    },
+    {
+      "id": 176,
+      "category": "Learning",
+      "quote": "The willingness to improve is a lasting advantage.",
+      "supportingLine": "Stay open, stay observant, and keep practicing."
+    },
+    {
+      "id": 177,
+      "category": "Learning",
+      "quote": "Learning compounds when you return to it regularly.",
+      "supportingLine": "Give your growth a place in your weekly routine."
+    },
+    {
+      "id": 178,
+      "category": "Learning",
+      "quote": "You do not have to master everything to make a start.",
+      "supportingLine": "Learn the next essential thing and build from there."
+    },
+    {
+      "id": 179,
+      "category": "Focus",
+      "quote": "Attention is a resource; spend it with intention.",
+      "supportingLine": "Choose the priority before opening the distractions."
+    },
+    {
+      "id": 180,
+      "category": "Focus",
+      "quote": "A clear target makes effort easier to direct.",
+      "supportingLine": "Define what finished looks like for today's most important task."
+    },
+    {
+      "id": 181,
+      "category": "Focus",
+      "quote": "Focus means saying yes to the work by saying no to noise.",
+      "supportingLine": "Protect a little uninterrupted time for meaningful progress."
+    },
+    {
+      "id": 182,
+      "category": "Focus",
+      "quote": "Busy is a schedule; productive is a result.",
+      "supportingLine": "Check what your activity is actually moving forward."
+    },
+    {
+      "id": 183,
+      "category": "Focus",
+      "quote": "Your next step deserves your full attention.",
+      "supportingLine": "Finish one meaningful task before dividing your energy."
+    },
+    {
+      "id": 184,
+      "category": "Focus",
+      "quote": "Clarity reduces the weight of a large goal.",
+      "supportingLine": "Break it into the smallest useful action."
+    },
+    {
+      "id": 185,
+      "category": "Focus",
+      "quote": "A plan turns scattered energy into forward movement.",
+      "supportingLine": "Write the top three priorities and begin with the first."
+    },
+    {
+      "id": 186,
+      "category": "Focus",
+      "quote": "Protect your mornings from other people's urgency when you can.",
+      "supportingLine": "Give important work an intentional start."
+    },
+    {
+      "id": 187,
+      "category": "Focus",
+      "quote": "The right task at the right time creates momentum.",
+      "supportingLine": "Match your energy to the work that matters."
+    },
+    {
+      "id": 188,
+      "category": "Focus",
+      "quote": "Simplify the process so focus can do its job.",
+      "supportingLine": "Remove one unnecessary step or distraction today."
+    },
+    {
+      "id": 189,
+      "category": "Focus",
+      "quote": "Progress improves when priorities are visible.",
+      "supportingLine": "Keep your main goal where you can see it."
+    },
+    {
+      "id": 190,
+      "category": "Focus",
+      "quote": "A pause can be more productive than another rushed action.",
+      "supportingLine": "Step back, reassess, and choose deliberately."
+    },
+    {
+      "id": 191,
+      "category": "Focus",
+      "quote": "Do fewer things with greater care.",
+      "supportingLine": "Give quality enough attention to emerge."
+    },
+    {
+      "id": 192,
+      "category": "Focus",
+      "quote": "Your attention follows what you repeatedly invite in.",
+      "supportingLine": "Make useful habits easier to reach than distractions."
+    },
+    {
+      "id": 193,
+      "category": "Focus",
+      "quote": "A deadline is useful when paired with a clear plan.",
+      "supportingLine": "Work backward from the date and schedule the steps."
+    },
+    {
+      "id": 194,
+      "category": "Focus",
+      "quote": "One thoughtful decision can prevent an hour of rework.",
+      "supportingLine": "Clarify the requirement before you begin."
+    },
+    {
+      "id": 195,
+      "category": "Focus",
+      "quote": "Focus is built through returning, not never wandering.",
+      "supportingLine": "Notice distraction and gently bring your attention back."
+    },
+    {
+      "id": 196,
+      "category": "Focus",
+      "quote": "Protect the work that creates the most value.",
+      "supportingLine": "Schedule it before smaller tasks fill the day."
+    },
+    {
+      "id": 197,
+      "category": "Focus",
+      "quote": "The simplest next step often breaks the stalemate.",
+      "supportingLine": "Stop planning for a moment and begin the first action."
+    },
+    {
+      "id": 198,
+      "category": "Focus",
+      "quote": "Cluttered priorities create diluted results.",
+      "supportingLine": "Choose what matters most for this season."
+    },
+    {
+      "id": 199,
+      "category": "Focus",
+      "quote": "Let your goal guide your yes and your no.",
+      "supportingLine": "Check each commitment against your real priorities."
+    },
+    {
+      "id": 200,
+      "category": "Focus",
+      "quote": "A clear finish line makes starting easier.",
+      "supportingLine": "Set a specific outcome for the next work session."
+    },
+    {
+      "id": 201,
+      "category": "Focus",
+      "quote": "Do not let urgency disguise what is important.",
+      "supportingLine": "Pause to distinguish a real deadline from a loud request."
+    },
+    {
+      "id": 202,
+      "category": "Focus",
+      "quote": "Momentum grows when you complete what you begin.",
+      "supportingLine": "Reduce interruptions and close one open loop."
+    },
+    {
+      "id": 203,
+      "category": "Focus",
+      "quote": "A thoughtful plan gives creativity room to work.",
+      "supportingLine": "Set direction without controlling every detail."
+    },
+    {
+      "id": 204,
+      "category": "Focus",
+      "quote": "Give your best attention to your highest-value work.",
+      "supportingLine": "Do not spend your freshest energy only on easy tasks."
+    },
+    {
+      "id": 205,
+      "category": "Focus",
+      "quote": "The day becomes manageable when the next action is clear.",
+      "supportingLine": "Write the action as a verb and start there."
+    },
+    {
+      "id": 206,
+      "category": "Focus",
+      "quote": "Focus is a daily choice, renewed many times.",
+      "supportingLine": "Return to the priority each time the day pulls you away."
+    },
+    {
+      "id": 207,
+      "category": "Focus",
+      "quote": "A simple system can protect a complicated goal.",
+      "supportingLine": "Use a checklist, calendar, or routine to reduce mental load."
+    },
+    {
+      "id": 208,
+      "category": "Focus",
+      "quote": "Finish with intention so tomorrow can begin clearly.",
+      "supportingLine": "Record the next step before you stop for the day."
+    },
+    {
+      "id": 209,
+      "category": "Ambition",
+      "quote": "Let your ambition stretch your effort, not distort your values.",
+      "supportingLine": "Pursue growth without losing sight of how you treat people."
+    },
+    {
+      "id": 210,
+      "category": "Ambition",
+      "quote": "A bold vision becomes real through practical milestones.",
+      "supportingLine": "Break the dream into targets you can measure."
+    },
+    {
+      "id": 211,
+      "category": "Ambition",
+      "quote": "Think beyond your current position and act from where you stand.",
+      "supportingLine": "Use today's resources to create tomorrow's opportunity."
+    },
+    {
+      "id": 212,
+      "category": "Ambition",
+      "quote": "Big goals need patient foundations.",
+      "supportingLine": "Build the skills and systems that can support the result."
+    },
+    {
+      "id": 213,
+      "category": "Ambition",
+      "quote": "Your potential deserves a plan.",
+      "supportingLine": "Turn one aspiration into a dated, specific action."
+    },
+    {
+      "id": 214,
+      "category": "Ambition",
+      "quote": "Aim high enough to grow and stay grounded enough to learn.",
+      "supportingLine": "Welcome the work required to close the gap."
+    },
+    {
+      "id": 215,
+      "category": "Ambition",
+      "quote": "Ambition is stronger when it serves a meaningful purpose.",
+      "supportingLine": "Know who benefits when you succeed."
+    },
+    {
+      "id": 216,
+      "category": "Ambition",
+      "quote": "The next level asks for new habits, not only new hopes.",
+      "supportingLine": "Identify the behavior your next chapter requires."
+    },
+    {
+      "id": 217,
+      "category": "Ambition",
+      "quote": "Do not shrink a meaningful goal to avoid the learning curve.",
+      "supportingLine": "Prepare for the challenge instead of avoiding it."
+    },
+    {
+      "id": 218,
+      "category": "Ambition",
+      "quote": "Opportunity favors readiness as well as courage.",
+      "supportingLine": "Develop the capability you hope to use."
+    },
+    {
+      "id": 219,
+      "category": "Ambition",
+      "quote": "Let your vision inspire the day, then let your plan direct it.",
+      "supportingLine": "Choose a concrete step that makes the vision more real."
+    },
+    {
+      "id": 220,
+      "category": "Ambition",
+      "quote": "Growth often begins beyond the comfort of familiar results.",
+      "supportingLine": "Try a thoughtful challenge that expands your ability."
+    },
+    {
+      "id": 221,
+      "category": "Ambition",
+      "quote": "Make your goals large enough to matter and clear enough to act on.",
+      "supportingLine": "Define the next milestone and how you will measure it."
+    },
+    {
+      "id": 222,
+      "category": "Ambition",
+      "quote": "Your future is influenced by the standards you choose now.",
+      "supportingLine": "Practice the habits that match the life you are building."
+    },
+    {
+      "id": 223,
+      "category": "Ambition",
+      "quote": "A meaningful ambition includes the person you become along the way.",
+      "supportingLine": "Pursue achievement with integrity and self-respect."
+    },
+    {
+      "id": 224,
+      "category": "Ambition",
+      "quote": "Build something useful, not just something impressive.",
+      "supportingLine": "Let real value be the measure of your progress."
+    },
+    {
+      "id": 225,
+      "category": "Ambition",
+      "quote": "Your next opportunity may require preparation before recognition.",
+      "supportingLine": "Keep improving when the reward is not immediate."
+    },
+    {
+      "id": 226,
+      "category": "Ambition",
+      "quote": "A long-term vision can steady short-term decisions.",
+      "supportingLine": "Ask whether today's choice supports where you want to go."
+    },
+    {
+      "id": 227,
+      "category": "Ambition",
+      "quote": "Let progress expand your confidence, not your ego.",
+      "supportingLine": "Stay grateful, capable, and ready to learn."
+    },
+    {
+      "id": 228,
+      "category": "Ambition",
+      "quote": "Dreams need deadlines, resources, and repeated effort.",
+      "supportingLine": "Give your idea a first milestone and a review date."
+    },
+    {
+      "id": 229,
+      "category": "Ambition",
+      "quote": "The future becomes less distant when you build toward it daily.",
+      "supportingLine": "Create one small piece of the outcome today."
+    },
+    {
+      "id": 230,
+      "category": "Ambition",
+      "quote": "Ambition without patience burns energy; ambition with a plan builds.",
+      "supportingLine": "Choose a sustainable pace and keep the direction clear."
+    },
+    {
+      "id": 231,
+      "category": "Ambition",
+      "quote": "Your goals can evolve as your understanding grows.",
+      "supportingLine": "Review your direction without treating change as failure."
+    },
+    {
+      "id": 232,
+      "category": "Ambition",
+      "quote": "Reach for excellence without demanding instant mastery.",
+      "supportingLine": "Give the craft the time it deserves."
+    },
+    {
+      "id": 233,
+      "category": "Ambition",
+      "quote": "Be ambitious about your contribution, not only your title.",
+      "supportingLine": "Look for ways to solve bigger problems with care."
+    },
+    {
+      "id": 234,
+      "category": "Ambition",
+      "quote": "The next chapter is built before it is announced.",
+      "supportingLine": "Do the preparation before making the promise."
+    },
+    {
+      "id": 235,
+      "category": "Ambition",
+      "quote": "Let your work open doors your words cannot.",
+      "supportingLine": "Build a track record of useful, reliable results."
+    },
+    {
+      "id": 236,
+      "category": "Ambition",
+      "quote": "A bigger goal asks for a broader perspective.",
+      "supportingLine": "Learn from people who have solved similar challenges."
+    },
+    {
+      "id": 237,
+      "category": "Ambition",
+      "quote": "Make your ambition visible through action.",
+      "supportingLine": "Choose the next step and put it on your calendar."
+    },
+    {
+      "id": 238,
+      "category": "Time",
+      "quote": "Time becomes meaningful when it is connected to purpose.",
+      "supportingLine": "Spend part of today on something your future will value."
+    },
+    {
+      "id": 239,
+      "category": "Time",
+      "quote": "A day is shaped by the decisions you repeat.",
+      "supportingLine": "Choose your priorities before the hours disappear."
+    },
+    {
+      "id": 240,
+      "category": "Time",
+      "quote": "Do not wait for a perfect stretch of time to begin.",
+      "supportingLine": "Use the focused minutes you already have."
+    },
+    {
+      "id": 241,
+      "category": "Time",
+      "quote": "Small pockets of effort can keep a big goal alive.",
+      "supportingLine": "Make a little progress even on a crowded day."
+    },
+    {
+      "id": 242,
+      "category": "Time",
+      "quote": "Your attention is more valuable than a full calendar.",
+      "supportingLine": "Leave room for the work that truly matters."
+    },
+    {
+      "id": 243,
+      "category": "Time",
+      "quote": "A thoughtful start can change the feel of an entire day.",
+      "supportingLine": "Begin with one clear task instead of ten open tabs."
+    },
+    {
+      "id": 244,
+      "category": "Time",
+      "quote": "Use deadlines to create direction, not panic.",
+      "supportingLine": "Plan backward and leave room for unexpected work."
+    },
+    {
+      "id": 245,
+      "category": "Time",
+      "quote": "Time spent learning can save time spent repeating mistakes.",
+      "supportingLine": "Invest a moment in understanding the process."
+    },
+    {
+      "id": 246,
+      "category": "Time",
+      "quote": "A pause can return perspective to a rushed day.",
+      "supportingLine": "Take a breath and choose the next action carefully."
+    },
+    {
+      "id": 247,
+      "category": "Time",
+      "quote": "Tomorrow benefits from the decisions you make tonight.",
+      "supportingLine": "Prepare one thing that will make the morning easier."
+    },
+    {
+      "id": 248,
+      "category": "Time",
+      "quote": "Make room for the important before the urgent takes over.",
+      "supportingLine": "Schedule your priority rather than hoping to find time."
+    },
+    {
+      "id": 249,
+      "category": "Time",
+      "quote": "A consistent hour can outperform an occasional marathon.",
+      "supportingLine": "Choose a repeatable time for meaningful practice."
+    },
+    {
+      "id": 250,
+      "category": "Time",
+      "quote": "Every commitment has a cost in attention.",
+      "supportingLine": "Say yes thoughtfully and protect your capacity."
+    },
+    {
+      "id": 251,
+      "category": "Time",
+      "quote": "Time management starts with honest priorities.",
+      "supportingLine": "Notice where your hours go before redesigning them."
+    },
+    {
+      "id": 252,
+      "category": "Time",
+      "quote": "Finish one useful thing instead of starting five more.",
+      "supportingLine": "Close a task before adding another to the pile."
+    },
+    {
+      "id": 253,
+      "category": "Time",
+      "quote": "Rest is part of using time wisely.",
+      "supportingLine": "Recover enough to bring attention back to your work."
+    },
+    {
+      "id": 254,
+      "category": "Time",
+      "quote": "The best schedule is one that reflects reality.",
+      "supportingLine": "Plan for your actual energy, duties, and constraints."
+    },
+    {
+      "id": 255,
+      "category": "Time",
+      "quote": "Use waiting time to prepare, reflect, or reset.",
+      "supportingLine": "Choose a small useful action without turning every moment into pressure."
+    },
+    {
+      "id": 256,
+      "category": "Time",
+      "quote": "A week improves when you review it honestly.",
+      "supportingLine": "Keep what worked and adjust what repeatedly got in the way."
+    },
+    {
+      "id": 257,
+      "category": "Time",
+      "quote": "Protect the time you need to think.",
+      "supportingLine": "Not every valuable task produces an immediate visible result."
+    },
+    {
+      "id": 258,
+      "category": "Time",
+      "quote": "A late start can still become a useful start.",
+      "supportingLine": "Begin with the time you have instead of regretting the time gone."
+    },
+    {
+      "id": 259,
+      "category": "Time",
+      "quote": "Leave a little space for the unexpected.",
+      "supportingLine": "A realistic plan has room to adapt."
+    },
+    {
+      "id": 260,
+      "category": "Time",
+      "quote": "Your calendar should support your values.",
+      "supportingLine": "Make space for work, relationships, learning, and recovery."
+    },
+    {
+      "id": 261,
+      "category": "Time",
+      "quote": "The minutes you reclaim can become momentum.",
+      "supportingLine": "Reduce one recurring distraction and use that time deliberately."
+    },
+    {
+      "id": 262,
+      "category": "Time",
+      "quote": "A clear stopping point helps you return with energy.",
+      "supportingLine": "End a work session by noting the next action."
+    },
+    {
+      "id": 263,
+      "category": "Time",
+      "quote": "Do not spend the whole day preparing to begin.",
+      "supportingLine": "Set a short limit on planning and take action."
+    },
+    {
+      "id": 264,
+      "category": "Time",
+      "quote": "The way you use today is the part you can influence.",
+      "supportingLine": "Focus on the next hour rather than worrying about the whole year."
+    },
+    {
+      "id": 265,
+      "category": "Time",
+      "quote": "Regular reflection helps time produce wisdom.",
+      "supportingLine": "Ask what deserved more attention and what deserved less."
+    },
+    {
+      "id": 266,
+      "category": "Time",
+      "quote": "A practical routine reduces daily decision fatigue.",
+      "supportingLine": "Automate or simplify one repeated task."
+    },
+    {
+      "id": 267,
+      "category": "Time",
+      "quote": "Use your time to build a life, not just a list of completed tasks.",
+      "supportingLine": "Make room for what gives your effort meaning."
+    },
+    {
+      "id": 268,
+      "category": "Creativity",
+      "quote": "A new idea often begins with noticing an old problem differently.",
+      "supportingLine": "Look for an assumption you can question."
+    },
+    {
+      "id": 269,
+      "category": "Creativity",
+      "quote": "Creativity grows where curiosity meets courage.",
+      "supportingLine": "Try a small experiment before judging the idea."
+    },
+    {
+      "id": 270,
+      "category": "Creativity",
+      "quote": "The first draft is a doorway, not a verdict.",
+      "supportingLine": "Create something rough enough to improve."
+    },
+    {
+      "id": 271,
+      "category": "Creativity",
+      "quote": "Constraints can guide invention when you work with them.",
+      "supportingLine": "Ask what is possible with the resources you have."
+    },
+    {
+      "id": 272,
+      "category": "Creativity",
+      "quote": "Better questions can unlock better ideas.",
+      "supportingLine": "Reframe the problem from the user's point of view."
+    },
+    {
+      "id": 273,
+      "category": "Creativity",
+      "quote": "Original work grows from attention, practice, and honest choices.",
+      "supportingLine": "Study widely, then make the solution your own."
+    },
+    {
+      "id": 274,
+      "category": "Creativity",
+      "quote": "An imperfect experiment can teach more than endless speculation.",
+      "supportingLine": "Test the smallest version that can provide useful feedback."
+    },
+    {
+      "id": 275,
+      "category": "Creativity",
+      "quote": "Give good ideas space before demanding certainty.",
+      "supportingLine": "Capture the thought and explore where it leads."
+    },
+    {
+      "id": 276,
+      "category": "Creativity",
+      "quote": "Creativity is not only making art; it is finding a better way.",
+      "supportingLine": "Improve one process, message, or experience today."
+    },
+    {
+      "id": 277,
+      "category": "Creativity",
+      "quote": "A fresh perspective can come from stepping away briefly.",
+      "supportingLine": "Return to the problem with a calmer mind."
+    },
+    {
+      "id": 278,
+      "category": "Creativity",
+      "quote": "Make room for play inside serious work.",
+      "supportingLine": "Explore an option without requiring it to be the final answer."
+    },
+    {
+      "id": 279,
+      "category": "Creativity",
+      "quote": "The unusual solution may begin with an ordinary observation.",
+      "supportingLine": "Pay attention to repeated friction and unmet needs."
+    },
+    {
+      "id": 280,
+      "category": "Creativity",
+      "quote": "Your ideas become useful when they meet real needs.",
+      "supportingLine": "Ask who benefits and how the idea helps."
+    },
+    {
+      "id": 281,
+      "category": "Creativity",
+      "quote": "Revision is where a promising idea gains clarity.",
+      "supportingLine": "Remove what distracts and strengthen what matters."
+    },
+    {
+      "id": 282,
+      "category": "Creativity",
+      "quote": "Curiosity keeps routine from becoming stagnation.",
+      "supportingLine": "Ask how one familiar task could work better."
+    },
+    {
+      "id": 283,
+      "category": "Creativity",
+      "quote": "Borrow principles, not someone else's identity.",
+      "supportingLine": "Learn from examples and adapt them with integrity."
+    },
+    {
+      "id": 284,
+      "category": "Creativity",
+      "quote": "A small prototype can make an abstract idea visible.",
+      "supportingLine": "Build a simple version and learn from how it behaves."
+    },
+    {
+      "id": 285,
+      "category": "Creativity",
+      "quote": "Not every idea needs to survive; every test can teach.",
+      "supportingLine": "Evaluate experiments honestly and keep the useful insight."
+    },
+    {
+      "id": 286,
+      "category": "Creativity",
+      "quote": "Creativity needs both freedom and follow-through.",
+      "supportingLine": "Explore broadly, then choose one idea to develop."
+    },
+    {
+      "id": 287,
+      "category": "Creativity",
+      "quote": "The best improvement may be the simplest one.",
+      "supportingLine": "Remove a source of confusion before adding a feature."
+    },
+    {
+      "id": 288,
+      "category": "Creativity",
+      "quote": "Look for connections between things others keep separate.",
+      "supportingLine": "Bring two useful perspectives together and test the result."
+    },
+    {
+      "id": 289,
+      "category": "Creativity",
+      "quote": "Make the problem clearer before making the solution bigger.",
+      "supportingLine": "Write down the real need in one sentence."
+    },
+    {
+      "id": 290,
+      "category": "Creativity",
+      "quote": "A useful idea earns its place by helping someone.",
+      "supportingLine": "Measure the benefit, not only the novelty."
+    },
+    {
+      "id": 291,
+      "category": "Creativity",
+      "quote": "Give your imagination a deadline and a first step.",
+      "supportingLine": "Turn the concept into a small, testable action."
+    },
+    {
+      "id": 292,
+      "category": "Creativity",
+      "quote": "Fresh thinking requires the courage to question routine.",
+      "supportingLine": "Ask whether the current method still serves its purpose."
+    },
+    {
+      "id": 293,
+      "category": "Creativity",
+      "quote": "Create, observe, adjust, and create again.",
+      "supportingLine": "Treat feedback as part of the creative process."
+    },
+    {
+      "id": 294,
+      "category": "Creativity",
+      "quote": "Your perspective is valuable when paired with careful craft.",
+      "supportingLine": "Develop the skill that helps your idea reach others."
+    },
+    {
+      "id": 295,
+      "category": "Creativity",
+      "quote": "A blank page is space for possibility, not proof of inability.",
+      "supportingLine": "Begin with one sentence, sketch, or question."
+    },
+    {
+      "id": 296,
+      "category": "Creativity",
+      "quote": "Innovation becomes real when someone can use it.",
+      "supportingLine": "Finish the useful version before chasing endless polish."
+    },
+    {
+      "id": 297,
+      "category": "Integrity",
+      "quote": "Integrity is choosing the right action when shortcuts are available.",
+      "supportingLine": "Protect trust even when the easier option is tempting."
+    },
+    {
+      "id": 298,
+      "category": "Integrity",
+      "quote": "Your reputation grows from the promises you keep.",
+      "supportingLine": "Make fewer promises and follow through on them."
+    },
+    {
+      "id": 299,
+      "category": "Integrity",
+      "quote": "Honesty gives progress a foundation that can last.",
+      "supportingLine": "Tell the truth clearly and take responsibility for your part."
+    },
+    {
+      "id": 300,
+      "category": "Integrity",
+      "quote": "Values matter most when they cost you something.",
+      "supportingLine": "Let your principles guide the difficult choice."
+    },
+    {
+      "id": 301,
+      "category": "Integrity",
+      "quote": "Trust is built slowly through consistent behavior.",
+      "supportingLine": "Be reliable in small matters as well as large ones."
+    },
+    {
+      "id": 302,
+      "category": "Integrity",
+      "quote": "Do good work even when recognition is uncertain.",
+      "supportingLine": "Let quality reflect your standards, not the audience size."
+    },
+    {
+      "id": 303,
+      "category": "Integrity",
+      "quote": "Accountability turns mistakes into a chance to repair trust.",
+      "supportingLine": "Acknowledge the issue and explain the corrective action."
+    },
+    {
+      "id": 304,
+      "category": "Integrity",
+      "quote": "Respect is shown in the way you handle disagreement.",
+      "supportingLine": "Challenge ideas without diminishing people."
+    },
+    {
+      "id": 305,
+      "category": "Integrity",
+      "quote": "Success without integrity is a fragile achievement.",
+      "supportingLine": "Choose a path you can stand behind later."
+    },
+    {
+      "id": 306,
+      "category": "Integrity",
+      "quote": "Keep your word, and speak early when circumstances change.",
+      "supportingLine": "Communicate clearly rather than leaving others guessing."
+    },
+    {
+      "id": 307,
+      "category": "Integrity",
+      "quote": "Fairness is a practice repeated in ordinary decisions.",
+      "supportingLine": "Apply the same standard when it is convenient and when it is not."
+    },
+    {
+      "id": 308,
+      "category": "Integrity",
+      "quote": "Humility lets you admit what needs correcting.",
+      "supportingLine": "Own the gap and make the repair visible."
+    },
+    {
+      "id": 309,
+      "category": "Integrity",
+      "quote": "Character is shaped by choices no one else can make for you.",
+      "supportingLine": "Choose the action that aligns with your stated values."
+    },
+    {
+      "id": 310,
+      "category": "Integrity",
+      "quote": "Be clear about what you know and what you still need to verify.",
+      "supportingLine": "Honest uncertainty is stronger than false confidence."
+    },
+    {
+      "id": 311,
+      "category": "Integrity",
+      "quote": "The right way of working protects more than the final result.",
+      "supportingLine": "Respect people, process, and long-term trust."
+    },
+    {
+      "id": 312,
+      "category": "Integrity",
+      "quote": "Treat other people's time and effort with care.",
+      "supportingLine": "Prepare well and communicate changes promptly."
+    },
+    {
+      "id": 313,
+      "category": "Integrity",
+      "quote": "Principles become credible when they guide action.",
+      "supportingLine": "Translate your values into a behavior others can recognize."
+    },
+    {
+      "id": 314,
+      "category": "Integrity",
+      "quote": "A sincere apology includes a changed next step.",
+      "supportingLine": "Repair what you can and prevent a repeat where possible."
+    },
+    {
+      "id": 315,
+      "category": "Integrity",
+      "quote": "Do not trade long-term trust for a short-term advantage.",
+      "supportingLine": "Consider who bears the cost of the shortcut."
+    },
+    {
+      "id": 316,
+      "category": "Integrity",
+      "quote": "Consistency between words and actions builds confidence.",
+      "supportingLine": "Make your behavior match the standards you describe."
+    },
+    {
+      "id": 317,
+      "category": "Integrity",
+      "quote": "Give credit where it belongs.",
+      "supportingLine": "Recognize contributions accurately and generously."
+    },
+    {
+      "id": 318,
+      "category": "Integrity",
+      "quote": "Strong character can accept correction without losing dignity.",
+      "supportingLine": "Listen for the truth in the feedback and respond constructively."
+    },
+    {
+      "id": 319,
+      "category": "Integrity",
+      "quote": "Transparency reduces confusion and protects relationships.",
+      "supportingLine": "Share relevant facts before assumptions take over."
+    },
+    {
+      "id": 320,
+      "category": "Integrity",
+      "quote": "Make decisions you can explain with honesty.",
+      "supportingLine": "Be able to describe the reasoning and acknowledge trade-offs."
+    },
+    {
+      "id": 321,
+      "category": "Integrity",
+      "quote": "Respect boundaries as carefully as you defend your own.",
+      "supportingLine": "Ask, listen, and honor clear limits."
+    },
+    {
+      "id": 322,
+      "category": "Integrity",
+      "quote": "A trustworthy person does not need to pretend to know everything.",
+      "supportingLine": "Seek the right answer instead of performing certainty."
+    },
+    {
+      "id": 323,
+      "category": "Integrity",
+      "quote": "Do the careful thing before it becomes the urgent thing.",
+      "supportingLine": "Build checks that protect quality and trust."
+    },
+    {
+      "id": 324,
+      "category": "Integrity",
+      "quote": "Integrity makes success easier to carry.",
+      "supportingLine": "Let achievement and responsibility grow together."
+    },
+    {
+      "id": 325,
+      "category": "Integrity",
+      "quote": "Choose the honest conversation over convenient silence.",
+      "supportingLine": "Speak with care before a small issue becomes a larger one."
+    },
+    {
+      "id": 326,
+      "category": "Integrity",
+      "quote": "Let your principles be steady even when circumstances change.",
+      "supportingLine": "Adapt your plan without abandoning your ethics."
+    },
+    {
+      "id": 327,
+      "category": "Teamwork",
+      "quote": "Shared progress begins with clear communication.",
+      "supportingLine": "Make the goal, owner, and next step easy to understand."
+    },
+    {
+      "id": 328,
+      "category": "Teamwork",
+      "quote": "A team becomes stronger when people can ask for help early.",
+      "supportingLine": "Make questions welcome before problems grow."
+    },
+    {
+      "id": 329,
+      "category": "Teamwork",
+      "quote": "Collaboration is not agreement on everything; it is commitment to the work.",
+      "supportingLine": "Disagree respectfully and return to the shared objective."
+    },
+    {
+      "id": 330,
+      "category": "Teamwork",
+      "quote": "Give credit generously and feedback constructively.",
+      "supportingLine": "Recognize the contribution and help improve the next attempt."
+    },
+    {
+      "id": 331,
+      "category": "Teamwork",
+      "quote": "Good teamwork makes individual strengths useful together.",
+      "supportingLine": "Clarify roles and connect each person's work to the outcome."
+    },
+    {
+      "id": 332,
+      "category": "Teamwork",
+      "quote": "Listening is a practical way to reduce rework.",
+      "supportingLine": "Understand the concern before proposing a solution."
+    },
+    {
+      "id": 333,
+      "category": "Teamwork",
+      "quote": "A helpful teammate makes progress easier to sustain.",
+      "supportingLine": "Share context, remove blockers, and follow through."
+    },
+    {
+      "id": 334,
+      "category": "Teamwork",
+      "quote": "Trust grows when expectations are spoken rather than guessed.",
+      "supportingLine": "Confirm responsibilities and timelines openly."
+    },
+    {
+      "id": 335,
+      "category": "Teamwork",
+      "quote": "The best teams learn from friction instead of hiding it.",
+      "supportingLine": "Discuss the process without turning the problem into a personal attack."
+    },
+    {
+      "id": 336,
+      "category": "Teamwork",
+      "quote": "One person's preparation can protect everyone's time.",
+      "supportingLine": "Arrive ready and share the information others need."
+    },
+    {
+      "id": 337,
+      "category": "Teamwork",
+      "quote": "Make it safe to raise a concern while keeping standards high.",
+      "supportingLine": "Respond to problems with curiosity and accountability."
+    },
+    {
+      "id": 338,
+      "category": "Teamwork",
+      "quote": "A team succeeds when the handoffs are as strong as the individual tasks.",
+      "supportingLine": "Document what the next person needs to continue."
+    },
+    {
+      "id": 339,
+      "category": "Teamwork",
+      "quote": "Support does not mean doing everything for someone.",
+      "supportingLine": "Offer guidance that builds their ability to act independently."
+    },
+    {
+      "id": 340,
+      "category": "Teamwork",
+      "quote": "Shared purpose turns different talents into coordinated effort.",
+      "supportingLine": "Keep the outcome visible when approaches differ."
+    },
+    {
+      "id": 341,
+      "category": "Teamwork",
+      "quote": "Respectful communication is part of the work, not extra work.",
+      "supportingLine": "Be concise, timely, and clear about what you need."
+    },
+    {
+      "id": 342,
+      "category": "Teamwork",
+      "quote": "A thoughtful question can prevent a costly misunderstanding.",
+      "supportingLine": "Confirm assumptions before acting on them."
+    },
+    {
+      "id": 343,
+      "category": "Teamwork",
+      "quote": "Celebrate progress in ways that reinforce useful behavior.",
+      "supportingLine": "Name the action that helped the team move forward."
+    },
+    {
+      "id": 344,
+      "category": "Teamwork",
+      "quote": "Reliable teammates make small commitments matter.",
+      "supportingLine": "Complete your part or communicate early when you cannot."
+    },
+    {
+      "id": 345,
+      "category": "Teamwork",
+      "quote": "Different perspectives can strengthen a decision.",
+      "supportingLine": "Invite input from people who see different parts of the problem."
+    },
+    {
+      "id": 346,
+      "category": "Teamwork",
+      "quote": "Help the team improve the system, not only finish the task.",
+      "supportingLine": "Record the lesson so the next cycle gets easier."
+    },
+    {
+      "id": 347,
+      "category": "Teamwork",
+      "quote": "A strong handoff includes context, status, and next steps.",
+      "supportingLine": "Leave the work ready for another person to pick up."
+    },
+    {
+      "id": 348,
+      "category": "Teamwork",
+      "quote": "Make disagreement productive by focusing on evidence and outcomes.",
+      "supportingLine": "Challenge the idea and protect the relationship."
+    },
+    {
+      "id": 349,
+      "category": "Teamwork",
+      "quote": "Team trust is built in moments of follow-through.",
+      "supportingLine": "Do what you said you would do, and update others when plans change."
+    },
+    {
+      "id": 350,
+      "category": "Teamwork",
+      "quote": "Good collaboration gives everyone clarity and ownership.",
+      "supportingLine": "Agree on who decides, who contributes, and what success means."
+    },
+    {
+      "id": 351,
+      "category": "Teamwork",
+      "quote": "Ask what would help before assuming what someone needs.",
+      "supportingLine": "Offer specific support and respect their answer."
+    },
+    {
+      "id": 352,
+      "category": "Teamwork",
+      "quote": "A team learns faster when lessons are shared openly.",
+      "supportingLine": "Document useful discoveries, including the mistakes that taught them."
+    },
+    {
+      "id": 353,
+      "category": "Teamwork",
+      "quote": "Progress is easier when people know why their work matters.",
+      "supportingLine": "Connect each task to the shared result."
+    },
+    {
+      "id": 354,
+      "category": "Teamwork",
+      "quote": "Be the teammate who brings solutions and honest questions.",
+      "supportingLine": "Describe the problem clearly and suggest a practical next step."
+    },
+    {
+      "id": 355,
+      "category": "Teamwork",
+      "quote": "Respectful recognition can strengthen a culture of contribution.",
+      "supportingLine": "Notice effort, skill, and improvement in specific terms."
+    },
+    {
+      "id": 356,
+      "category": "Teamwork",
+      "quote": "Collective success grows from individual responsibility.",
+      "supportingLine": "Own your part while helping the whole team succeed."
+    },
+    {
+      "id": 357,
+      "category": "Gratitude",
+      "quote": "Gratitude helps you notice the resources already within reach.",
+      "supportingLine": "Name one thing that is working and use it wisely."
+    },
+    {
+      "id": 358,
+      "category": "Gratitude",
+      "quote": "Appreciation does not cancel ambition; it gives it perspective.",
+      "supportingLine": "Value today's progress while continuing to grow."
+    },
+    {
+      "id": 359,
+      "category": "Gratitude",
+      "quote": "Notice the people whose effort makes your work possible.",
+      "supportingLine": "Offer specific thanks and recognize their contribution."
+    },
+    {
+      "id": 360,
+      "category": "Gratitude",
+      "quote": "A small improvement deserves to be noticed.",
+      "supportingLine": "Record the progress so you can build on it."
+    },
+    {
+      "id": 361,
+      "category": "Gratitude",
+      "quote": "Gratitude can turn routine into a moment of awareness.",
+      "supportingLine": "Pay attention to one useful thing you might otherwise overlook."
+    },
+    {
+      "id": 362,
+      "category": "Gratitude",
+      "quote": "Recognizing what is good can give you steadier ground for what comes next.",
+      "supportingLine": "Take that steadiness into one useful action today."
+    },
+    {
+      "id": 363,
+      "category": "Gratitude",
+      "quote": "The people who encourage your growth deserve to see your progress.",
+      "supportingLine": "Share the lesson, acknowledge the support, and keep building."
+    },
+    {
+      "id": 364,
+      "category": "Gratitude",
+      "quote": "A thankful perspective helps you value the journey as well as the destination.",
+      "supportingLine": "Notice one meaningful step you took, even if the goal is still ahead."
+    },
+    {
+      "id": 365,
+      "category": "Gratitude",
+      "quote": "Treat today's chance to improve as a gift you can put to work.",
+      "supportingLine": "Use it with intention, patience, and care."
+    }
+  ]
+}

@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Sidebar, NavTab } from './components/Sidebar';
 import { TopNavbar } from './components/TopNavbar';
 import { DashboardBackgroundSvg } from './components/DashboardBackgroundSvg';
 import { DashboardView } from './components/views/DashboardView';
+import { DailyMotivationalPosterModal } from './components/DailyMotivationalPosterModal';
+import { checkAndPrepareDailyQuote, getKolkataDateString } from './services/motivationalQuoteService';
+import { MotivationalQuote } from './types/motivationalQuote';
 import { VisitorsView } from './components/views/VisitorsView';
 import { StudentsView } from './components/views/StudentsView';
 import { SettingsView } from './components/views/SettingsView';
@@ -191,9 +194,36 @@ export default function App() {
   const [vaultPickerParam, setVaultPickerParam] = useState<boolean>(false);
   const [vaultPickerAccept, setVaultPickerAccept] = useState<string[]>(['.pdf', '.jpg', '.jpeg', '.png']);
 
+  // Daily Motivational Quote Poster Modal state
+  const [dailyQuote, setDailyQuote] = useState<MotivationalQuote | null>(null);
+  const [isDailyQuoteOpen, setIsDailyQuoteOpen] = useState<boolean>(false);
+  const hasCheckedDailyQuoteRef = useRef<boolean>(false);
+
+  const triggerDailyQuoteForUser = async (user: UserProfile) => {
+    try {
+      const quote = await checkAndPrepareDailyQuote(user);
+      if (quote) {
+        setDailyQuote(quote);
+        setIsDailyQuoteOpen(true);
+      }
+    } catch (err) {
+      console.warn('[App] Daily quote check warning:', err);
+    }
+  };
+
+  // Check on initial session mount if user is already authenticated
+  useEffect(() => {
+    if (currentUser && !hasCheckedDailyQuoteRef.current) {
+      hasCheckedDailyQuoteRef.current = true;
+      triggerDailyQuoteForUser(currentUser);
+    }
+  }, [currentUser]);
+
   const handleLoginSuccess = (user: UserProfile) => {
     setCurUser(user);
     setIsAuthenticated(true);
+    hasCheckedDailyQuoteRef.current = true;
+    triggerDailyQuoteForUser(user);
     if (user.role === 'super_admin' || user.username?.toLowerCase() === 'shrinath') {
       setActiveTab('user_management');
       return;
@@ -211,6 +241,9 @@ export default function App() {
     setCurrentUser(null);
     setCurUser(null);
     setIsAuthenticated(false);
+    hasCheckedDailyQuoteRef.current = false;
+    setIsDailyQuoteOpen(false);
+    setDailyQuote(null);
   };
 
   const handleRefreshSession = () => {
@@ -619,6 +652,15 @@ export default function App() {
         isOpen={isKnowledgeCenterOpen}
         onClose={() => setIsKnowledgeCenterOpen(false)}
         currentUser={currentUser}
+      />
+
+      {/* Daily Motivational Quote Poster Modal */}
+      <DailyMotivationalPosterModal
+        isOpen={isDailyQuoteOpen}
+        quote={dailyQuote}
+        onClose={() => setIsDailyQuoteOpen(false)}
+        dateString={getKolkataDateString()}
+        userName={currentUser?.fullName || currentUser?.username}
       />
     </div>
   );

@@ -216,7 +216,7 @@ export const CeraPdfViewer: React.FC<CeraPdfViewerProps> = ({
       await task.promise;
       onPageChange?.(currentPage);
 
-      // Extract text content of current viewed page for immediate SIA answers
+      // Extract text content of current viewed page for immediate CIA answers
       try {
         const textContent = await page.getTextContent();
         const pageText = textContent.items

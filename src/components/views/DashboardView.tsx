@@ -277,8 +277,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   if (onOpenKnowledgeCenter) {
     facilitationTools.push({
       id: 'dashboard-tool-knowledge-center',
-      title: 'SIA',
-      imageSrc: APP_ASSETS.SIA,
+      title: 'CIA',
+      imageSrc: APP_ASSETS.CIA,
       onClick: onOpenKnowledgeCenter,
     });
   }
@@ -589,18 +589,37 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     id={tool.id}
                     type="button"
                     onClick={tool.onClick}
-                    className="group bg-white hover:bg-slate-50/80 border border-slate-200 hover:border-[#0056A6]/50 rounded-xl p-3 sm:p-3.5 flex flex-col items-center justify-center text-center gap-2.5 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs active:scale-[0.98] w-full"
+                    className={`group bg-white hover:bg-slate-50/80 border rounded-xl p-3 sm:p-3.5 flex flex-col items-center justify-center text-center gap-2.5 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs active:scale-[0.98] w-full ${
+                      tool.title === 'CIA'
+                        ? 'border-cyan-300 hover:border-cyan-500 hover:shadow-[0_0_15px_rgba(6,182,212,0.35)]'
+                        : 'border-slate-200 hover:border-[#0056A6]/50'
+                    }`}
                   >
-                    <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-slate-50 group-hover:bg-[#EAF4FB]/70 border border-slate-100 group-hover:border-[#0056A6]/20 p-2 flex items-center justify-center shrink-0 transition-colors duration-150">
+                    <div
+                      className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl p-2 flex items-center justify-center shrink-0 transition-colors duration-150 ${
+                        tool.title === 'CIA'
+                          ? 'bg-white border border-cyan-400/80 shadow-[0_0_10px_rgba(6,182,212,0.6)] animate-neon-box'
+                          : 'bg-slate-50 group-hover:bg-[#EAF4FB]/70 border border-slate-100 group-hover:border-[#0056A6]/20'
+                      }`}
+                    >
                       <img
                         src={tool.imageSrc}
                         alt={tool.title}
-                        className="w-full h-full object-contain filter drop-shadow-2xs group-hover:scale-105 transition-transform duration-150"
+                        className={`w-full h-full object-contain filter drop-shadow-2xs transition-transform duration-150 ${
+                          tool.title === 'CIA'
+                            ? 'animate-neon-glow'
+                            : 'group-hover:scale-105'
+                        }`}
                         referrerPolicy="no-referrer"
                       />
                     </div>
-                    <span className="text-xs sm:text-[13px] font-semibold text-slate-800 group-hover:text-[#0056A6] transition-colors leading-tight text-center">
+                    <span className="text-xs sm:text-[13px] font-semibold text-slate-800 group-hover:text-[#0056A6] transition-colors leading-tight text-center flex items-center justify-center gap-1">
                       {tool.title}
+                      {tool.title === 'CIA' && (
+                        <span className="text-[9px] px-1 py-0.2 rounded-full bg-cyan-500/20 text-cyan-700 font-extrabold border border-cyan-400/50">
+                          AI
+                        </span>
+                      )}
                     </span>
                   </button>
                 ))}

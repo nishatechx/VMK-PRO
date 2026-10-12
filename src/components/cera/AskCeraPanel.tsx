@@ -112,15 +112,20 @@ export const AskCeraPanel: React.FC<AskCeraPanelProps> = ({
 
   return (
     <div className="flex flex-col h-full bg-[#FFFFFF] text-[#172033] border-l border-[#E2E8F0] overflow-hidden select-none">
-      {/* 1. CLEAN ASK SIA HEADER */}
+      {/* 1. CLEAN ASK CIA HEADER */}
       <div className="px-4 py-3 bg-[#FFFFFF] border-b border-[#E2E8F0] flex items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-md bg-white border border-[#E2E8F0] p-0.5 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
-            <img src={APP_ASSETS.SIA} alt="SIA" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+          <div className="w-6 h-6 rounded-md bg-white border border-cyan-400/80 p-0.5 flex items-center justify-center shrink-0 shadow-[0_0_8px_rgba(6,182,212,0.6)] animate-neon-box overflow-hidden relative">
+            <img src={APP_ASSETS.CIA} alt="CIA" className="w-full h-full object-contain animate-neon-glow" referrerPolicy="no-referrer" />
           </div>
-          <h3 className="text-sm font-bold text-[#172033]">
-            Ask SIA
-          </h3>
+          <div className="flex items-center gap-1.5">
+            <h3 className="text-sm font-bold text-[#172033]">
+              Ask CIA
+            </h3>
+            <span className="text-[9px] px-1 py-0.2 rounded-full bg-cyan-500/20 text-cyan-700 font-extrabold border border-cyan-400/50 shadow-[0_0_6px_rgba(6,182,212,0.3)]">
+              AI
+            </span>
+          </div>
         </div>
 
         {activeDocument && (
