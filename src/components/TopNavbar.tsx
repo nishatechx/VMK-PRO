@@ -1,9 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Menu, ChevronDown, LogOut, Settings, UserCheck, ShieldCheck, Building2, Phone, Clock, ExternalLink, Radio } from 'lucide-react';
+import { Menu, ChevronDown, LogOut, Settings, UserCheck, ShieldCheck, Building2, Phone, Clock, ExternalLink, Radio, Wifi, WifiOff, RefreshCw } from 'lucide-react';
 import { NavTab } from './Sidebar';
 import { UserProfile } from '../types/auth';
 import { hasTabPermission } from '../services/authService';
 import { APP_ASSETS } from '../constants/assets';
+import { subscribeToSyncStatus, SyncQueueStatus } from '../services/offlineSyncService';
+import { processOfflineSyncQueue } from '../services/backgroundSyncProcessor';
 
 interface TopNavbarProps {
   onToggleSidebar: () => void;
@@ -29,7 +31,22 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
 }) => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [syncStatus, setSyncStatus] = useState<SyncQueueStatus>({
+    isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
+    isSyncing: false,
+    queuedTicketsCount: 0,
+    queuedUploadsCount: 0,
+    totalPendingCount: 0,
+    lastSyncedAt: null,
+  });
   const profileRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const unsub = subscribeToSyncStatus((status) => {
+      setSyncStatus(status);
+    });
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -129,6 +146,63 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
               <span>Broadcast</span>
             </button>
           )}
+
+        {/* Network & Offline Auto-Sync Status Badge */}
+        <div
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+            !syncStatus.isOnline
+              ? 'bg-amber-100 text-amber-900 border-amber-300'
+              : syncStatus.isSyncing
+              ? 'bg-[#EAF4FB] text-[#0056A6] border-[#0056A6]/30'
+              : syncStatus.totalPendingCount > 0
+              ? 'bg-blue-50 text-blue-800 border-blue-200'
+              : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+          }`}
+          title={
+            !syncStatus.isOnline
+              ? `Offline mode: ${syncStatus.totalPendingCount} items in local queue ready to auto-sync`
+              : syncStatus.isSyncing
+              ? 'Syncing local queue with cloud database...'
+              : syncStatus.totalPendingCount > 0
+              ? `${syncStatus.totalPendingCount} queued items - click to sync`
+              : 'Connected: Real-time cloud sync active'
+          }
+          onClick={() => {
+            if (syncStatus.isOnline && syncStatus.totalPendingCount > 0) {
+              processOfflineSyncQueue();
+            }
+          }}
+        >
+          {!syncStatus.isOnline ? (
+            <>
+              <WifiOff className="w-3.5 h-3.5 text-amber-700 animate-pulse" />
+              <span className="hidden md:inline">Offline</span>
+              {syncStatus.totalPendingCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-amber-600 text-white text-[10px] font-bold">
+                  {syncStatus.totalPendingCount}
+                </span>
+              )}
+            </>
+          ) : syncStatus.isSyncing ? (
+            <>
+              <RefreshCw className="w-3.5 h-3.5 text-[#0056A6] animate-spin" />
+              <span className="hidden md:inline">Syncing...</span>
+            </>
+          ) : syncStatus.totalPendingCount > 0 ? (
+            <>
+              <RefreshCw className="w-3.5 h-3.5 text-blue-600" />
+              <span className="hidden md:inline">Sync</span>
+              <span className="px-1.5 py-0.2 rounded-full bg-blue-600 text-white text-[10px] font-bold">
+                {syncStatus.totalPendingCount}
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="hidden lg:inline text-[11px]">Online</span>
+            </>
+          )}
+        </div>
 
         {/* Live Clock Strip */}
         <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#F7F9FC] border border-[#D9E1EA] text-xs text-[#003B73]">

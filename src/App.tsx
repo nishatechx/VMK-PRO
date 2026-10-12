@@ -40,6 +40,8 @@ import {
 } from './services/authService';
 import { UserProfile } from './types/auth';
 import { Building2, ShieldCheck, ExternalLink, Phone, Mail, MapPin, MessageCircle } from 'lucide-react';
+import { OfflineSyncStatusBanner } from './components/OfflineSyncStatusBanner';
+import { registerServiceWorkerAndSync } from './services/backgroundSyncProcessor';
 
 export default function App() {
   const [currentUser, setCurUser] = useState<UserProfile | null>(() => getCurrentUser());
@@ -289,6 +291,7 @@ export default function App() {
     }
 
     syncUsersFromServer().catch(() => {});
+    registerServiceWorkerAndSync();
 
     // Subscribe to live user updates to keep avatar & profile synced
     const unsubscribe = subscribeToUsers((users) => {
@@ -431,6 +434,9 @@ export default function App() {
           onOpenBroadcastModal={() => setIsBroadcastComposerOpen(true)}
           currentUser={currentUser}
         />
+
+        {/* Real-time Offline & Background Sync Alert Banner */}
+        <OfflineSyncStatusBanner />
 
         {/* Main Content Rounded Card Viewport */}
         <main className="flex-1 px-3 sm:px-6 pb-4 sm:pb-6 min-h-0 overflow-hidden">

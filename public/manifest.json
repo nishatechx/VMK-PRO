@@ -1,0 +1,32 @@
+{
+  "id": "/",
+  "name": "VMK Tools - MHCET Facilitation Desk",
+  "short_name": "VMK Tools",
+  "description": "Official CET/CAP facilitation desk, candidate ticket generator, and document scrutiny portal with offline auto-sync.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#F7F9FC",
+  "theme_color": "#003B73",
+  "icons": [
+    {
+      "src": "https://blogger.googleusercontent.com/img/a/AVvXsEjFP44mur3383PjgKIh7IFqGo9VPST6p_eeb25yzin569Oi5Sey4l19ipeisrBFtLAqlALkEpMUme_Xm8yQyLZB5iyeyOtAyLIp9Fv0dho2eV5nOArwPV3MWqHOFTd55TmCcNlSDRnlm1ZFXB3mC2l-XCxU6Vti8vtHtLmqnTme3oAT7k1_0s2wD8x5iW8=s192",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://blogger.googleusercontent.com/img/a/AVvXsEjFP44mur3383PjgKIh7IFqGo9VPST6p_eeb25yzin569Oi5Sey4l19ipeisrBFtLAqlALkEpMUme_Xm8yQyLZB5iyeyOtAyLIp9Fv0dho2eV5nOArwPV3MWqHOFTd55TmCcNlSDRnlm1ZFXB3mC2l-XCxU6Vti8vtHtLmqnTme3oAT7k1_0s2wD8x5iW8=s512",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://blogger.googleusercontent.com/img/a/AVvXsEjFP44mur3383PjgKIh7IFqGo9VPST6p_eeb25yzin569Oi5Sey4l19ipeisrBFtLAqlALkEpMUme_Xm8yQyLZB5iyeyOtAyLIp9Fv0dho2eV5nOArwPV3MWqHOFTd55TmCcNlSDRnlm1ZFXB3mC2l-XCxU6Vti8vtHtLmqnTme3oAT7k1_0s2wD8x5iW8=s512",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

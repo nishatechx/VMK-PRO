@@ -7,6 +7,8 @@ import { getDefaultVaultFiles } from '../data/seedVaultDocuments';
 import { safeStorage } from '../utils/safeStorage';
 import { idbSaveFile, idbSaveFiles, idbGetAllFiles, idbDeleteFile } from '../utils/idbStorage';
 import { compressImageForUpload } from '../utils/documentVision';
+import { queueDocumentUpload } from './offlineSyncService';
+import { requestBackgroundSync } from './backgroundSyncProcessor';
 import {
   collection,
   doc,
@@ -425,7 +427,28 @@ export const qrUploadService = {
     this.saveToSoftwareVault(newFile);
     this.notifyBroadcast(cleanSessionId, newFile);
 
+    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+
+    if (!isOnline) {
+      // Offline: queue upload in IndexedDB for auto-sync when network is restored
+      await queueDocumentUpload(cleanSessionId, {
+        name: newFile.name,
+        type: newFile.type,
+        size: newFile.size,
+        dataUrl: newFile.dataUrl,
+        category: newFile.category,
+        folder: newFile.folder,
+        uploadedBy: newFile.uploadedBy,
+        uploaderName: newFile.uploaderName,
+        uploaderRole: newFile.uploaderRole,
+        district: newFile.district,
+      });
+      requestBackgroundSync();
+      return newFile;
+    }
+
     // 2. Post to server API for cross-device synchronization (Mobile Phone -> Desktop Software)
+    let serverUploadFailed = false;
     try {
       const res = await fetch('/api/qr-upload', {
         method: 'POST',
@@ -453,12 +476,16 @@ export const qrUploadService = {
           this.saveToSoftwareVault(serverFile);
           this.notifyBroadcast(cleanSessionId, serverFile);
         }
+      } else {
+        serverUploadFailed = true;
       }
     } catch (e) {
+      serverUploadFailed = true;
       console.warn('Server upload endpoint unreachable, relying on local/firestore sync:', e);
     }
 
     // 3. Post to Firebase Firestore Database safely (stay well within 1MB document limit)
+    let firestoreUploadFailed = false;
     try {
       const firestoreDoc = { ...newFile };
       if (finalDataUrl && finalDataUrl.length > 750 * 1024) {
@@ -469,7 +496,25 @@ export const qrUploadService = {
       await setDoc(docRef, sanitizeForFirestore(firestoreDoc));
       console.log(`[Firebase Firestore] Saved document ${newFile.id} to Firestore (User: ${uploadedBy}, District: ${district})`);
     } catch (firestoreErr) {
+      firestoreUploadFailed = true;
       console.warn('[Firebase Firestore] Warning saving to Firestore:', firestoreErr);
+    }
+
+    // If both failed due to transient connection drops, enqueue for background sync
+    if (serverUploadFailed && firestoreUploadFailed) {
+      await queueDocumentUpload(cleanSessionId, {
+        name: newFile.name,
+        type: newFile.type,
+        size: newFile.size,
+        dataUrl: newFile.dataUrl,
+        category: newFile.category,
+        folder: newFile.folder,
+        uploadedBy: newFile.uploadedBy,
+        uploaderName: newFile.uploaderName,
+        uploaderRole: newFile.uploaderRole,
+        district: newFile.district,
+      });
+      requestBackgroundSync();
     }
 
     return newFile;

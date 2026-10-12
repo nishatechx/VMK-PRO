@@ -10,6 +10,8 @@ import {
 import { db } from '../lib/firebase';
 import { sanitizeForFirestore } from './authService';
 import { safeStorage } from '../utils/safeStorage';
+import { queueTicketAction } from './offlineSyncService';
+import { requestBackgroundSync } from './backgroundSyncProcessor';
 
 const TICKETS_STORAGE_KEY = 'vmk_tickets_records_v1';
 
@@ -98,8 +100,9 @@ if (typeof window !== 'undefined') {
 
 /**
  * Save / Create a new ticket or update existing ticket in LocalStorage & Firestore
+ * Automatically queues to IndexedDB and triggers background sync if offline.
  */
-export async function saveTicketRecord(record: TicketRecord): Promise<{ success: boolean; message: string }> {
+export async function saveTicketRecord(record: TicketRecord): Promise<{ success: boolean; message: string; queuedOffline?: boolean }> {
   try {
     const tickets = getTicketRecords();
     const idx = tickets.findIndex((t) => t.id === record.id || t.ticketNo === record.ticketNo);
@@ -113,12 +116,27 @@ export async function saveTicketRecord(record: TicketRecord): Promise<{ success:
     safeStorage.setItem(TICKETS_STORAGE_KEY, JSON.stringify(tickets));
     notifyTicketSubscribers(tickets);
 
-    // Save directly to Firestore Cloud Database
     const docId = record.id || record.ticketNo.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+
+    if (!isOnline) {
+      // Offline: Add to sync queue for auto-sync when online
+      await queueTicketAction('CREATE_OR_UPDATE_TICKET', { ...record, id: docId });
+      requestBackgroundSync();
+      return {
+        success: true,
+        message: 'Saved locally in Offline Queue. Will auto-sync when network reconnects.',
+        queuedOffline: true,
+      };
+    }
+
+    // Save directly to Firestore Cloud Database
     setDoc(doc(db, 'tickets', docId), sanitizeForFirestore({ ...record, id: docId }), {
       merge: true,
-    }).catch((e) => {
-      console.warn('Firestore saveTicket sync error:', e?.message);
+    }).catch(async (e) => {
+      console.warn('Firestore saveTicket sync error, queuing action:', e?.message);
+      await queueTicketAction('CREATE_OR_UPDATE_TICKET', { ...record, id: docId });
+      requestBackgroundSync();
     });
 
     return { success: true, message: 'Ticket saved to database successfully.' };
@@ -129,7 +147,7 @@ export async function saveTicketRecord(record: TicketRecord): Promise<{ success:
 }
 
 /**
- * Delete ticket from LocalStorage & Firestore
+ * Delete ticket from LocalStorage & Firestore (Queued if offline)
  */
 export async function deleteTicketRecord(id: string): Promise<{ success: boolean; message: string }> {
   try {
@@ -137,9 +155,18 @@ export async function deleteTicketRecord(id: string): Promise<{ success: boolean
     safeStorage.setItem(TICKETS_STORAGE_KEY, JSON.stringify(tickets));
     notifyTicketSubscribers(tickets);
 
+    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    if (!isOnline) {
+      await queueTicketAction('DELETE_TICKET', { id });
+      requestBackgroundSync();
+      return { success: true, message: 'Ticket deleted locally. Sync queued for online.' };
+    }
+
     // Remove from Firestore
-    deleteDoc(doc(db, 'tickets', id)).catch((e) => {
-      console.warn('Firestore deleteTicket sync error:', e?.message);
+    deleteDoc(doc(db, 'tickets', id)).catch(async (e) => {
+      console.warn('Firestore deleteTicket sync error, queuing:', e?.message);
+      await queueTicketAction('DELETE_TICKET', { id });
+      requestBackgroundSync();
     });
 
     return { success: true, message: 'Ticket deleted successfully.' };
@@ -150,7 +177,7 @@ export async function deleteTicketRecord(id: string): Promise<{ success: boolean
 }
 
 /**
- * Update the status and resolution notes of a ticket
+ * Update the status and resolution notes of a ticket (Queued if offline)
  */
 export async function updateTicketStatus(
   id: string,
@@ -162,27 +189,48 @@ export async function updateTicketStatus(
     const idx = tickets.findIndex((t) => t.id === id || t.ticketNo === id);
 
     if (idx >= 0) {
+      const updatedAt = new Date().toISOString();
       tickets[idx] = {
         ...tickets[idx],
         status,
         resolutionNotes: resolutionNotes !== undefined ? resolutionNotes : tickets[idx].resolutionNotes,
-        updatedAt: new Date().toISOString(),
+        updatedAt,
       };
 
       safeStorage.setItem(TICKETS_STORAGE_KEY, JSON.stringify(tickets));
       notifyTicketSubscribers(tickets);
 
       const docId = tickets[idx].id;
+      const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+
+      if (!isOnline) {
+        await queueTicketAction('UPDATE_TICKET_STATUS', {
+          id: docId,
+          status,
+          resolutionNotes: tickets[idx].resolutionNotes,
+          updatedAt,
+        });
+        requestBackgroundSync();
+        return { success: true, message: `Status updated locally to "${status}". Auto-sync queued.` };
+      }
+
       setDoc(
         doc(db, 'tickets', docId),
         sanitizeForFirestore({
           status,
           resolutionNotes: tickets[idx].resolutionNotes,
-          updatedAt: new Date().toISOString(),
+          updatedAt,
         }),
         { merge: true }
-      ).catch((e) => {
-        console.warn('Firestore updateTicketStatus sync error:', e?.message);
+      ).catch(async (e) => {
+        console.warn('Firestore updateTicketStatus sync error, queuing:', e?.message);
+        await queueTicketAction('UPDATE_TICKET_STATUS', {
+          id: docId,
+          status,
+          resolutionNotes: tickets[idx].resolutionNotes,
+          updatedAt,
+        });
+        requestBackgroundSync();
       });
 
       return { success: true, message: `Ticket status updated to ${status}.` };
