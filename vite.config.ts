@@ -242,6 +242,60 @@ function qrUploadApiPlugin(): Plugin {
           return;
         }
 
+        // GET /api/pdf-proxy
+        if (req.method === 'GET' && url.startsWith('/api/pdf-proxy')) {
+          (async () => {
+            try {
+              const parsedUrl = new URL(url, 'http://localhost');
+              const targetUrl = parsedUrl.searchParams.get('url') || '';
+              if (!targetUrl || !targetUrl.startsWith('http')) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Missing or invalid target PDF url' }));
+                return;
+              }
+
+              const headers: Record<string, string> = {
+                'User-Agent':
+                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                Accept: 'application/pdf,*/*',
+              };
+              if (req.headers.range) {
+                headers['Range'] = String(req.headers.range);
+              }
+
+              const upstreamRes = await fetch(targetUrl.trim(), { headers });
+              if (!upstreamRes.ok && upstreamRes.status !== 206) {
+                res.writeHead(upstreamRes.status, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Remote server error fetching PDF' }));
+                return;
+              }
+
+              const respHeaders: Record<string, string> = {
+                'Content-Type': 'application/pdf',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, OPTIONS',
+                'Access-Control-Allow-Headers': 'Range, Content-Type, Accept',
+                'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges',
+                'Accept-Ranges': 'bytes',
+                'Cache-Control': 'public, max-age=86400',
+              };
+
+              const contentRange = upstreamRes.headers.get('content-range');
+              if (contentRange) respHeaders['Content-Range'] = contentRange;
+              const contentLength = upstreamRes.headers.get('content-length');
+              if (contentLength) respHeaders['Content-Length'] = contentLength;
+
+              res.writeHead(upstreamRes.status === 206 ? 206 : 200, respHeaders);
+              const arrayBuffer = await upstreamRes.arrayBuffer();
+              res.end(Buffer.from(arrayBuffer));
+            } catch (err: any) {
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'PDF proxy error', details: err?.message }));
+            }
+          })();
+          return;
+        }
+
         next();
       });
     },

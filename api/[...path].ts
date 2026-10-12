@@ -16,6 +16,7 @@ import usersToggleStatusHandler from "../serverless-handlers/users/toggle-status
 import usersToggleApiKeyHandler from "../serverless-handlers/users/toggle-api-key";
 import userIdHandler from "../serverless-handlers/users/[id]";
 import vaultLogAttachmentHandler from "../serverless-handlers/vault/log-attachment";
+import pdfProxyHandler from "../serverless-handlers/pdf-proxy";
 
 export const config = {
   maxDuration: 60,
@@ -128,6 +129,11 @@ export default async function handler(req: any, res: any) {
     // 10. Vault Log Attachment:
     if (pathname === '/api/vault/log-attachment' || pathname.startsWith('/api/vault')) {
       return await vaultLogAttachmentHandler(req, res);
+    }
+
+    // 11. PDF Proxy: /api/pdf-proxy (Defeats browser CORS and streams official CET brochures)
+    if (pathname === '/api/pdf-proxy') {
+      return await pdfProxyHandler(req, res);
     }
 
     // Fallback info for undefined API path

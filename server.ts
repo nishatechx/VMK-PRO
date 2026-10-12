@@ -2040,34 +2040,77 @@ ${retrievedContext.text}`;
     }
   });
 
-  // CIA PDF Proxy Endpoint (Defeats browser CORS for official State CET Cell brochures)
+  // CIA PDF Proxy Endpoint (Defeats browser CORS for official State CET Cell brochures & supports chunked Range streaming)
   app.get("/api/pdf-proxy", async (req, res) => {
     try {
-      const targetUrl = req.query.url as string;
+      const targetUrl = (req.query.url as string) || '';
       if (!targetUrl || !targetUrl.startsWith("http")) {
         return res.status(400).json({ error: "Missing or invalid PDF url." });
       }
 
       // Security check: validate approved CET domains
-      const parsed = new URL(targetUrl);
-      if (!parsed.hostname.includes("mahacet.org") && !parsed.hostname.includes("cetcell")) {
+      const parsed = new URL(targetUrl.trim());
+      const host = parsed.hostname.toLowerCase();
+      const isApprovedHost =
+        host.includes("mahacet.org") ||
+        host.includes("cetcell") ||
+        host.includes("amazonaws.com") ||
+        host.includes("gov.in") ||
+        host.includes("nic.in") ||
+        host.includes("googleusercontent.com") ||
+        host.includes("drive.google.com");
+
+      if (!isApprovedHost) {
         return res.status(403).json({ error: "Domain not permitted for PDF proxying." });
       }
 
-      const response = await fetch(targetUrl, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-          "Accept": "application/pdf,*/*",
-        },
-      });
+      const headers: Record<string, string> = {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        Accept: "application/pdf,*/*",
+      };
 
-      if (!response.ok) {
-        return res.status(response.status).json({ error: `Remote PDF server responded with status: ${response.statusText}` });
+      // Forward client Range header for fast page-by-page streaming
+      if (req.headers.range) {
+        headers["Range"] = String(req.headers.range);
+      }
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20000);
+
+      const response = await fetch(targetUrl.trim(), {
+        headers,
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (!response.ok && response.status !== 206) {
+        return res
+          .status(response.status)
+          .json({ error: `Remote PDF server responded with status: ${response.statusText}` });
       }
 
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Range, Content-Type, Accept");
+      res.setHeader("Access-Control-Expose-Headers", "Content-Range, Content-Length, Accept-Ranges");
+      res.setHeader("Accept-Ranges", "bytes");
       res.setHeader("Cache-Control", "public, max-age=86400");
+
+      const contentRange = response.headers.get("content-range");
+      if (contentRange) {
+        res.setHeader("Content-Range", contentRange);
+      }
+
+      const contentLength = response.headers.get("content-length");
+      if (contentLength) {
+        res.setHeader("Content-Length", contentLength);
+      }
+
+      const statusCode = response.status === 206 ? 206 : 200;
+      res.status(statusCode);
+
       const buffer = await response.arrayBuffer();
       res.send(Buffer.from(buffer));
     } catch (err: any) {

@@ -30,7 +30,8 @@ import {
 import { OFFICIAL_PAGE_CHUNKS } from '../../data/officialCetDocuments';
 
 if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+  // Use locally bundled worker in public/ for zero CDN latency and offline resilience, with CDN fallback
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 }
 
 interface CeraPdfViewerProps {
@@ -56,7 +57,7 @@ export const CeraPdfViewer: React.FC<CeraPdfViewerProps> = ({
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [isBookmarked, setIsBookmarked] = useState<boolean>(false);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
-  const [viewMode, setViewMode] = useState<'canvas' | 'text'>('canvas');
+  const [viewMode, setViewMode] = useState<'canvas' | 'embed' | 'text'>('canvas');
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -154,7 +155,7 @@ export const CeraPdfViewer: React.FC<CeraPdfViewerProps> = ({
           if (!isCancelled) {
             setIsLoadingPdf(false);
             setRenderError(
-              'Unable to render PDF stream inside canvas. Official PDF can be opened directly.'
+              'Canvas stream could not be loaded directly. You can switch to the interactive Embedded Reader below, read verified text, or open in a new tab.'
             );
           }
         }
@@ -465,18 +466,32 @@ export const CeraPdfViewer: React.FC<CeraPdfViewerProps> = ({
 
         {/* View Options: Thumbnails, Mode Switcher, Fullscreen, Download */}
         <div className="flex items-center gap-2">
-          {/* Mode Switcher: PDF Canvas | Verified Text */}
+          {/* Mode Switcher: PDF Canvas | Embedded Reader | Verified Text */}
           <div className="flex rounded-lg bg-[#F1F5F9] p-0.5 border border-[#E2E8F0]">
             <button
               type="button"
-              onClick={() => setViewMode('canvas')}
+              onClick={() => {
+                setRenderError(null);
+                setViewMode('canvas');
+              }}
               className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors cursor-pointer ${
                 viewMode === 'canvas'
                   ? 'bg-[#1677FF] text-white shadow-2xs'
                   : 'text-[#64748B] hover:text-[#172033]'
               }`}
             >
-              PDF View
+              Canvas View
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('embed')}
+              className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors cursor-pointer ${
+                viewMode === 'embed'
+                  ? 'bg-[#1677FF] text-white shadow-2xs'
+                  : 'text-[#64748B] hover:text-[#172033]'
+              }`}
+            >
+              Embedded PDF
             </button>
             <button
               type="button"
@@ -559,9 +574,22 @@ export const CeraPdfViewer: React.FC<CeraPdfViewerProps> = ({
           </div>
         )}
 
-        {/* Viewport: Either Verified Document Text OR Canvas */}
+        {/* Viewport: Embedded Reader OR Verified Document Text OR Canvas */}
         <div className="flex-1 min-h-0 relative overflow-auto flex items-start justify-center p-4">
-          {viewMode === 'text' ? (
+          {viewMode === 'embed' ? (
+            /* Interactive Embedded PDF View (Works reliably across all devices & deployments) */
+            <div className="w-full h-full flex flex-col bg-white rounded-xl overflow-hidden border border-[#E2E8F0] shadow-sm relative min-h-[550px]">
+              {doc.pdfUrl ? (
+                <iframe
+                  src={`${doc.pdfUrl}#page=${currentPage}`}
+                  title={doc.title}
+                  className="w-full flex-1 min-h-[650px] border-0 rounded-xl bg-white"
+                />
+              ) : (
+                <div className="p-8 text-center text-xs text-[#64748B]">No official PDF URL attached</div>
+              )}
+            </div>
+          ) : viewMode === 'text' ? (
             /* Document Text View */
             <div className="w-full max-w-3xl bg-[#FFFFFF] border border-[#E2E8F0] rounded-xl p-6 shadow-sm space-y-4 text-[#172033]">
               <div className="pb-3 border-b border-[#E2E8F0] flex items-center justify-between gap-3">
@@ -628,7 +656,7 @@ export const CeraPdfViewer: React.FC<CeraPdfViewerProps> = ({
                   <AlignLeft className="w-8 h-8 text-[#94A3B8] mx-auto" />
                   <h4 className="text-xs font-semibold text-[#172033]">Official Page Text</h4>
                   <p className="text-xs text-[#64748B] max-w-sm mx-auto">
-                    Full page text is available in the original PDF. Use "PDF View" or open the original document in a new tab.
+                    Full page text is available in the original PDF. Use "Canvas View", "Embedded PDF", or open the original document in a new tab.
                   </p>
                   {doc.pdfUrl && (
                     <button
@@ -662,6 +690,20 @@ export const CeraPdfViewer: React.FC<CeraPdfViewerProps> = ({
                   <p className="text-xs text-[#64748B] leading-relaxed">{renderError}</p>
 
                   <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-2">
+                    {doc.pdfUrl && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRenderError(null);
+                          setViewMode('embed');
+                        }}
+                        className="w-full sm:w-auto px-4 py-2 bg-[#1677FF] hover:bg-[#1677FF]/90 text-white rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>Switch to Embedded Reader</span>
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       onClick={() => setViewMode('text')}
@@ -675,7 +717,7 @@ export const CeraPdfViewer: React.FC<CeraPdfViewerProps> = ({
                       <button
                         type="button"
                         onClick={() => openCeraPdfPage(doc.pdfUrl, currentPage, doc.officialSourcePageUrl)}
-                        className="w-full sm:w-auto px-4 py-2 bg-[#1677FF] hover:bg-[#1677FF]/90 text-white rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                        className="w-full sm:w-auto px-4 py-2 bg-[#FFFFFF] hover:bg-[#F8FAFC] text-[#475569] border border-[#CBD5E1] rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         <span>Open in New Tab</span>
                         <ExternalLink className="w-3.5 h-3.5" />
