@@ -396,19 +396,9 @@ async function startServer() {
     const raw = String(identifier || "").trim().toLowerCase();
     if (!raw) return null;
 
-    if (raw === "shri123" || raw === "shri" || raw === "shrinath") {
-      return DEFAULT_INITIAL_USERS[0];
-    }
-    if (raw === "dno") {
-      return DEFAULT_INITIAL_USERS[1];
-    }
-    if (raw === "staff") {
-      return DEFAULT_INITIAL_USERS[2];
-    }
-
     const users = getStoredUsers();
 
-    // 1. Direct match on username or id
+    // 1. Direct match on username or id from stored users
     const direct = users.find(
       (u: any) =>
         u.username?.toLowerCase() === raw ||
@@ -443,6 +433,17 @@ async function startServer() {
       (u: any) => u.fullName && u.fullName.toLowerCase().trim() === raw
     );
     if (nameMatch) return nameMatch;
+
+    // Fallback to default initial users if not found in database
+    if (raw === "shri123" || raw === "shri" || raw === "shrinath") {
+      return DEFAULT_INITIAL_USERS[0];
+    }
+    if (raw === "dno") {
+      return DEFAULT_INITIAL_USERS[1];
+    }
+    if (raw === "staff") {
+      return DEFAULT_INITIAL_USERS[2];
+    }
 
     return null;
   }
@@ -617,10 +618,41 @@ async function startServer() {
             isActive: cu.isActive !== false,
           });
           changed = true;
-        } else if (cu.password && cu.password !== serverUsers[idx].password) {
-          // Sync updated password
-          serverUsers[idx].password = cu.password;
-          changed = true;
+        } else {
+          // Keep existing user and update permissions & attributes from client
+          const existing = serverUsers[idx];
+          const updatedTabs = Array.isArray(cu.allowedTabs) ? cu.allowedTabs : existing.allowedTabs;
+          const updatedFeatures = Array.isArray(cu.allowedFeatures) ? cu.allowedFeatures : existing.allowedFeatures;
+          const updatedPassword = cu.password || existing.password;
+          const updatedRole = cu.role || existing.role;
+          const updatedFullName = cu.fullName || existing.fullName;
+          const updatedDistrict = cu.district || existing.district;
+          const updatedIsActive = cu.isActive !== undefined ? cu.isActive : existing.isActive;
+
+          // Check if any attribute changed
+          const tabsChanged = JSON.stringify(updatedTabs) !== JSON.stringify(existing.allowedTabs);
+          const featuresChanged = JSON.stringify(updatedFeatures) !== JSON.stringify(existing.allowedFeatures);
+          const otherChanged =
+            updatedPassword !== existing.password ||
+            updatedRole !== existing.role ||
+            updatedFullName !== existing.fullName ||
+            updatedDistrict !== existing.district ||
+            updatedIsActive !== existing.isActive;
+
+          if (tabsChanged || featuresChanged || otherChanged) {
+            serverUsers[idx] = {
+              ...existing,
+              ...cu,
+              allowedTabs: updatedTabs,
+              allowedFeatures: updatedFeatures,
+              password: updatedPassword,
+              role: updatedRole,
+              fullName: updatedFullName,
+              district: updatedDistrict,
+              isActive: updatedIsActive,
+            };
+            changed = true;
+          }
         }
       }
       if (changed) {

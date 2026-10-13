@@ -143,16 +143,19 @@ export const DEFAULT_STAFF_USER: UserProfile = {
   email: 'staff.washim@cetcell.mah.gov.in',
 };
 
-// Available system tabs with display labels and icons
+// Available system tabs with display labels and descriptions for RBAC control
 export const AVAILABLE_TABS: { id: TabPermission; label: string; description: string }[] = [
-  { id: 'dashboard', label: 'Dashboard', description: 'Core tools access & verification activity' },
-  { id: 'visitors', label: 'Visitors Entry Register', description: 'Record visitor entry form, check-in/out & directory' },
-  { id: 'tickets', label: 'Counsellor Tickets', description: 'Grievance, inquiry & WhatsApp tickets created by counsellors' },
-  { id: 'students', label: 'Students Directory', description: 'Candidate registration, records & scrutiny status' },
-  { id: 'settings', label: 'Center Settings', description: 'Center identity, DNO details & preferences' },
-  { id: 'profile', label: 'Operator Profile', description: 'Account details and session information' },
-  { id: 'user_management', label: 'User Management', description: 'Create & manage staff profiles and rule permissions' },
-  { id: 'google_sheets', label: 'Google Sheets (DNO Admin)', description: 'Live cloud spreadsheet synchronization & export (Passcode: dno1)' },
+  { id: 'dashboard', label: 'Dashboard', description: 'Institutional overview, KPIs, and live verification activity' },
+  { id: 'facilitation_tools', label: 'Facilitation Tools', description: 'WhatsApp Ticket, Files by QR, SAC Ticket, Image-to-PDF, OCR & CIA' },
+  { id: 'candidates', label: 'Candidates Register', description: 'Candidate dossiers, scrutiny status & verification' },
+  { id: 'tickets', label: 'Tickets Desk', description: 'Candidate grievance, counseling & SAC inquiry tickets' },
+  { id: 'reports', label: 'Reports & Analytics', description: 'Verification statistics, scrutiny summaries and exportable audits' },
+  { id: 'notices_circulars', label: 'Notices & Circulars', description: 'Live official notifications & circulars feed' },
+  { id: 'knowledge_base', label: 'Knowledge Base', description: 'Official CET Information Brochures & Rulebooks' },
+  { id: 'settings', label: 'Settings', description: 'Institutional center profile, credentials & preferences' },
+  { id: 'visitors', label: 'Visitors Entry Register', description: 'Visitor entry logbook, check-in/out and reception directory' },
+  { id: 'google_sheets', label: 'Google Sheets (DNO Admin)', description: 'Cloud spreadsheet live sync & central export (Passcode: dno1)' },
+  { id: 'user_management', label: 'User Management (Admin)', description: 'Staff accounts, role assignment and tab access controls' },
 ];
 
 export const AVAILABLE_FEATURES: { id: FeaturePermission; label: string; description: string }[] = [
@@ -160,7 +163,7 @@ export const AVAILABLE_FEATURES: { id: FeaturePermission; label: string; descrip
   { id: 'qr_upload_tool', label: 'Files by QR', description: 'Instant mobile QR code camera sync for candidate document uploads' },
   { id: 'ticket_generator_tool', label: 'SAC Ticket Generator', description: 'Official CET/CAP candidate grievance & scrutiny ticket desk' },
   { id: 'img_to_pdf_tool', label: 'Image to PDF', description: 'Convert candidate image documents to multi-page PDF' },
-  { id: 'image_to_text_tool', label: 'Image to Text (AI)', description: 'Extract Marathi, Hindi & English printed or handwritten text with multimodal AI vision' },
+  { id: 'image_to_text_tool', label: 'Image to Text (OCR)', description: 'Extract Marathi, Hindi & English printed or handwritten text with multimodal vision' },
   { id: 'add_candidate', label: 'Add New Candidates', description: 'Ability to register and input candidate details' },
   { id: 'add_visitor', label: 'Add Visitor Entry', description: 'Ability to log new visitor check-in and check-out' },
   { id: 'export_reports', label: 'Export Data & Reports', description: 'Download CSV and print scrutiny logs' },
@@ -189,7 +192,8 @@ export function getRoleLabel(role?: string): string {
 }
 
 /**
- * Check whether a user is authorized to access a given portal tab
+ * Check whether a user is authorized to access a given portal tab.
+ * Super Admin can customize tab access per user via allowedTabs in User Management / Settings.
  */
 export function hasTabPermission(user: UserProfile | null | undefined, tab: TabPermission): boolean {
   if (!user) return false;
@@ -202,15 +206,27 @@ export function hasTabPermission(user: UserProfile | null | undefined, tab: TabP
   if (isDno) {
     return true;
   }
-  // Supporting staff and operators always have full access to visitors directory
-  if (tab === 'visitors' && (user.role === 'supporting_staff' || user.role === 'operator')) {
-    return true;
+
+  // Check user's allowedTabs explicitly configured by Super Admin
+  const allowed = Array.isArray(user.allowedTabs) ? user.allowedTabs : [];
+
+  // Direct match
+  if (allowed.includes(tab)) return true;
+
+  // Aliases for backward compatibility
+  if (tab === 'candidates' && allowed.includes('students')) return true;
+  if (tab === 'students' && allowed.includes('candidates')) return true;
+  if (tab === 'settings' && allowed.includes('profile')) return true;
+  if (tab === 'profile' && allowed.includes('settings')) return true;
+
+  // Fallback defaults if allowedTabs was empty
+  if (allowed.length === 0) {
+    if (tab === 'dashboard' || tab === 'profile') return true;
+    if (user.role === 'counsellor' && (tab === 'tickets' || tab === 'candidates' || tab === 'knowledge_base')) return true;
+    if ((user.role === 'supporting_staff' || user.role === 'operator') && (tab === 'visitors' || tab === 'candidates' || tab === 'facilitation_tools')) return true;
   }
-  // Counsellors always have access to tickets directory to see their created tickets
-  if (tab === 'tickets' && user.role === 'counsellor') {
-    return true;
-  }
-  return Array.isArray(user.allowedTabs) ? user.allowedTabs.includes(tab) : false;
+
+  return false;
 }
 
 /**
@@ -293,18 +309,14 @@ export function getAllUsers(): UserProfile[] {
       modified = true;
     }
 
-    // Ensure DNO always exists and has google_sheets & tickets tab
+    // Ensure DNO always exists
     const dnoIndex = parsed.findIndex((u) => u.username.toLowerCase() === 'dno');
     if (dnoIndex === -1) {
       parsed.push(DNO_USER);
       modified = true;
     } else {
-      if (!parsed[dnoIndex].allowedTabs.includes('google_sheets')) {
-        parsed[dnoIndex].allowedTabs.push('google_sheets');
-        modified = true;
-      }
-      if (!parsed[dnoIndex].allowedTabs.includes('tickets')) {
-        parsed[dnoIndex].allowedTabs.push('tickets');
+      if (!Array.isArray(parsed[dnoIndex].allowedTabs)) {
+        parsed[dnoIndex].allowedTabs = [...DNO_USER.allowedTabs];
         modified = true;
       }
       if (!parsed[dnoIndex].district) {
@@ -313,22 +325,18 @@ export function getAllUsers(): UserProfile[] {
       }
     }
 
-    // Ensure Default Supporting Staff user always exists and has visitors access
+    // Ensure Default Supporting Staff user always exists
     const staffIndex = parsed.findIndex((u) => u.username.toLowerCase() === 'staff');
     if (staffIndex === -1) {
       parsed.push(DEFAULT_STAFF_USER);
       modified = true;
     } else {
-      if (!parsed[staffIndex].allowedTabs.includes('visitors')) {
-        parsed[staffIndex].allowedTabs.push('visitors');
+      if (!Array.isArray(parsed[staffIndex].allowedTabs)) {
+        parsed[staffIndex].allowedTabs = [...DEFAULT_STAFF_USER.allowedTabs];
         modified = true;
       }
-      if (!parsed[staffIndex].allowedFeatures.includes('add_visitor')) {
-        parsed[staffIndex].allowedFeatures.push('add_visitor');
-        modified = true;
-      }
-      if (!parsed[staffIndex].allowedFeatures.includes('export_reports')) {
-        parsed[staffIndex].allowedFeatures.push('export_reports');
+      if (!Array.isArray(parsed[staffIndex].allowedFeatures)) {
+        parsed[staffIndex].allowedFeatures = [...DEFAULT_STAFF_USER.allowedFeatures];
         modified = true;
       }
     }
@@ -960,17 +968,28 @@ export async function authenticateWithResultAsync(
     return { user: normalized };
   };
 
-  // 0. If user was pre-resolved in Step 1, verify password directly
+  // 0. Check local storage database FIRST (contains user permissions saved by Super Admin)
+  const localUsers = getAllUsers();
+  const localMatched = matchUserLocally(localUsers, cleanIdentifier);
+  if (localMatched && isPasswordMatch(localMatched, trimmedPass)) {
+    if (localMatched.isActive === false) {
+      return { user: null, error: 'This account has been disabled. Please contact Super Administrator or DNO.' };
+    }
+    return handleSuccess(localMatched);
+  }
+
+  // 1. If pre-resolved user was passed, verify password against it or local copy
   if (preResolvedUser) {
-    if (isPasswordMatch(preResolvedUser, trimmedPass)) {
-      if (preResolvedUser.isActive === false) {
+    const candidateUser = localMatched || preResolvedUser;
+    if (isPasswordMatch(candidateUser, trimmedPass)) {
+      if (candidateUser.isActive === false) {
         return { user: null, error: 'This account has been disabled. Please contact Super Administrator or DNO.' };
       }
-      return handleSuccess(preResolvedUser);
+      return handleSuccess(candidateUser);
     }
   }
 
-  // 1. Instant match for Master Super Admin (shrinath / super_admin_shrinath / shri@8975)
+  // 2. Instant match for Master Super Admin (shrinath / super_admin_shrinath / shri@8975)
   if (
     (trimmedUser === 'shrinath' ||
       trimmedUser === 'shri123' ||
@@ -980,46 +999,36 @@ export async function authenticateWithResultAsync(
       trimmedUser.replace(/\D/g, '') === '9822089750') &&
     (trimmedPass === 'shri@8975' || trimmedPass.toLowerCase() === 'shri@8975')
   ) {
-    return handleSuccess(SUPER_ADMIN_USER);
+    return handleSuccess(localMatched || SUPER_ADMIN_USER);
   }
 
-  // 2. Instant match for Master DNO (dno / dno_washim_admin / dno1)
+  // 3. Fallback for Master DNO if not customized (dno / dno_washim_admin / dno1)
   if (
     (trimmedUser === 'dno' ||
       trimmedUser === 'dno_washim_admin' ||
       trimmedUser === 'dno.washim@cetcell.mah.gov.in') &&
     (trimmedPass.toLowerCase() === 'dno1' || trimmedPass === '123456')
   ) {
-    return handleSuccess(DNO_USER);
+    return handleSuccess(localMatched || DNO_USER);
   }
 
-  // 3. Instant match for Master Supporting Staff (staff / staff_operator_1 / staff123)
+  // 4. Fallback for Master Supporting Staff if not customized (staff / staff_operator_1 / staff123)
   if (
     (trimmedUser === 'staff' ||
       trimmedUser === 'staff_operator_1' ||
       trimmedUser === 'staff.washim@cetcell.mah.gov.in') &&
     (trimmedPass.toLowerCase() === 'staff123' || trimmedPass.toLowerCase() === 'staff1' || trimmedPass === '123456')
   ) {
-    return handleSuccess(DEFAULT_STAFF_USER);
+    return handleSuccess(localMatched || DEFAULT_STAFF_USER);
   }
 
-  // 4. Check official portal seed baseline for immediate match
+  // 5. Check official portal seed baseline for immediate fallback
   const officialMatch = matchUserLocally(OFFICIAL_PORTAL_USERS, cleanIdentifier);
   if (officialMatch && isPasswordMatch(officialMatch, trimmedPass)) {
     if (officialMatch.isActive === false) {
       return { user: null, error: 'This account has been disabled. Please contact Super Administrator or DNO.' };
     }
-    return handleSuccess(officialMatch);
-  }
-
-  // 5. Check local memory / storage cache
-  const localUsers = getAllUsers();
-  const localMatched = matchUserLocally(localUsers, cleanIdentifier);
-  if (localMatched && isPasswordMatch(localMatched, trimmedPass)) {
-    if (localMatched.isActive === false) {
-      return { user: null, error: 'This account has been disabled. Please contact Super Administrator or DNO.' };
-    }
-    return handleSuccess(localMatched);
+    return handleSuccess(localMatched || officialMatch);
   }
 
   // 6. Try Firebase Authentication (signInWithEmailAndPassword)
@@ -1294,7 +1303,12 @@ export async function findUserByUsername(username: string): Promise<UserProfile 
   const trimmed = clean.toLowerCase();
   if (!trimmed) return null;
 
-  // 1. Root admin check
+  // 1. Check local storage database FIRST (contains permissions configured by Super Admin)
+  const localUsers = getAllUsers();
+  const localFound = matchUserLocally(localUsers, clean);
+  if (localFound) return localFound;
+
+  // 2. Root Super Admin fallback if not customized in local storage
   if (
     trimmed === 'shrinath' ||
     trimmed === 'shri123' ||
@@ -1320,14 +1334,9 @@ export async function findUserByUsername(username: string): Promise<UserProfile 
     return DEFAULT_STAFF_USER;
   }
 
-  // 2. Check official portal seed baseline first
+  // 3. Check official portal seed baseline
   const official = matchUserLocally(OFFICIAL_PORTAL_USERS, clean);
   if (official) return official;
-
-  // 3. Check local memory/storage
-  const localUsers = getAllUsers();
-  const localFound = matchUserLocally(localUsers, clean);
-  if (localFound) return localFound;
 
   // Helper to cache in localStorage
   const cacheUserLocally = (candidate: UserProfile) => {

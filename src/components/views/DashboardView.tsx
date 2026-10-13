@@ -1,36 +1,43 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import {
   FileText,
-  MessageCircle,
-  ArrowUpRight,
   CheckCircle2,
   AlertTriangle,
   UserCheck,
-  GraduationCap,
   Ticket,
-  MapPin,
   Activity,
   Clock,
-  Edit3,
-  ChevronRight,
   Search,
   Calendar,
   X,
   RefreshCw,
   Radio,
+  Download,
+  Filter,
+  Eye,
+  ChevronLeft,
+  ChevronRight,
+  ShieldCheck,
+  ArrowUpRight,
+  Image as ImageIcon,
+  ExternalLink,
+  Edit3,
+  Plus,
 } from 'lucide-react';
 import {
   getStudentRecords,
   getVisitorRecords,
   subscribeToStudents,
   subscribeToVisitors,
-  hasTabPermission,
-  hasFeaturePermission,
 } from '../../services/authService';
 import { getTicketRecords, subscribeToTickets } from '../../services/ticketService';
 import { UserProfile, StudentRecord, VisitorRecord, TicketRecord } from '../../types/auth';
-import { DashboardNoticeBar } from '../DashboardNoticeBar';
-import { APP_ASSETS } from '../../constants/assets';
+import {
+  DashboardBannerConfig,
+  getDashboardBannerConfig,
+  subscribeToDashboardBanner,
+} from '../../services/dashboardBannerService';
+import { DashboardBannerModal } from '../superadmin/DashboardBannerModal';
 
 function getActivityDateKey(timestamp?: string, rawDate?: number): string {
   if (rawDate && rawDate > 0) {
@@ -100,29 +107,27 @@ interface DashboardViewProps {
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
-  onOpenWhatsappTool,
-  onOpenQrTool,
-  onOpenTicketTool,
-  onOpenTicketWithData,
-  onOpenImgToPdfTool,
-  onOpenImageToTextTool,
-  onOpenExternalPortal,
-  onOpenBroadcastModal,
-  onOpenKnowledgeCenter,
   onNavigateTab,
+  onOpenBroadcastModal,
   currentUser,
 }) => {
   const [allStudents, setAllStudents] = useState<StudentRecord[]>(() => getStudentRecords());
   const [allVisitors, setAllVisitors] = useState<VisitorRecord[]>(() => getVisitorRecords());
   const [allTickets, setAllTickets] = useState<TicketRecord[]>(() => getTicketRecords());
-  const [activityFilter, setActivityFilter] = useState<'all' | 'ticket' | 'student' | 'visitor'>('all');
+
+  // Filter and pagination states
+  const [activityFilter, setActivityFilter] = useState<'all' | 'visitor' | 'student' | 'ticket'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [dateRangeMode, setDateRangeMode] = useState<'all' | 'today' | 'week' | 'custom'>('all');
   const [selectedSpecificDate, setSelectedSpecificDate] = useState<string>('');
-  const [maxVisibleCount, setMaxVisibleCount] = useState<number>(6);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(6);
+
+  // Live Auto-Refresh State
   const [isLiveMode, setIsLiveMode] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date>(new Date());
+  const [selectedActivityRecord, setSelectedActivityRecord] = useState<any | null>(null);
 
   const fetchLatestLogs = () => {
     setIsRefreshing(true);
@@ -132,33 +137,40 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     setLastRefreshedAt(new Date());
     setTimeout(() => {
       setIsRefreshing(false);
-    }, 450);
+    }, 400);
   };
+
+  // Custom Dashboard Announcement Banner State (Super Admin Configurable by URL)
+  const [bannerConfig, setBannerConfig] = useState<DashboardBannerConfig>(() => getDashboardBannerConfig());
+  const [isBannerModalOpen, setIsBannerModalOpen] = useState<boolean>(false);
+
+  const isSuperAdmin =
+    currentUser?.role === 'super_admin' ||
+    currentUser?.username?.toLowerCase() === 'shrinath';
 
   useEffect(() => {
     const unsubTickets = subscribeToTickets((data) => setAllTickets(data));
     const unsubStudents = subscribeToStudents((data) => setAllStudents(data));
     const unsubVisitors = subscribeToVisitors((data) => setAllVisitors(data));
+    const unsubBanner = subscribeToDashboardBanner((cfg) => setBannerConfig(cfg));
 
     return () => {
       unsubTickets();
       unsubStudents();
       unsubVisitors();
+      unsubBanner();
     };
   }, []);
 
-  // Live Mode: automatically fetch new log entries every 30 seconds
+  // Live Mode: automatically refresh logs every 30 seconds
   useEffect(() => {
     if (!isLiveMode) return;
-
     const intervalId = setInterval(() => {
       fetchLatestLogs();
-    }, 30000); // 30 seconds
-
+    }, 30000);
     return () => clearInterval(intervalId);
   }, [isLiveMode]);
 
-  const isSuperAdmin = currentUser?.role === 'super_admin' || currentUser?.username?.toLowerCase() === 'shrinath';
   const isDno = currentUser?.role === 'dno' || currentUser?.username?.toLowerCase() === 'dno';
   const currentDistrict = (currentUser?.district || 'Washim').trim().toLowerCase();
 
@@ -210,287 +222,127 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     });
   }, [allTickets, isSuperAdmin, isDno, currentDistrict, currentUser]);
 
-  const verifiedCount = students.filter((s) => s.status === 'Verified').length;
-  const objectionCount = students.filter((s) => s.status === 'Objection Raised').length;
-  const inCenterVisitors = visitors.filter((v) => v.status === 'In Premises').length;
-  const openTicketsCount = tickets.filter((t) => t.status === 'Open' || t.status === 'In Progress').length;
-
-  const canWhatsapp = hasFeaturePermission(currentUser, 'whatsapp_tool');
-  const canQr = hasFeaturePermission(currentUser, 'qr_upload_tool');
-  const canTicket = hasFeaturePermission(currentUser, 'ticket_generator_tool');
-  const canImgToPdf = hasFeaturePermission(currentUser, 'img_to_pdf_tool');
-  const canImageToText = hasFeaturePermission(currentUser, 'image_to_text_tool');
-
-  // Facilitation Tools for active desk operations
-  const facilitationTools: Array<{
-    id: string;
-    title: string;
-    imageSrc: string;
-    onClick: () => void;
-  }> = [];
-
-  if (canWhatsapp && onOpenWhatsappTool) {
-    facilitationTools.push({
-      id: 'dashboard-tool-whatsapp',
-      title: 'WhatsApp Ticket',
-      imageSrc: APP_ASSETS.WHATSAPP_TOOL,
-      onClick: onOpenWhatsappTool,
-    });
-  }
-
-  if (canQr && onOpenQrTool) {
-    facilitationTools.push({
-      id: 'dashboard-tool-qr',
-      title: 'Files by QR',
-      imageSrc: APP_ASSETS.FILES_BY_QR,
-      onClick: onOpenQrTool,
-    });
-  }
-
-  if (canTicket && onOpenTicketTool) {
-    facilitationTools.push({
-      id: 'dashboard-tool-ticket',
-      title: 'SAC Ticket Generator',
-      imageSrc: APP_ASSETS.SAC_TICKET_GENERATOR,
-      onClick: onOpenTicketTool,
-    });
-  }
-
-  if (canImgToPdf && onOpenImgToPdfTool) {
-    facilitationTools.push({
-      id: 'dashboard-tool-img-to-pdf',
-      title: 'Image to PDF',
-      imageSrc: APP_ASSETS.IMAGE_TO_PDF,
-      onClick: onOpenImgToPdfTool,
-    });
-  }
-
-  if (canImageToText && onOpenImageToTextTool) {
-    facilitationTools.push({
-      id: 'dashboard-tool-img-to-text',
-      title: 'Image to Text',
-      imageSrc: APP_ASSETS.IMAGE_TO_TEXT,
-      onClick: onOpenImageToTextTool,
-    });
-  }
-
-  if (onOpenKnowledgeCenter) {
-    facilitationTools.push({
-      id: 'dashboard-tool-knowledge-center',
-      title: 'CIA',
-      imageSrc: APP_ASSETS.CIA,
-      onClick: onOpenKnowledgeCenter,
-    });
-  }
-
-  // STRICTLY check tab permissions - do not show modules not given to user
-  const hasStudentAccess = hasTabPermission(currentUser, 'students');
-  const hasVisitorAccess = hasTabPermission(currentUser, 'visitors');
-  const hasTicketAccess = hasTabPermission(currentUser, 'tickets');
-
-  // STRICTLY only include stats allotted to the user
-  const quickStats: Array<{
-    label: string;
-    value: string;
-    change: string;
-    icon: any;
-    color: string;
-  }> = [];
-
-  if (hasStudentAccess) {
-    quickStats.push(
-      {
-        label: 'Verified Candidates',
-        value: `${verifiedCount}`,
-        change: students.length > 0 ? `${Math.round((verifiedCount / students.length) * 100)}% verified` : '0 today',
-        icon: CheckCircle2,
-        color: 'text-[#198754] bg-[#198754]/10 border-[#198754]/25',
-      },
-      {
-        label: 'Pending Verification',
-        value: `${objectionCount}`,
-        change: objectionCount > 0 ? 'Action required' : 'Clear',
-        icon: AlertTriangle,
-        color: 'text-[#DC3545] bg-[#DC3545]/10 border-[#DC3545]/25',
-      }
-    );
-  }
-
-  if (hasVisitorAccess) {
-    quickStats.push({
-      label: 'Visitors Today',
-      value: `${visitors.length}`,
-      change: inCenterVisitors > 0 ? `${inCenterVisitors} in center` : 'All checked out',
-      icon: UserCheck,
-      color: 'text-[#0056A6] bg-[#EAF4FB] border-[#D9E1EA]',
-    });
-  }
-
-  if (hasTicketAccess) {
-    quickStats.push({
-      label: 'Counsellor Tickets',
-      value: `${tickets.length}`,
-      change: openTicketsCount > 0 ? `${openTicketsCount} active/pending` : 'All resolved',
-      icon: Ticket,
-      color: 'text-[#003B73] bg-[#EAF4FB] border-[#D9E1EA]',
-    });
-  }
-
-  const recentStudents = students.slice(0, 5);
-
-  // User Recent Activity Items (Tickets, Candidate Scrutiny, Visitor entries)
-  const ticketActivities = useMemo(() => {
-    return tickets.map((t) => {
-      const time = t.updatedAt || t.createdAt || '';
-      const dateObj = new Date(time);
-      const rawDate = isNaN(dateObj.getTime()) ? 0 : dateObj.getTime();
-      const statusColor =
-        t.status === 'Resolved' || t.status === 'Closed'
-          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-          : t.status === 'In Progress'
-          ? 'bg-sky-50 text-sky-800 border-sky-200'
-          : 'bg-amber-50 text-amber-800 border-amber-200';
-
-      return {
-        id: `ticket-${t.id || t.ticketNo}`,
-        type: 'ticket' as const,
-        title: t.candidateName || 'Candidate Ticket',
-        subtitle: `${t.course || 'CET'} • ${
-          t.query ? (t.query.length > 60 ? t.query.substring(0, 60) + '...' : t.query) : 'Candidate Grievance Note'
-        }`,
-        meta: t.ticketNo,
-        status: t.status || 'Open',
-        statusColor,
-        timestamp: time,
-        relativeTime: formatRelativeTime(time),
-        rawDate,
-        data: t,
-      };
-    });
-  }, [tickets]);
-
-  const studentActivities = useMemo(() => {
-    return students.map((s) => {
-      const time = s.createdAt || s.date || '';
-      const dateObj = new Date(time);
-      const rawDate = isNaN(dateObj.getTime()) ? 0 : dateObj.getTime();
-      const statusColor =
-        s.status === 'Verified'
-          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-          : s.status === 'Objection Raised'
-          ? 'bg-rose-50 text-rose-800 border-rose-200'
-          : 'bg-amber-50 text-amber-800 border-amber-200';
-
-      return {
-        id: `student-${s.id}`,
-        type: 'student' as const,
-        title: s.name,
-        subtitle: `${s.course} • Mode: ${s.mode}${s.remarks ? ` • ${s.remarks}` : ''}`,
-        meta: s.id,
-        status: s.status,
-        statusColor,
-        timestamp: time,
-        relativeTime: formatRelativeTime(time),
-        rawDate,
-        data: s,
-      };
-    });
+  // Live KPI Metric Calculations
+  const verifiedCount = useMemo(() => {
+    return students.filter((s) => s.status === 'Verified').length;
   }, [students]);
 
-  const visitorActivities = useMemo(() => {
-    return visitors.map((v) => {
-      const time = v.createdAt || v.date || '';
-      const dateObj = new Date(time);
-      const rawDate = isNaN(dateObj.getTime()) ? 0 : dateObj.getTime();
-      const statusColor =
-        v.status === 'In Premises'
-          ? 'bg-blue-50 text-blue-800 border-blue-200'
-          : 'bg-slate-100 text-slate-700 border-slate-200';
+  const pendingCount = useMemo(() => {
+    return students.filter((s) => s.status === 'Pending' || s.status === 'Objection Raised').length;
+  }, [students]);
 
-      return {
-        id: `visitor-${v.id}`,
-        type: 'visitor' as const,
-        title: `${v.name} (${v.visitorType})`,
-        subtitle: `Purpose: ${v.purpose} • ${v.address}`,
-        meta: v.checkInTime || 'Visitor',
-        status: v.status,
-        statusColor,
-        timestamp: time,
-        relativeTime: formatRelativeTime(time),
-        rawDate,
-        data: v,
-      };
+  const todayVisitorsCount = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const todayVisitors = visitors.filter((v) => {
+      const vDate = getActivityDateKey(v.checkInTime, v.createdAt);
+      return vDate === today || v.status === 'In Premises';
     });
+    return todayVisitors.length > 0 ? todayVisitors.length : visitors.filter((v) => v.status === 'In Premises').length;
   }, [visitors]);
 
+  const openTicketsCount = useMemo(() => {
+    return tickets.filter((t) => t.status === 'Open' || t.status === 'In Progress').length;
+  }, [tickets]);
+
+  // Aggregate user activities
   const allUserActivities = useMemo(() => {
-    return [...ticketActivities, ...studentActivities, ...visitorActivities].sort(
-      (a, b) => b.rawDate - a.rawDate
-    );
-  }, [ticketActivities, studentActivities, visitorActivities]);
+    const combined: Array<{
+      id: string;
+      rawId: string;
+      title: string;
+      type: 'visitor' | 'student' | 'ticket';
+      category: string;
+      status: string;
+      location?: string;
+      timestamp: string;
+      rawTimestamp: number;
+      assignedTo?: string;
+      rawRecord: any;
+    }> = [];
 
+    students.forEach((s) => {
+      combined.push({
+        id: `std-${s.id}`,
+        rawId: s.id,
+        title: s.candidateName,
+        type: 'student',
+        category: s.course || 'Candidate Verification',
+        status: s.status,
+        location: s.district || 'Washim Center',
+        timestamp: s.createdAt,
+        rawTimestamp: new Date(s.createdAt).getTime() || 0,
+        assignedTo: s.scrutinyOfficer || s.createdBy || 'Scrutiny Desk',
+        rawRecord: s,
+      });
+    });
+
+    visitors.forEach((v) => {
+      combined.push({
+        id: `vis-${v.id}`,
+        rawId: v.id,
+        title: v.fullName,
+        type: 'visitor',
+        category: v.purpose || 'Inquiry / Scrutiny',
+        status: v.status,
+        location: v.district || 'Reception Desk',
+        timestamp: v.checkInTime || new Date(v.createdAt).toISOString(),
+        rawTimestamp: v.createdAt || 0,
+        assignedTo: v.assignedStaff || v.createdBy || 'Reception Desk',
+        rawRecord: v,
+      });
+    });
+
+    tickets.forEach((t) => {
+      combined.push({
+        id: `tkt-${t.id}`,
+        rawId: t.id,
+        title: t.candidateName,
+        type: 'ticket',
+        category: t.course || t.subject || 'Ticket Inquiry',
+        status: t.status,
+        location: t.district || 'Counsellor Desk',
+        timestamp: t.createdAt,
+        rawTimestamp: new Date(t.createdAt).getTime() || 0,
+        assignedTo: t.creatorName || t.createdBy || 'Counsellor',
+        rawRecord: t,
+      });
+    });
+
+    return combined.sort((a, b) => b.rawTimestamp - a.rawTimestamp);
+  }, [students, visitors, tickets]);
+
+  // Filter activities by search, type, date
   const filteredActivities = useMemo(() => {
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const endOfToday = startOfToday + 24 * 60 * 60 * 1000 - 1;
-    const sevenDaysAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6).getTime();
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-    return allUserActivities.filter((activity) => {
-      // 1. Type Filter
-      if (activityFilter !== 'all' && activity.type !== activityFilter) {
-        return false;
-      }
+    return allUserActivities.filter((act) => {
+      // Type filter
+      if (activityFilter === 'visitor' && act.type !== 'visitor') return false;
+      if (activityFilter === 'student' && act.type !== 'student') return false;
+      if (activityFilter === 'ticket' && act.type !== 'ticket') return false;
 
-      // 2. Date Filter
-      if (selectedSpecificDate) {
-        const actDateKey = getActivityDateKey(activity.timestamp, activity.rawDate);
-        if (actDateKey !== selectedSpecificDate) {
-          return false;
-        }
-      } else if (dateRangeMode === 'today') {
-        const actTime = activity.rawDate;
-        if (actTime > 0) {
-          if (actTime < startOfToday || actTime > endOfToday) {
-            return false;
-          }
-        } else {
-          const actDateKey = getActivityDateKey(activity.timestamp, activity.rawDate);
-          const todayKey = getActivityDateKey(new Date().toISOString(), Date.now());
-          if (actDateKey !== todayKey) {
-            return false;
-          }
-        }
+      // Date range filter
+      const actDateStr = getActivityDateKey(act.timestamp, act.rawTimestamp);
+      if (dateRangeMode === 'today') {
+        if (actDateStr !== todayStr) return false;
       } else if (dateRangeMode === 'week') {
-        const actTime = activity.rawDate;
-        if (actTime > 0) {
-          if (actTime < sevenDaysAgo) {
-            return false;
-          }
-        } else {
-          const parsed = new Date(activity.timestamp).getTime();
-          if (!isNaN(parsed) && parsed < sevenDaysAgo) {
-            return false;
-          }
-        }
+        const actTime = act.rawTimestamp || (act.timestamp ? new Date(act.timestamp).getTime() : 0);
+        if (actTime < oneWeekAgo.getTime()) return false;
+      } else if (dateRangeMode === 'custom' && selectedSpecificDate) {
+        if (actDateStr !== selectedSpecificDate) return false;
       }
 
-      // 3. Search Query Filter
+      // Search query
       if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        const matches =
-          activity.title.toLowerCase().includes(q) ||
-          activity.subtitle.toLowerCase().includes(q) ||
-          activity.meta.toLowerCase().includes(q) ||
-          activity.status.toLowerCase().includes(q) ||
-          activity.type.toLowerCase().includes(q) ||
-          (activity.data?.mobile && String(activity.data.mobile).includes(q)) ||
-          (activity.data?.email && String(activity.data.email).toLowerCase().includes(q)) ||
-          (activity.data?.cetNo && String(activity.data.cetNo).toLowerCase().includes(q)) ||
-          (activity.data?.capId && String(activity.data.capId).toLowerCase().includes(q)) ||
-          (activity.data?.ticketNo && String(activity.data.ticketNo).toLowerCase().includes(q)) ||
-          (activity.data?.course && String(activity.data.course).toLowerCase().includes(q));
-
-        if (!matches) {
+        const q = searchQuery.toLowerCase();
+        const matchesTitle = act.title.toLowerCase().includes(q);
+        const matchesCategory = act.category.toLowerCase().includes(q);
+        const matchesStatus = act.status.toLowerCase().includes(q);
+        const matchesOfficer = act.assignedTo?.toLowerCase().includes(q);
+        if (!matchesTitle && !matchesCategory && !matchesStatus && !matchesOfficer) {
           return false;
         }
       }
@@ -499,666 +351,618 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     });
   }, [allUserActivities, activityFilter, dateRangeMode, selectedSpecificDate, searchQuery]);
 
+  // Pagination calculation
+  const totalPages = Math.max(1, Math.ceil(filteredActivities.length / pageSize));
+  const paginatedActivities = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredActivities.slice(start, start + pageSize);
+  }, [filteredActivities, currentPage, pageSize]);
+
+  // Export activity data to CSV
+  const handleExportActivityCsv = () => {
+    const headers = ['Type', 'Name', 'Category / Purpose', 'Status', 'Assigned / Officer', 'Timestamp', 'Location'];
+    const rows = filteredActivities.map((act) => [
+      act.type.toUpperCase(),
+      `"${act.title.replace(/"/g, '""')}"`,
+      `"${act.category.replace(/"/g, '""')}"`,
+      act.status,
+      `"${(act.assignedTo || '').replace(/"/g, '""')}"`,
+      act.timestamp,
+      `"${(act.location || '').replace(/"/g, '""')}"`,
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `center_activity_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const displayName = currentUser?.fullName || currentUser?.username || 'Officer';
+
   return (
-    <div className="relative z-10 w-full pb-6">
-      {/* 2-Column Responsive Dashboard: Main Workspace (Left) + CET Cell Notice Bar (Right) */}
-      <div className="flex flex-col lg:flex-row gap-5 items-start">
-        {/* Left Workspace Column */}
-        <div className="flex-1 min-w-0 w-full space-y-5">
-          {/* DNO District Supervision Banner */}
+    <div className="w-full space-y-5 pb-8 select-none font-sans">
+      <div className="w-full space-y-5">
+          {/* 1. HORIZONTAL WELCOME BANNER (No Section Borders, No Image Shadow/Overlays, Pure Banner Image) */}
+          {bannerConfig.enabled && bannerConfig.imageUrl ? (
+            <div className="relative w-full overflow-hidden border-0 shadow-none rounded-none group min-h-[96px] sm:h-[110px] flex items-center justify-between p-4 sm:px-6">
+              {/* Pure Banner Image - Zero Shadows, Zero Overlays, Zero Borders */}
+              {bannerConfig.linkUrl ? (
+                <a
+                  href={bannerConfig.linkUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="absolute inset-0 w-full h-full cursor-pointer z-0 block border-0 shadow-none outline-none"
+                  title={bannerConfig.title || 'Official CET Portal'}
+                >
+                  <img
+                    src={bannerConfig.imageUrl}
+                    alt={bannerConfig.title || 'Dashboard Banner'}
+                    className="w-full h-full object-cover object-center border-0 shadow-none ring-0 outline-none select-none block"
+                  />
+                </a>
+              ) : (
+                <img
+                  src={bannerConfig.imageUrl}
+                  alt={bannerConfig.title || 'Dashboard Banner'}
+                  className="absolute inset-0 w-full h-full object-cover object-center pointer-events-none border-0 shadow-none ring-0 outline-none select-none block z-0"
+                />
+              )}
+
+              {/* Welcome Text Content: Welcome back, {displayName} and below line */}
+              <div className="relative z-10 flex flex-col justify-center min-w-0 pr-3 pointer-events-none select-text">
+                <h2 className="text-base sm:text-lg font-bold text-[#102544] tracking-tight truncate">
+                  Welcome back, {displayName}
+                </h2>
+                <p className="text-xs text-[#475569] font-medium mt-0.5 truncate">
+                  Here's what's happening today.
+                </p>
+              </div>
+
+              {/* Super Admin subtle hover-only edit trigger */}
+              {(isSuperAdmin || isDno) && (
+                <button
+                  type="button"
+                  onClick={() => setIsBannerModalOpen(true)}
+                  className="relative z-20 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded bg-white/90 hover:bg-white text-[#102544] hover:text-[#0866D9] text-[11px] font-semibold cursor-pointer border-0 shadow-none flex items-center gap-1"
+                  title="Configure Dashboard Banner Image URL"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Edit Banner</span>
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="w-full border-0 shadow-none rounded-none bg-transparent py-1 sm:py-2 flex items-center justify-between group">
+              {/* Welcome Text Content: Welcome back, {displayName} and below line */}
+              <div className="flex flex-col justify-center min-w-0 pr-3">
+                <h2 className="text-base sm:text-lg font-bold text-[#102544] tracking-tight truncate">
+                  Welcome back, {displayName}
+                </h2>
+                <p className="text-xs text-[#475569] font-medium mt-0.5 truncate">
+                  Here's what's happening today.
+                </p>
+              </div>
+
+              {/* Super Admin subtle edit trigger */}
+              {(isSuperAdmin || isDno) && (
+                <button
+                  type="button"
+                  onClick={() => setIsBannerModalOpen(true)}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded text-xs text-[#62738D] hover:text-[#0866D9] hover:bg-slate-100 cursor-pointer border-0 flex items-center gap-1"
+                  title="Add Dashboard Banner Image by URL"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Add Banner</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* District Supervisor Notice for DNO */}
           {isDno && (
-            <div className="p-4 rounded-2xl bg-gradient-to-r from-sky-50 to-indigo-50 border border-sky-200/80 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs text-sky-950">
+            <div className="p-3.5 rounded-xl bg-[#EBF3FC] border border-[#DCE5F0] flex items-center justify-between gap-3 text-xs text-[#102544]">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                  <MapPin className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                    <span>District Nodal Officer (DNO) Supervision</span>
-                    <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-sky-200/70 text-sky-800">
-                      {currentUser?.district || 'Washim'} District
-                    </span>
-                  </div>
-                  <p className="text-slate-600 text-xs mt-0.5">
-                    Live operational metrics scoped exclusively to <strong>{currentUser?.district || 'Washim'}</strong> facilitation centers and counselors.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="px-3 py-1 bg-white border border-sky-200 rounded-xl text-xs font-bold text-sky-700 shadow-2xs">
-                  {students.length} Candidates &bull; {tickets.length} Tickets
+                <ShieldCheck className="w-4 h-4 text-[#073B70] shrink-0" />
+                <span className="font-medium">
+                  District Nodal Supervision Active &bull; <strong className="text-[#073B70]">{currentUser?.district || 'Washim'} District</strong>
                 </span>
-                {onOpenBroadcastModal && (
-                  <button
-                    type="button"
-                    onClick={onOpenBroadcastModal}
-                    className="px-3 py-1 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-2xs transition-all cursor-pointer border border-amber-600 active:scale-95 flex items-center gap-1.5"
-                    title="Broadcast announcement to counsellors & supporting staff"
-                  >
-                    <Radio className="w-3.5 h-3.5 animate-pulse text-slate-950" />
-                    <span>Broadcast Notice</span>
-                  </button>
-                )}
               </div>
+              {onOpenBroadcastModal && (
+                <button
+                  type="button"
+                  onClick={onOpenBroadcastModal}
+                  className="px-2.5 py-1 rounded-lg bg-[#073B70] hover:bg-[#092744] text-white text-[11px] font-semibold cursor-pointer shadow-2xs"
+                >
+                  Broadcast Notice
+                </button>
+              )}
             </div>
           )}
 
-          {/* Quick Stats Bar - Strictly only allotted stats */}
-          {quickStats.length > 0 && (
-            <div className={`grid grid-cols-2 ${quickStats.length > 2 ? 'lg:grid-cols-4' : 'lg:grid-cols-2'} gap-3 sm:gap-4`}>
-              {quickStats.map((stat, i) => {
-                const Icon = stat.icon;
-                return (
-                  <div
-                    key={i}
-                    className="bg-white border border-[#D9E1EA] rounded-xl p-3.5 sm:p-4 flex items-center gap-3.5 shadow-xs hover:border-[#006BB6] hover:shadow-md hover:-translate-y-1 transition-all duration-200 ease-out group cursor-default"
-                  >
-                    <div className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${stat.color} group-hover:scale-105 transition-transform duration-200`}>
-                      <Icon className="w-5 h-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs text-[#4B5563] font-medium truncate">{stat.label}</p>
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-lg sm:text-xl font-bold text-[#1F2937] font-mono group-hover:text-[#0056A6] transition-colors">{stat.value}</span>
-                        <span className="text-[11px] text-[#4B5563] font-medium truncate">{stat.change}</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Facilitation Center Tools & Utilities Section in Dashboard */}
-          {facilitationTools.length > 0 && (
-            <div className="bg-white border border-[#D9E1EA] rounded-2xl p-3.5 sm:p-4 shadow-xs">
-              <div className="flex items-center justify-between mb-3 px-0.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs sm:text-sm font-bold text-slate-800 tracking-tight">Facilitation Desk Tools</span>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#EAF4FB] text-[#0056A6] border border-[#0056A6]/15">
-                    {facilitationTools.length}
-                  </span>
+          {/* 2. FOUR KPI CARDS IN ONE ROW */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            {/* KPI 1: Verified Candidates */}
+            <div className="bg-[#FFFFFF] border border-[#DCE5F0] rounded-xl p-4 shadow-[0_1px_3px_rgba(16,37,68,0.04)] hover:border-[#079669]/50 transition-colors">
+              <div className="flex items-center justify-between pb-2">
+                <span className="text-xs font-semibold text-[#62738D]">
+                  Verified Candidates
+                </span>
+                <div className="w-8 h-8 rounded-lg bg-[#079669]/10 text-[#079669] flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-4 h-4" />
                 </div>
-                <span className="text-[11px] text-slate-400 hidden sm:inline font-medium">Quick Access</span>
               </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
-                {facilitationTools.map((tool) => (
-                  <button
-                    key={tool.id}
-                    id={tool.id}
-                    type="button"
-                    onClick={tool.onClick}
-                    className={`group bg-white hover:bg-slate-50/80 border rounded-xl p-3 sm:p-3.5 flex flex-col items-center justify-center text-center gap-2.5 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs active:scale-[0.98] w-full ${
-                      tool.title === 'CIA'
-                        ? 'border-cyan-300 hover:border-cyan-500 hover:shadow-[0_0_15px_rgba(6,182,212,0.35)]'
-                        : 'border-slate-200 hover:border-[#0056A6]/50'
-                    }`}
-                  >
-                    <div
-                      className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl p-2 flex items-center justify-center shrink-0 transition-colors duration-150 ${
-                        tool.title === 'CIA'
-                          ? 'bg-white border border-cyan-400/80 shadow-[0_0_10px_rgba(6,182,212,0.6)] animate-neon-box'
-                          : 'bg-slate-50 group-hover:bg-[#EAF4FB]/70 border border-slate-100 group-hover:border-[#0056A6]/20'
-                      }`}
-                    >
-                      <img
-                        src={tool.imageSrc}
-                        alt={tool.title}
-                        className={`w-full h-full object-contain filter drop-shadow-2xs transition-transform duration-150 ${
-                          tool.title === 'CIA'
-                            ? 'animate-neon-glow'
-                            : 'group-hover:scale-105'
-                        }`}
-                        referrerPolicy="no-referrer"
-                      />
-                    </div>
-                    <span className="text-xs sm:text-[13px] font-semibold text-slate-800 group-hover:text-[#0056A6] transition-colors leading-tight text-center flex items-center justify-center gap-1">
-                      {tool.title}
-                      {tool.title === 'CIA' && (
-                        <span className="text-[9px] px-1 py-0.2 rounded-full bg-cyan-500/20 text-cyan-700 font-extrabold border border-cyan-400/50">
-                          AI
-                        </span>
-                      )}
-                    </span>
-                  </button>
-                ))}
+              <div className="flex items-baseline gap-2 pt-1">
+                <span className="text-2xl font-bold font-mono text-[#102544]">
+                  {verifiedCount}
+                </span>
+                <span className="text-[11px] font-semibold text-[#079669]">
+                  Cleared
+                </span>
               </div>
+              <p className="text-[11px] text-[#62738D] mt-1 truncate">
+                Scrutiny verified
+              </p>
             </div>
-          )}
 
-          {/* User Recent Activity Section - Directly below Tools */}
-          <div className="bg-white border border-[#D9E1EA] hover:border-[#B4C6D8] rounded-2xl p-4 sm:p-5 shadow-xs hover:shadow-md transition-all duration-200 ease-out">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-[#D9E1EA]">
+            {/* KPI 2: Pending Verification */}
+            <div className="bg-[#FFFFFF] border border-[#DCE5F0] rounded-xl p-4 shadow-[0_1px_3px_rgba(16,37,68,0.04)] hover:border-[#D99100]/50 transition-colors">
+              <div className="flex items-center justify-between pb-2">
+                <span className="text-xs font-semibold text-[#62738D]">
+                  Pending Verification
+                </span>
+                <div className="w-8 h-8 rounded-lg bg-[#D99100]/10 text-[#D99100] flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="flex items-baseline gap-2 pt-1">
+                <span className="text-2xl font-bold font-mono text-[#102544]">
+                  {pendingCount}
+                </span>
+                <span className="text-[11px] font-semibold text-[#D99100]">
+                  Queue
+                </span>
+              </div>
+              <p className="text-[11px] text-[#62738D] mt-1 truncate">
+                Pending or objection
+              </p>
+            </div>
+
+            {/* KPI 3: Visitors Today */}
+            <div className="bg-[#FFFFFF] border border-[#DCE5F0] rounded-xl p-4 shadow-[0_1px_3px_rgba(16,37,68,0.04)] hover:border-[#0866D9]/50 transition-colors">
+              <div className="flex items-center justify-between pb-2">
+                <span className="text-xs font-semibold text-[#62738D]">
+                  Visitors Today
+                </span>
+                <div className="w-8 h-8 rounded-lg bg-[#0866D9]/10 text-[#0866D9] flex items-center justify-center shrink-0">
+                  <UserCheck className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="flex items-baseline gap-2 pt-1">
+                <span className="text-2xl font-bold font-mono text-[#102544]">
+                  {todayVisitorsCount}
+                </span>
+                <span className="text-[11px] font-semibold text-[#0866D9]">
+                  Logged
+                </span>
+              </div>
+              <p className="text-[11px] text-[#62738D] mt-1 truncate">
+                Center premises entry
+              </p>
+            </div>
+
+            {/* KPI 4: Counsellor Tickets */}
+            <div className="bg-[#FFFFFF] border border-[#DCE5F0] rounded-xl p-4 shadow-[0_1px_3px_rgba(16,37,68,0.04)] hover:border-[#073B70]/50 transition-colors">
+              <div className="flex items-center justify-between pb-2">
+                <span className="text-xs font-semibold text-[#62738D]">
+                  Counsellor Tickets
+                </span>
+                <div className="w-8 h-8 rounded-lg bg-[#073B70]/10 text-[#073B70] flex items-center justify-center shrink-0">
+                  <Ticket className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="flex items-baseline gap-2 pt-1">
+                <span className="text-2xl font-bold font-mono text-[#102544]">
+                  {openTicketsCount}
+                </span>
+                <span className="text-[11px] font-semibold text-[#073B70]">
+                  Active
+                </span>
+              </div>
+              <p className="text-[11px] text-[#62738D] mt-1 truncate">
+                Grievances & inquiries
+              </p>
+            </div>
+          </div>
+
+          {/* 3. RECENT CENTER ACTIVITY TABLE (Immediately beneath KPI cards) */}
+          <div className="bg-[#FFFFFF] border border-[#DCE5F0] rounded-2xl shadow-[0_1px_3px_rgba(16,37,68,0.04)] overflow-hidden">
+            {/* Header: Title, Live indicator, Refresh, Export */}
+            <div className="p-4 sm:p-5 border-b border-[#DCE5F0] flex flex-wrap items-center justify-between gap-3 bg-[#FFFFFF]">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-[#003B73] text-white flex items-center justify-center shrink-0 shadow-xs">
+                <div className="w-8 h-8 rounded-lg bg-[#EBF3FC] text-[#0866D9] flex items-center justify-center shrink-0">
                   <Activity className="w-4 h-4" />
                 </div>
                 <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-xs sm:text-sm font-bold text-[#1F2937]">User Recent Activity</h3>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#EAF4FB] text-[#0056A6] border border-[#0056A6]/20">
-                      {filteredActivities.length} {filteredActivities.length === 1 ? 'Action' : 'Actions'}
-                    </span>
-
-                    {/* Live Mode Toggle */}
-                    <div className="flex items-center gap-1.5 ml-0.5">
-                      <button
-                        type="button"
-                        onClick={() => setIsLiveMode((prev) => !prev)}
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border transition-all cursor-pointer select-none active:scale-95 ${
-                          isLiveMode
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-300 shadow-2xs hover:bg-emerald-100'
-                            : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
-                        }`}
-                        title={
-                          isLiveMode
-                            ? 'Live Mode active: auto-fetching new log entries every 30 seconds. Click to turn off.'
-                            : 'Live Mode is OFF. Click to enable automatic 30s updates.'
-                        }
-                      >
-                        <span className="relative flex h-2 w-2">
-                          {isLiveMode && (
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                          )}
-                          <span
-                            className={`relative inline-flex rounded-full h-2 w-2 ${
-                              isLiveMode ? 'bg-emerald-500' : 'bg-slate-400'
-                            }`}
-                          ></span>
-                        </span>
-                        <span>{isLiveMode ? 'Live Mode: ON (30s)' : 'Live Mode: OFF'}</span>
-                      </button>
-
-                      {/* Manual fetch button */}
-                      <button
-                        type="button"
-                        onClick={fetchLatestLogs}
-                        disabled={isRefreshing}
-                        className={`p-1 rounded-lg text-slate-500 hover:text-[#0056A6] hover:bg-[#EAF4FB] transition-all cursor-pointer ${
-                          isRefreshing ? 'animate-spin text-[#0056A6]' : ''
-                        }`}
-                        title="Fetch latest entries immediately"
-                      >
-                        <RefreshCw className="w-3 h-3" />
-                      </button>
-                    </div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-[#102544] tracking-tight">
+                      Recent Activity
+                    </h3>
+                    {isLiveMode && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#079669] bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#079669] animate-pulse" />
+                        Live Mode
+                      </span>
+                    )}
                   </div>
-                  <p className="text-[11px] text-[#6B7280]">
-                    {isLiveMode
-                      ? `Live Mode active — auto-refreshing log entries every 30s (last sync at ${lastRefreshedAt.toLocaleTimeString(
-                          [],
-                          { hour: '2-digit', minute: '2-digit', second: '2-digit' }
-                        )})`
-                      : 'Real-time activity log of your tickets, candidate verifications, and visitor interactions.'}
-                  </p>
+                  <span className="text-[11px] text-[#62738D]">
+                    Last synced {formatRelativeTime(lastRefreshedAt.toISOString())}
+                  </span>
                 </div>
               </div>
 
-              {/* Filter Pills */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+              {/* Action Toolbar */}
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setActivityFilter('all')}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer shrink-0 ${
+                  onClick={fetchLatestLogs}
+                  disabled={isRefreshing}
+                  className="p-2 rounded-lg text-[#62738D] hover:text-[#102544] hover:bg-[#F4F7FB] border border-[#DCE5F0] transition-colors cursor-pointer"
+                  title="Refresh activity logs"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-[#0866D9]' : ''}`} />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExportActivityCsv}
+                  className="px-3 py-1.5 rounded-lg bg-white hover:bg-[#F4F7FB] text-[#102544] border border-[#DCE5F0] text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Export records to CSV"
+                >
+                  <Download className="w-3.5 h-3.5 text-[#62738D]" />
+                  <span>Export</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Filter Toolbar: Activity Type, Search, Time Range, Date Picker */}
+            <div className="p-3.5 bg-[#F4F7FB]/70 border-b border-[#DCE5F0] flex flex-wrap items-center justify-between gap-2.5">
+              {/* Type Filters */}
+              <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-[#DCE5F0]">
+                <button
+                  type="button"
+                  onClick={() => { setActivityFilter('all'); setCurrentPage(1); }}
+                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
                     activityFilter === 'all'
-                      ? 'bg-[#0056A6] text-white'
-                      : 'bg-[#F7F9FC] text-[#4B5563] hover:bg-[#EAF4FB] hover:text-[#0056A6]'
+                      ? 'bg-[#0866D9] text-white shadow-2xs'
+                      : 'text-[#62738D] hover:text-[#102544]'
                   }`}
                 >
                   All ({allUserActivities.length})
                 </button>
-
-                {ticketActivities.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setActivityFilter('ticket')}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer shrink-0 flex items-center gap-1 ${
-                      activityFilter === 'ticket'
-                        ? 'bg-[#0056A6] text-white'
-                        : 'bg-[#F7F9FC] text-[#4B5563] hover:bg-[#EAF4FB] hover:text-[#0056A6]'
-                    }`}
-                  >
-                    <Ticket className="w-3 h-3" />
-                    <span>Tickets ({ticketActivities.length})</span>
-                  </button>
-                )}
-
-                {studentActivities.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setActivityFilter('student')}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer shrink-0 flex items-center gap-1 ${
-                      activityFilter === 'student'
-                        ? 'bg-[#0056A6] text-white'
-                        : 'bg-[#F7F9FC] text-[#4B5563] hover:bg-[#EAF4FB] hover:text-[#0056A6]'
-                    }`}
-                  >
-                    <GraduationCap className="w-3 h-3" />
-                    <span>Candidates ({studentActivities.length})</span>
-                  </button>
-                )}
-
-                {visitorActivities.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setActivityFilter('visitor')}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer shrink-0 flex items-center gap-1 ${
-                      activityFilter === 'visitor'
-                        ? 'bg-[#0056A6] text-white'
-                        : 'bg-[#F7F9FC] text-[#4B5563] hover:bg-[#EAF4FB] hover:text-[#0056A6]'
-                    }`}
-                  >
-                    <UserCheck className="w-3 h-3" />
-                    <span>Visitors ({visitorActivities.length})</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Search Bar & Date Picker Filter Controls */}
-            <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5 mb-4 p-2.5 rounded-xl bg-[#F7F9FC] border border-[#D9E1EA]">
-              {/* Search Bar */}
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setMaxVisibleCount(6);
-                  }}
-                  placeholder="Search activities by candidate name, ticket no, ID, course..."
-                  className="w-full pl-9 pr-8 py-1.5 text-xs bg-white text-slate-900 placeholder:text-slate-400 border border-[#D9E1EA] rounded-lg focus:border-[#0056A6] focus:ring-2 focus:ring-[#0056A6]/15 outline-none transition-all"
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-0.5"
-                    title="Clear search"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => { setActivityFilter('visitor'); setCurrentPage(1); }}
+                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                    activityFilter === 'visitor'
+                      ? 'bg-[#0866D9] text-white shadow-2xs'
+                      : 'text-[#62738D] hover:text-[#102544]'
+                  }`}
+                >
+                  Visitors ({visitors.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setActivityFilter('student'); setCurrentPage(1); }}
+                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                    activityFilter === 'student'
+                      ? 'bg-[#0866D9] text-white shadow-2xs'
+                      : 'text-[#62738D] hover:text-[#102544]'
+                  }`}
+                >
+                  Candidates ({students.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setActivityFilter('ticket'); setCurrentPage(1); }}
+                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                    activityFilter === 'ticket'
+                      ? 'bg-[#0866D9] text-white shadow-2xs'
+                      : 'text-[#62738D] hover:text-[#102544]'
+                  }`}
+                >
+                  Tickets ({tickets.length})
+                </button>
               </div>
 
-              {/* Date Filters & Specific Day Picker */}
+              {/* Search Field & Time Range */}
               <div className="flex flex-wrap items-center gap-2">
-                {/* Preset Days / Weeks Selector */}
-                <div className="inline-flex rounded-lg bg-white p-0.5 border border-[#D9E1EA] text-xs">
+                <div className="relative flex items-center">
+                  <Search className="w-3.5 h-3.5 text-[#62738D] absolute left-2.5 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+                    placeholder="Search candidate, visitor or query..."
+                    className="text-xs pl-8 pr-3 py-1.5 bg-white border border-[#DCE5F0] rounded-lg text-[#102544] placeholder:text-[#62738D] focus:border-[#0866D9] outline-none w-44 sm:w-56"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2 text-slate-400 hover:text-slate-600 text-xs"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* Range Selectors: All Time / Today / This Week */}
+                <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-[#DCE5F0] text-xs">
                   <button
                     type="button"
-                    onClick={() => {
-                      setDateRangeMode('all');
-                      setSelectedSpecificDate('');
-                      setMaxVisibleCount(6);
-                    }}
-                    className={`px-2.5 py-1 rounded-md font-semibold text-[11px] transition-colors cursor-pointer ${
-                      dateRangeMode === 'all' && !selectedSpecificDate
-                        ? 'bg-[#0056A6] text-white shadow-2xs'
-                        : 'text-slate-600 hover:text-[#0056A6]'
+                    onClick={() => { setDateRangeMode('all'); setCurrentPage(1); }}
+                    className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
+                      dateRangeMode === 'all' ? 'bg-[#073B70] text-white' : 'text-[#62738D] hover:text-[#102544]'
                     }`}
                   >
                     All Time
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setDateRangeMode('today');
-                      setSelectedSpecificDate('');
-                      setMaxVisibleCount(6);
-                    }}
-                    className={`px-2.5 py-1 rounded-md font-semibold text-[11px] transition-colors cursor-pointer ${
-                      dateRangeMode === 'today' && !selectedSpecificDate
-                        ? 'bg-[#0056A6] text-white shadow-2xs'
-                        : 'text-slate-600 hover:text-[#0056A6]'
+                    onClick={() => { setDateRangeMode('today'); setCurrentPage(1); }}
+                    className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
+                      dateRangeMode === 'today' ? 'bg-[#073B70] text-white' : 'text-[#62738D] hover:text-[#102544]'
                     }`}
                   >
                     Today
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setDateRangeMode('week');
-                      setSelectedSpecificDate('');
-                      setMaxVisibleCount(6);
-                    }}
-                    className={`px-2.5 py-1 rounded-md font-semibold text-[11px] transition-colors cursor-pointer ${
-                      dateRangeMode === 'week' && !selectedSpecificDate
-                        ? 'bg-[#0056A6] text-white shadow-2xs'
-                        : 'text-slate-600 hover:text-[#0056A6]'
+                    onClick={() => { setDateRangeMode('week'); setCurrentPage(1); }}
+                    className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
+                      dateRangeMode === 'week' ? 'bg-[#073B70] text-white' : 'text-[#62738D] hover:text-[#102544]'
                     }`}
                   >
                     This Week
                   </button>
                 </div>
-
-                {/* Specific Day Picker with Calendar Icon */}
-                <div className="flex items-center gap-1.5 bg-white border border-[#D9E1EA] rounded-lg px-2.5 py-1 text-xs">
-                  <Calendar className="w-3.5 h-3.5 text-[#0056A6] shrink-0" />
-                  <input
-                    type="date"
-                    value={selectedSpecificDate}
-                    onChange={(e) => {
-                      setSelectedSpecificDate(e.target.value);
-                      setDateRangeMode('custom');
-                      setMaxVisibleCount(6);
-                    }}
-                    className="text-[11px] text-slate-800 font-medium bg-transparent outline-none cursor-pointer"
-                    title="Select specific date"
-                  />
-                  {selectedSpecificDate && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedSpecificDate('');
-                        setDateRangeMode('all');
-                      }}
-                      className="text-slate-400 hover:text-slate-700 cursor-pointer ml-1"
-                      title="Clear date"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-
-                {/* Reset button when any filter or query is active */}
-                {(searchQuery || selectedSpecificDate || dateRangeMode !== 'all' || activityFilter !== 'all') && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSearchQuery('');
-                      setSelectedSpecificDate('');
-                      setDateRangeMode('all');
-                      setActivityFilter('all');
-                      setMaxVisibleCount(6);
-                    }}
-                    className="px-2 py-1 rounded-lg text-[11px] font-semibold text-rose-600 hover:bg-rose-50 border border-rose-200 transition-colors cursor-pointer shrink-0"
-                    title="Reset date & search filters"
-                  >
-                    Reset
-                  </button>
-                )}
               </div>
             </div>
 
-            {/* Activity List */}
-            {filteredActivities.length === 0 ? (
-              <div className="py-8 px-4 text-center rounded-xl bg-[#F7F9FC] border border-dashed border-[#D9E1EA]">
-                <Clock className="w-7 h-7 text-slate-400 mx-auto mb-2" />
-                <p className="text-xs font-bold text-slate-700">
-                  {searchQuery || selectedSpecificDate || dateRangeMode !== 'all'
-                    ? 'No matching activities found'
-                    : 'No recent activity recorded yet'}
-                </p>
-                <p className="text-[11px] text-slate-500 mt-1 max-w-sm mx-auto">
-                  {searchQuery || selectedSpecificDate || dateRangeMode !== 'all'
-                    ? 'Try clearing the search query or adjusting the date filter to view other activity records.'
-                    : 'Actions performed using the tools above (like generating SAC tickets or logging visitors) will appear here in chronological order.'}
-                </p>
-                {(searchQuery || selectedSpecificDate || dateRangeMode !== 'all') && (
+            {/* Compact Activity Table */}
+            <div className="overflow-x-auto min-h-[280px]">
+              {paginatedActivities.length === 0 ? (
+                <div className="py-12 px-4 text-center space-y-2">
+                  <Activity className="w-8 h-8 text-[#62738D] mx-auto opacity-50" />
+                  <p className="text-xs font-semibold text-[#102544]">No activity records found</p>
+                  <p className="text-[11px] text-[#62738D]">
+                    {searchQuery ? 'Try clearing your search query or filters.' : 'New candidate entries and tickets will appear here live.'}
+                  </p>
+                </div>
+              ) : (
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-[#DCE5F0] bg-[#F4F7FB] text-[#62738D] text-[11px] font-semibold uppercase tracking-wider">
+                      <th className="py-2.5 px-4">Candidate / Visitor</th>
+                      <th className="py-2.5 px-3">Type</th>
+                      <th className="py-2.5 px-3">Purpose / Category</th>
+                      <th className="py-2.5 px-3">Officer / Desk</th>
+                      <th className="py-2.5 px-3">Time</th>
+                      <th className="py-2.5 px-3">Status</th>
+                      <th className="py-2.5 px-4 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#DCE5F0]">
+                    {paginatedActivities.map((act) => {
+                      const isVerified = act.status === 'Verified' || act.status === 'Resolved' || act.status === 'Completed';
+                      const isPending = act.status === 'Pending' || act.status === 'Open' || act.status === 'In Premises';
+                      const isObjection = act.status === 'Objection Raised' || act.status === 'Closed';
+
+                      return (
+                        <tr key={act.id} className="hover:bg-[#F4F7FB]/60 transition-colors">
+                          <td className="py-2.5 px-4 font-semibold text-[#102544]">
+                            <div className="flex flex-col">
+                              <span>{act.title}</span>
+                              <span className="text-[10px] text-[#62738D] font-mono">
+                                ID: {act.rawId.slice(0, 10)}
+                              </span>
+                            </div>
+                          </td>
+
+                          <td className="py-2.5 px-3">
+                            <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                              act.type === 'visitor'
+                                ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                                : act.type === 'student'
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            }`}>
+                              {act.type}
+                            </span>
+                          </td>
+
+                          <td className="py-2.5 px-3 text-[#102544] max-w-[160px] truncate">
+                            {act.category}
+                          </td>
+
+                          <td className="py-2.5 px-3 text-[#62738D] truncate max-w-[140px]">
+                            {act.assignedTo}
+                          </td>
+
+                          <td className="py-2.5 px-3 text-[#62738D] whitespace-nowrap">
+                            {formatRelativeTime(act.timestamp)}
+                          </td>
+
+                          <td className="py-2.5 px-3">
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              isVerified
+                                ? 'bg-[#079669]/10 text-[#079669] border border-[#079669]/20'
+                                : isPending
+                                ? 'bg-[#0866D9]/10 text-[#0866D9] border border-[#0866D9]/20'
+                                : 'bg-[#D99100]/10 text-[#D99100] border border-[#D99100]/20'
+                            }`}>
+                              {act.status}
+                            </span>
+                          </td>
+
+                          <td className="py-2.5 px-4 text-right">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedActivityRecord(act)}
+                              className="px-2.5 py-1 rounded-md bg-[#F4F7FB] hover:bg-[#EBF3FC] text-[#0866D9] border border-[#DCE5F0] hover:border-[#0866D9]/40 text-[11px] font-semibold transition-colors cursor-pointer inline-flex items-center gap-1"
+                              title="View full record details"
+                            >
+                              <Eye className="w-3 h-3" />
+                              <span>View</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Pagination Controls */}
+            {filteredActivities.length > 0 && (
+              <div className="p-3.5 bg-white border-t border-[#DCE5F0] flex flex-wrap items-center justify-between gap-3 text-xs text-[#62738D]">
+                <div className="flex items-center gap-2">
+                  <span>
+                    Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, filteredActivities.length)} of {filteredActivities.length}
+                  </span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                    className="ml-2 text-xs py-1 px-2 border border-[#DCE5F0] rounded-md bg-white text-[#102544]"
+                  >
+                    <option value={6}>6 per page</option>
+                    <option value={10}>10 per page</option>
+                    <option value={20}>20 per page</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-1.5">
                   <button
                     type="button"
-                    onClick={() => {
-                      setSearchQuery('');
-                      setSelectedSpecificDate('');
-                      setDateRangeMode('all');
-                    }}
-                    className="mt-3 px-3 py-1 rounded-lg text-xs font-semibold bg-white border border-[#D9E1EA] text-[#0056A6] hover:bg-[#EAF4FB] transition-colors cursor-pointer"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="p-1.5 rounded border border-[#DCE5F0] bg-white text-[#102544] disabled:opacity-30 cursor-pointer"
                   >
-                    Clear Search & Date Filters
+                    <ChevronLeft className="w-3.5 h-3.5" />
                   </button>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {filteredActivities.slice(0, maxVisibleCount).map((activity) => (
-                  <div
-                    key={activity.id}
-                    className="group p-3 rounded-xl bg-[#F7F9FC] hover:bg-[#F0F5FA] border border-[#D9E1EA] hover:border-[#0056A6]/30 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
-                  >
-                    <div className="flex items-start sm:items-center gap-3 min-w-0">
-                      {/* Type Icon */}
-                      <div
-                        className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${
-                          activity.type === 'ticket'
-                            ? 'bg-sky-50 text-[#0056A6] border-sky-200'
-                            : activity.type === 'student'
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                        }`}
-                      >
-                        {activity.type === 'ticket' ? (
-                          <Ticket className="w-4 h-4" />
-                        ) : activity.type === 'student' ? (
-                          <GraduationCap className="w-4 h-4" />
-                        ) : (
-                          <UserCheck className="w-4 h-4" />
-                        )}
-                      </div>
 
-                      {/* Title & Details */}
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-xs font-bold text-[#1F2937] truncate">
-                            {activity.title}
-                          </span>
-                          <span className="font-mono text-[10px] font-bold text-[#003B73] px-1.5 py-0.5 rounded bg-white border border-[#D9E1EA]">
-                            {activity.meta}
-                          </span>
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${activity.statusColor}`}>
-                            {activity.status}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-[#4B5563] truncate mt-0.5">
-                          {activity.subtitle}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Right Side: Timestamp & Quick Action */}
-                    <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-[#D9E1EA]/60">
-                      <span className="text-[11px] text-[#6B7280] flex items-center gap-1 font-medium">
-                        <Clock className="w-3 h-3 text-slate-400" />
-                        <span>{activity.relativeTime}</span>
-                      </span>
-
-                      {/* Quick Action Button */}
-                      {activity.type === 'ticket' && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (onOpenTicketWithData) {
-                              onOpenTicketWithData({
-                                editingTicketId: activity.data.id,
-                                ticketNo: activity.data.ticketNo,
-                                cetNo: activity.data.cetNo,
-                                capId: activity.data.capId,
-                                candidateName: activity.data.candidateName,
-                                dob: activity.data.dob,
-                                mobile: activity.data.mobile,
-                                email: activity.data.email,
-                                course: activity.data.course,
-                                query: activity.data.query,
-                                status: activity.data.status,
-                                createdBy: activity.data.createdBy,
-                                creatorName: activity.data.creatorName,
-                                creatorRole: activity.data.creatorRole,
-                                district: activity.data.district,
-                                createdAt: activity.data.createdAt,
-                              });
-                            } else if (onOpenTicketTool) {
-                              onOpenTicketTool();
-                            }
-                          }}
-                          className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[#EAF4FB] hover:bg-[#0056A6] text-[#0056A6] hover:text-white border border-[#0056A6]/20 transition-all cursor-pointer flex items-center gap-1 active:scale-95 shrink-0"
-                          title="Edit ticket in SAC Ticket Generator"
-                        >
-                          <Edit3 className="w-3 h-3" />
-                          <span>Edit in SAC</span>
-                        </button>
-                      )}
-
-                      {activity.type === 'student' && hasStudentAccess && (
-                        <button
-                          type="button"
-                          onClick={() => onNavigateTab('students')}
-                          className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white hover:bg-[#EAF4FB] text-[#0056A6] border border-[#D9E1EA] transition-colors cursor-pointer flex items-center gap-1 shrink-0"
-                        >
-                          <span>View</span>
-                          <ChevronRight className="w-3 h-3" />
-                        </button>
-                      )}
-
-                      {activity.type === 'visitor' && hasVisitorAccess && (
-                        <button
-                          type="button"
-                          onClick={() => onNavigateTab('visitors')}
-                          className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white hover:bg-[#EAF4FB] text-[#0056A6] border border-[#D9E1EA] transition-colors cursor-pointer flex items-center gap-1 shrink-0"
-                        >
-                          <span>View</span>
-                          <ChevronRight className="w-3 h-3" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-
-                {/* Show more or View directory pagination bar */}
-                <div className="pt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
-                  {filteredActivities.length > maxVisibleCount ? (
-                    <button
-                      type="button"
-                      onClick={() => setMaxVisibleCount((prev) => prev + 10)}
-                      className="px-3 py-1 rounded-lg bg-[#EAF4FB] hover:bg-[#0056A6] text-[#0056A6] hover:text-white font-bold transition-all cursor-pointer"
-                    >
-                      Show more ({filteredActivities.length - maxVisibleCount} remaining)
-                    </button>
-                  ) : filteredActivities.length > 6 ? (
-                    <button
-                      type="button"
-                      onClick={() => setMaxVisibleCount(6)}
-                      className="text-slate-500 hover:text-slate-700 font-medium cursor-pointer"
-                    >
-                      Collapse list
-                    </button>
-                  ) : <div />}
+                  <span className="font-semibold text-[#102544] px-2">
+                    {currentPage} / {totalPages}
+                  </span>
 
                   <button
                     type="button"
-                    onClick={() => {
-                      if (activityFilter === 'ticket' || hasTicketAccess) {
-                        onNavigateTab('tickets');
-                      } else if (activityFilter === 'student' && hasStudentAccess) {
-                        onNavigateTab('students');
-                      } else if (activityFilter === 'visitor' && hasVisitorAccess) {
-                        onNavigateTab('visitors');
-                      } else {
-                        onNavigateTab('tickets');
-                      }
-                    }}
-                    className="font-bold text-[#0056A6] hover:text-[#003B73] inline-flex items-center gap-1 cursor-pointer ml-auto"
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="p-1.5 rounded border border-[#DCE5F0] bg-white text-[#102544] disabled:opacity-30 cursor-pointer"
                   >
-                    <span>View in Directory</span>
-                    <ArrowUpRight className="w-3.5 h-3.5" />
+                    <ChevronRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
             )}
           </div>
+        </div>
 
-          {/* Candidate Scrutiny Summary - Only if candidate access is allotted */}
-          {hasStudentAccess && (
-            <div className="bg-white border border-[#D9E1EA] hover:border-[#B4C6D8] rounded-xl p-4 sm:p-5 shadow-xs hover:shadow-md transition-all duration-200 ease-out">
-              <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-[#D9E1EA]">
-                <h3 className="text-xs sm:text-sm font-bold text-[#1F2937]">Recent Candidate Scrutiny Activity</h3>
-                {hasTabPermission(currentUser, 'students') && (
-                  <button
-                    onClick={() => onNavigateTab('students')}
-                    className="text-xs font-bold text-[#0056A6] hover:text-[#003B73] flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>View Full Directory</span>
-                    <ArrowUpRight className="w-3.5 h-3.5" />
-                  </button>
-                )}
+      {/* Record Quick View Drawer/Modal */}
+      {selectedActivityRecord && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-2xs">
+          <div className="bg-white rounded-2xl border border-[#DCE5F0] p-6 max-w-lg w-full shadow-2xl text-[#102544] space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#DCE5F0]">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#EBF3FC] text-[#0866D9] uppercase">
+                  {selectedActivityRecord.type}
+                </span>
+                <h3 className="font-bold text-sm text-[#102544] truncate">
+                  {selectedActivityRecord.title}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedActivityRecord(null)}
+                className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <div className="p-3 bg-[#F4F7FB] rounded-xl border border-[#DCE5F0] space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-[#62738D]">Category / Purpose:</span>
+                  <span className="font-semibold text-[#102544]">{selectedActivityRecord.category}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#62738D]">Status:</span>
+                  <span className="font-bold text-[#0866D9]">{selectedActivityRecord.status}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#62738D]">Assigned / Desk:</span>
+                  <span className="text-[#102544]">{selectedActivityRecord.assignedTo}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#62738D]">Timestamp:</span>
+                  <span className="font-mono text-[#62738D]">{selectedActivityRecord.timestamp}</span>
+                </div>
               </div>
 
-              {recentStudents.length === 0 ? (
-                <div className="p-6 text-center text-[#6B7280] text-xs">
-                  <p>No candidates currently logged in the active queue.</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="text-[#4B5563] border-b border-[#D9E1EA] bg-[#F7F9FC]">
-                        <th className="py-2.5 px-3 font-bold">Application ID</th>
-                        <th className="py-2.5 px-3 font-bold">Candidate Name</th>
-                        <th className="py-2.5 px-3 font-bold">Course</th>
-                        <th className="py-2.5 px-3 font-bold">Status</th>
-                        <th className="py-2.5 px-3 font-bold">Remarks</th>
-                        <th className="py-2.5 px-3 font-bold text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#D9E1EA]">
-                      {recentStudents.map((st) => (
-                        <tr key={st.id} className="hover:bg-[#F7F9FC] transition-colors">
-                          <td className="py-2.5 px-3 font-mono font-bold text-[#003B73]">{st.id}</td>
-                          <td className="py-2.5 px-3 font-semibold text-[#1F2937]">{st.name}</td>
-                          <td className="py-2.5 px-3 text-[#4B5563]">{st.course}</td>
-                          <td className="py-2.5 px-3">
-                            <span
-                              className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                st.status === 'Verified'
-                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                  : st.status === 'Objection Raised'
-                                  ? 'bg-amber-50 text-amber-800 border-amber-200'
-                                  : 'bg-blue-50 text-blue-800 border-blue-200'
-                              }`}
-                            >
-                              {st.status}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-3 text-[#6B7280] truncate max-w-xs">{st.remarks}</td>
-                          <td className="py-2.5 px-3 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              {canWhatsapp && (
-                                <button
-                                  onClick={onOpenWhatsappTool}
-                                  title="Send WhatsApp Notice"
-                                  className="p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-50 border border-emerald-200 cursor-pointer"
-                                >
-                                  <MessageCircle className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                              {canTicket && (
-                                <button
-                                  onClick={onOpenTicketTool}
-                                  title="Generate Candidate Grievance Ticket"
-                                  className="p-1.5 rounded-lg text-[#0056A6] hover:bg-[#EAF4FB] border border-[#D9E1EA] cursor-pointer"
-                                >
-                                  <FileText className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+              {selectedActivityRecord.type === 'student' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedActivityRecord(null);
+                    onNavigateTab('candidates');
+                  }}
+                  className="w-full py-2 rounded-xl bg-[#0866D9] text-white font-bold text-xs cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <span>Open in Candidates Directory</span>
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {selectedActivityRecord.type === 'ticket' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedActivityRecord(null);
+                    onNavigateTab('tickets');
+                  }}
+                  className="w-full py-2 rounded-xl bg-[#073B70] text-white font-bold text-xs cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <span>Open in Tickets Desk</span>
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                </button>
               )}
             </div>
-          )}
-        </div>
 
-        {/* Right Side Live Notice Bar Column (Pinned Latest Notice on top + Smooth Scrolling All Notices) */}
-        <div className="w-full lg:w-80 xl:w-96 shrink-0 lg:sticky lg:top-0">
-          <DashboardNoticeBar />
+            <button
+              type="button"
+              onClick={() => setSelectedActivityRecord(null)}
+              className="w-full py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs cursor-pointer"
+            >
+              Close
+            </button>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Dashboard Announcement Banner Super Admin Modal */}
+      <DashboardBannerModal
+        isOpen={isBannerModalOpen}
+        onClose={() => setIsBannerModalOpen(false)}
+        currentUserUsername={currentUser?.username}
+        onBannerSaved={(newCfg) => setBannerConfig(newCfg)}
+      />
     </div>
   );
 };

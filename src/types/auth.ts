@@ -1,9 +1,16 @@
 export type TabPermission =
   | 'dashboard'
-  | 'visitors'
+  | 'facilitation_tools'
+  | 'candidates'
   | 'tickets'
-  | 'students'
+  | 'events_camps'
+  | 'counsellor_tools'
+  | 'reports'
+  | 'notices_circulars'
+  | 'knowledge_base'
   | 'settings'
+  | 'visitors'
+  | 'students'
   | 'profile'
   | 'user_management'
   | 'google_sheets';
@@ -71,16 +78,20 @@ export interface UserProfile {
 
 export interface StudentRecord {
   id: string; // e.g. EN24109432
+  applicationId?: string; // alias for id
   name: string;
+  candidateName?: string; // alias for name
   mobile: string;
   email?: string;
   course: string;
   mode: 'E-Scrutiny' | 'Physical Scrutiny';
+  scrutinyMode?: 'E-Scrutiny' | 'Physical Scrutiny'; // alias for mode
   status: 'Verified' | 'Objection Raised' | 'Document Pending';
   date: string;
   remarks: string;
   cetRegNo?: string;
   category?: string;
+  scrutinyOfficer?: string;
   district?: string; // Assigned district (e.g. "Washim", "Akola")
   createdBy?: string; // Username of creator
   createdAt: string;

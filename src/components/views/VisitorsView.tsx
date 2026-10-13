@@ -316,7 +316,7 @@ export const VisitorsView: React.FC<VisitorsViewProps> = ({ currentUser, onNavig
   const handleSendWhatsApp = (v: VisitorRecord) => {
     const cleanPhone = v.mobile.replace(/\D/g, '');
     const phoneWithCountry = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
-    const text = `*GOVERNMENT OF MAHARASHTRA*\n*State CET Cell - Facilitation & Scrutiny Center (${v.district || currentUser?.district || 'Washim'})*\n\nNamaskar *${v.name}*,\nYour visitor registration at the center has been recorded successfully.\n\n📌 *Token / Sr. No.*: #${v.srNo}\n📅 *Date & Check-In*: ${v.date}, ${v.checkInTime}\n📋 *Purpose*: ${v.purpose}\n${v.candidateAppId ? `🎓 *Candidate App ID*: ${v.candidateAppId}\n` : ''}🏛️ *Center Code*: VMK-WSM\n\nPlease keep your original documents ready for scrutiny. Thank you!`;
+    const text = `*GOVERNMENT OF MAHARASHTRA*\n*Facilitation & Scrutiny Center (${v.district || currentUser?.district || 'Washim'})*\n\nNamaskar *${v.name}*,\nYour visitor registration at the center has been recorded successfully.\n\n📌 *Token / Sr. No.*: #${v.srNo}\n📅 *Date & Check-In*: ${v.date}, ${v.checkInTime}\n📋 *Purpose*: ${v.purpose}\n${v.candidateAppId ? `🎓 *Candidate App ID*: ${v.candidateAppId}\n` : ''}🏛️ *Center Code*: VMK-WSM\n\nPlease keep your original documents ready for scrutiny. Thank you!`;
     window.open(`https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(text)}`, '_blank');
   };
 
@@ -1598,7 +1598,7 @@ export const VisitorsView: React.FC<VisitorsViewProps> = ({ currentUser, onNavig
               {/* Header */}
               <div className="border-b-2 border-slate-900 pb-3 text-center">
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                  Government of Maharashtra &bull; State Common Entrance Test Cell
+                  Government of Maharashtra &bull; Centralized Admission Process
                 </p>
                 <h2 className="text-base font-black text-slate-900 tracking-tight mt-0.5">
                   FACILITATION & SCRUTINY CENTER (SAC)

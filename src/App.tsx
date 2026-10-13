@@ -1,18 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Sidebar, NavTab } from './components/Sidebar';
 import { TopNavbar } from './components/TopNavbar';
-import { DashboardBackgroundSvg } from './components/DashboardBackgroundSvg';
 import { DashboardView } from './components/views/DashboardView';
-import { DailyMotivationalPosterModal } from './components/DailyMotivationalPosterModal';
-import { checkAndPrepareDailyQuote, getKolkataDateString } from './services/motivationalQuoteService';
-import { MotivationalQuote } from './types/motivationalQuote';
-import { VisitorsView } from './components/views/VisitorsView';
-import { StudentsView } from './components/views/StudentsView';
+import { FacilitationToolsView } from './components/views/FacilitationToolsView';
+import { CandidatesView } from './components/views/CandidatesView';
+import { TicketsView } from './components/views/TicketsView';
+import { ReportsView } from './components/views/ReportsView';
+import { NoticesCircularsView } from './components/views/NoticesCircularsView';
+import { KnowledgeBaseView } from './components/views/KnowledgeBaseView';
 import { SettingsView } from './components/views/SettingsView';
+import { VisitorsView } from './components/views/VisitorsView';
 import { ProfileView } from './components/views/ProfileView';
 import { UserManagementView } from './components/views/UserManagementView';
 import { GoogleSheetsView } from './components/views/GoogleSheetsView';
-import { TicketsView } from './components/views/TicketsView';
+
+import { DailyMotivationalPosterModal } from './components/DailyMotivationalPosterModal';
+import { checkAndPrepareDailyQuote, getKolkataDateString } from './services/motivationalQuoteService';
+import { MotivationalQuote } from './types/motivationalQuote';
 
 import { TicketGeneratorModal } from './components/TicketGeneratorModal';
 import { WhatsappTicketModal, WhatsappInitialData } from './components/WhatsappTicketModal';
@@ -37,12 +41,11 @@ import {
   setCurrentUser,
   subscribeToUsers,
   syncUsersFromServer,
-  DNO_USER,
   hasTabPermission,
   hasFeaturePermission,
 } from './services/authService';
 import { UserProfile } from './types/auth';
-import { Building2, ShieldCheck, ExternalLink, Phone, Mail, MapPin, MessageCircle } from 'lucide-react';
+import { ShieldCheck, ExternalLink, HelpCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { OfflineSyncStatusBanner } from './components/OfflineSyncStatusBanner';
 import { registerServiceWorkerAndSync } from './services/backgroundSyncProcessor';
 
@@ -53,11 +56,12 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>(() => {
     const cur = getCurrentUser();
     if (cur && (cur.role === 'super_admin' || cur.username?.toLowerCase() === 'shrinath')) {
-      return 'user_management';
+      return 'dashboard';
     }
     return 'dashboard';
   });
-  // Sidebar hidden by default per user requirement: "keep side bar hide by default"
+
+  // Sidebar hidden by default per user preference
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
 
@@ -95,13 +99,11 @@ export default function App() {
       return;
     }
 
-    // Check upon login / user change
     const initialUnread = getUnreadBroadcastsForUser(currentUser);
     if (initialUnread.length > 0) {
       setActiveBroadcastPopup(initialUnread[0]);
     }
 
-    // Real-time listener for incoming broadcasts
     const unsubscribe = subscribeToBroadcasts(() => {
       const freshUnread = getUnreadBroadcastsForUser(currentUser);
       if (freshUnread.length > 0) {
@@ -114,7 +116,6 @@ export default function App() {
 
   const handleOpenWhatsappWithData = (data: WhatsappInitialData) => {
     if (hasFeaturePermission(currentUser, 'whatsapp_tool')) {
-      // Per instruction: Ticket ID is not prefilled; must be added by user
       setWhatsappInitialData({ ...data, ticketNo: '' });
       setIsTicketGeneratorOpen(false);
       setTicketInitialCandidate(null);
@@ -123,14 +124,11 @@ export default function App() {
   };
 
   const handleSyncWhatsappData = (data: WhatsappInitialData) => {
-    // Automatically syncs ticket data to the WhatsApp tool in the background without popping it up
-    // Per instruction: Ticket ID is not prefilled; must be added by user
     setWhatsappInitialData({ ...data, ticketNo: '' });
   };
 
   const handleOpenWhatsappGeneral = () => {
     if (hasFeaturePermission(currentUser, 'whatsapp_tool')) {
-      // Opens WhatsApp tool with any pre-synced data available
       setIsWhatsappTicketOpen(true);
     }
   };
@@ -211,7 +209,6 @@ export default function App() {
     }
   };
 
-  // Check on initial session mount if user is already authenticated
   useEffect(() => {
     if (currentUser && !hasCheckedDailyQuoteRef.current) {
       hasCheckedDailyQuoteRef.current = true;
@@ -224,17 +221,7 @@ export default function App() {
     setIsAuthenticated(true);
     hasCheckedDailyQuoteRef.current = true;
     triggerDailyQuoteForUser(user);
-    if (user.role === 'super_admin' || user.username?.toLowerCase() === 'shrinath') {
-      setActiveTab('user_management');
-      return;
-    }
-    // If user's default active tab is not in allowed tabs, switch to first allowed
-    if (!hasTabPermission(user, activeTab)) {
-      const firstAllowed = (['dashboard', 'tickets', 'visitors', 'students', 'google_sheets', 'settings', 'profile', 'user_management'] as NavTab[]).find(
-        (t) => hasTabPermission(user, t)
-      );
-      setActiveTab(firstAllowed || 'profile');
-    }
+    setActiveTab('dashboard');
   };
 
   const handleLogout = () => {
@@ -250,58 +237,8 @@ export default function App() {
     const updated = getCurrentUser();
     if (updated) {
       setCurUser(updated);
-      const isSuperAdmin = updated.role === 'super_admin' || updated.username?.toLowerCase() === 'shrinath';
-      if (isSuperAdmin) {
-        if (activeTab !== 'user_management' && activeTab !== 'profile') {
-          setActiveTab('user_management');
-        }
-        return;
-      }
-      if (!hasTabPermission(updated, activeTab)) {
-        const priorityOrder: NavTab[] = [
-          'dashboard',
-          'students',
-          'tickets',
-          'visitors',
-          'profile',
-          'settings',
-          'google_sheets',
-          'user_management',
-        ];
-        const firstAllowed = priorityOrder.find((t) => hasTabPermission(updated, t));
-        setActiveTab(firstAllowed || 'profile');
-      }
     }
   };
-
-  // Keep active tab strictly within user's authorized permissions
-  useEffect(() => {
-    if (currentUser) {
-      const isSuperAdmin = currentUser.role === 'super_admin' || currentUser.username?.toLowerCase() === 'shrinath';
-      if (isSuperAdmin) {
-        if (activeTab !== 'user_management' && activeTab !== 'profile') {
-          setActiveTab('user_management');
-        }
-        return;
-      }
-      if (!hasTabPermission(currentUser, activeTab)) {
-        const priorityOrder: NavTab[] = [
-          'dashboard',
-          'students',
-          'tickets',
-          'visitors',
-          'profile',
-          'settings',
-          'google_sheets',
-          'user_management',
-        ];
-        const firstAllowed = priorityOrder.find((t) => hasTabPermission(currentUser, t));
-        if (firstAllowed && firstAllowed !== activeTab) {
-          setActiveTab(firstAllowed);
-        }
-      }
-    }
-  }, [currentUser, activeTab]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -326,7 +263,6 @@ export default function App() {
     syncUsersFromServer().catch(() => {});
     registerServiceWorkerAndSync();
 
-    // Subscribe to live user updates to keep avatar & profile synced
     const unsubscribe = subscribeToUsers((users) => {
       const cur = getCurrentUser();
       if (cur) {
@@ -342,7 +278,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Handle Mobile QR scanning view if session exists in URL
+  // Handle Mobile QR scanning view
   if (qrSessionParam) {
     return (
       <MobileQrUploadView
@@ -357,10 +293,10 @@ export default function App() {
     );
   }
 
-  // Handle Standalone Vault Picker Window (e.g., opened via target website companion button or popup)
+  // Handle Standalone Vault Picker Window
   if (vaultPickerParam) {
     return (
-      <div className="fixed inset-0 bg-[#003B73]/20 backdrop-blur-xs flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-[#073B70]/30 backdrop-blur-xs flex items-center justify-center p-4">
         <VaultFilePickerModal
           isOpen={true}
           isStandalone={true}
@@ -386,24 +322,32 @@ export default function App() {
   }
 
   const navigateToTab = (tab: NavTab) => {
-    if (hasTabPermission(currentUser, tab)) {
-      setActiveTab(tab);
-      if (typeof window !== 'undefined' && window.innerWidth < 768) {
-        setIsSidebarOpen(false);
-      }
+    // If deprecated tab, redirect to dashboard
+    if ((tab as string) === 'events_camps' || (tab as string) === 'counsellor_tools') {
+      setActiveTab('dashboard');
+      return;
+    }
+
+    // Check if the user is authorized to access the requested tab
+    if (currentUser && !hasTabPermission(currentUser, tab)) {
+      setActiveTab('dashboard');
+      return;
+    }
+
+    setActiveTab(tab);
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setIsSidebarOpen(false);
     }
   };
 
   return (
     <div
       id="vmk-washim-app-root"
-      className="flex h-screen w-full bg-[#F7F9FC] text-[#4B5563] font-sans select-none overflow-hidden"
+      className="flex h-screen w-full bg-[#F4F7FB] text-[#102544] font-sans select-none overflow-hidden"
     >
-      {/* Left Sidebar (Desktop Docked when open - Hidden by default) */}
+      {/* 1. LEFT DARK NAVY SIDEBAR (~220px desktop width per Section 3) */}
       {isSidebarOpen && (
-        <div
-          className={`hidden md:flex h-full shrink-0 transition-all duration-300 z-20`}
-        >
+        <div className="hidden lg:flex h-full shrink-0 transition-all duration-300 z-30">
           <Sidebar
             activeTab={activeTab}
             onSelectTab={navigateToTab}
@@ -423,14 +367,14 @@ export default function App() {
         </div>
       )}
 
-      {/* Mobile Drawer Overlay (Hidden by default) */}
+      {/* Mobile Drawer Overlay */}
       {isSidebarOpen && (
-        <div className="fixed inset-0 z-50 flex md:hidden">
+        <div className="fixed inset-0 z-50 flex lg:hidden">
           <div
-            className="fixed inset-0 bg-[#003B73]/60 backdrop-blur-xs"
+            className="fixed inset-0 bg-black/60 backdrop-blur-2xs"
             onClick={() => setIsSidebarOpen(false)}
           />
-          <div className="relative w-72 h-full bg-[#F7F9FC] z-10 shadow-2xl">
+          <div className="relative w-64 h-full bg-[#092744] z-10 shadow-2xl">
             <Sidebar
               activeTab={activeTab}
               onSelectTab={(tab) => {
@@ -454,9 +398,31 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Right Area: Top Navbar + Large Rounded Content Card with Background Artwork */}
-      <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden">
-        {/* Top Navbar */}
+      {/* 1.5. CENTER-LEFT SIDEBAR OPEN / HIDE TOGGLE TAB */}
+      <button
+        type="button"
+        id="center-left-sidebar-toggle-btn"
+        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+        className={`fixed top-1/2 -translate-y-1/2 z-40 flex items-center justify-center transition-all duration-300 cursor-pointer shadow-md hover:shadow-xl active:scale-95 group focus:outline-none focus:ring-2 focus:ring-[#0866D9] ${
+          isSidebarOpen
+            ? `${
+                isSidebarCollapsed ? 'lg:left-16' : 'lg:left-[220px]'
+              } max-lg:left-64 -ml-3 w-6.5 h-12 bg-[#092744] hover:bg-[#073B70] text-slate-200 hover:text-white rounded-r-lg border-y border-r border-[#0d345a]`
+            : 'left-0 w-7 h-14 bg-[#073B70] hover:bg-[#0866D9] text-white rounded-r-xl shadow-lg border-y border-r border-sky-400/40 hover:w-8.5'
+        }`}
+        title={isSidebarOpen ? 'Hide Sidebar (Full Viewport)' : 'Open Sidebar'}
+        aria-label={isSidebarOpen ? 'Hide Sidebar' : 'Open Sidebar'}
+      >
+        {isSidebarOpen ? (
+          <ChevronLeft className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" />
+        ) : (
+          <ChevronRight className="w-4.5 h-4.5 transition-transform group-hover:translate-x-0.5" />
+        )}
+      </button>
+
+      {/* 2. MAIN RIGHT WORKSPACE: HEADER (~74px) + VIEWPORT */}
+      <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden bg-[#F4F7FB]">
+        {/* Top Header (~74px desktop height per Section 3) */}
         <TopNavbar
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
           onNavigateTab={navigateToTab}
@@ -468,21 +434,16 @@ export default function App() {
           currentUser={currentUser}
         />
 
-        {/* Real-time Offline & Background Sync Alert Banner */}
+        {/* Real-time Network & Background Sync Alert Banner */}
         <OfflineSyncStatusBanner />
 
-        {/* Main Content Rounded Card Viewport */}
-        <main className="flex-1 px-3 sm:px-6 pb-4 sm:pb-6 min-h-0 overflow-hidden">
-          <div
-            id="main-stage-container"
-            className="relative w-full h-full bg-[#FFFFFF] rounded-2xl md:rounded-3xl border border-[#D9E1EA] shadow-sm overflow-y-auto p-4 sm:p-6 lg:p-8 flex flex-col justify-between"
-          >
-            {/* Vector Wavy Background + Top Right Dots matching screenshot */}
-            <DashboardBackgroundSvg />
-
-            {/* Interactive View Content */}
-            <div className="relative z-10 w-full max-w-6xl mx-auto flex-1">
-              {activeTab === 'dashboard' && hasTabPermission(currentUser, 'dashboard') && (
+        {/* Main Content Area */}
+        <main className="flex-1 px-4 sm:px-6 lg:px-7 py-5 min-h-0 overflow-y-auto">
+          <div className="w-full max-w-7xl mx-auto min-h-full flex flex-col justify-between">
+            {/* 10 ENTERPRISE DESTINATIONS ROUTING */}
+            <div className="flex-1">
+              {/* TAB 1: Dashboard */}
+              {activeTab === 'dashboard' && (
                 <DashboardView
                   onOpenWhatsappTool={handleOpenWhatsappGeneral}
                   onOpenQrTool={handleOpenQrUpload}
@@ -498,14 +459,31 @@ export default function App() {
                 />
               )}
 
-              {activeTab === 'visitors' && hasTabPermission(currentUser, 'visitors') && (
-                <VisitorsView
+              {/* TAB 2: Facilitation Tools */}
+              {activeTab === 'facilitation_tools' && (
+                <FacilitationToolsView
+                  onOpenWhatsappTool={handleOpenWhatsappGeneral}
+                  onOpenQrTool={handleOpenQrUpload}
+                  onOpenTicketTool={handleOpenTicketGenerator}
+                  onOpenImgToPdfTool={handleOpenImgToPdf}
+                  onOpenImageToTextTool={handleOpenImageToText}
+                  onOpenKnowledgeCenter={handleOpenKnowledgeCenter}
                   currentUser={currentUser}
-                  onNavigateTab={(tab) => navigateToTab(tab as NavTab)}
                 />
               )}
 
-              {activeTab === 'tickets' && hasTabPermission(currentUser, 'tickets') && (
+              {/* TAB 3: Candidates (and students alias) */}
+              {(activeTab === 'candidates' || activeTab === 'students') && (
+                <CandidatesView
+                  onOpenWhatsappTool={handleOpenWhatsappGeneral}
+                  onOpenTicketTool={handleOpenTicketGenerator}
+                  onOpenQrTool={handleOpenQrUpload}
+                  currentUser={currentUser}
+                />
+              )}
+
+              {/* TAB 4: Tickets */}
+              {activeTab === 'tickets' && (
                 <TicketsView
                   currentUser={currentUser}
                   onOpenTicketTool={handleOpenTicketGenerator}
@@ -516,27 +494,43 @@ export default function App() {
                 />
               )}
 
-              {activeTab === 'google_sheets' && hasTabPermission(currentUser, 'google_sheets') && (
-                <GoogleSheetsView currentUser={currentUser} />
+              {/* Reports */}
+              {activeTab === 'reports' && (
+                <ReportsView currentUser={currentUser} />
               )}
 
-              {activeTab === 'students' && hasTabPermission(currentUser, 'students') && (
-                <StudentsView
-                  onOpenWhatsappTool={handleOpenWhatsappGeneral}
-                  onOpenTicketTool={handleOpenTicketGenerator}
-                  onOpenQrTool={handleOpenQrUpload}
-                  currentUser={currentUser}
-                />
+              {/* TAB 8: Notices & Circulars */}
+              {activeTab === 'notices_circulars' && (
+                <NoticesCircularsView />
               )}
 
-              {activeTab === 'settings' && hasTabPermission(currentUser, 'settings') && (
+              {/* TAB 9: Knowledge Base */}
+              {activeTab === 'knowledge_base' && (
+                <KnowledgeBaseView onOpenKnowledgeCenter={handleOpenKnowledgeCenter} />
+              )}
+
+              {/* TAB 10: Settings */}
+              {activeTab === 'settings' && (
                 <SettingsView
                   currentUser={currentUser}
                   onNavigateToUsers={() => setActiveTab('user_management')}
+                  onRefreshSession={handleRefreshSession}
                 />
               )}
 
-              {activeTab === 'profile' && hasTabPermission(currentUser, 'profile') && (
+              {/* Auxiliary Sub-Views */}
+              {activeTab === 'visitors' && (
+                <VisitorsView
+                  currentUser={currentUser}
+                  onNavigateTab={(tab) => navigateToTab(tab as NavTab)}
+                />
+              )}
+
+              {activeTab === 'google_sheets' && (
+                <GoogleSheetsView currentUser={currentUser} />
+              )}
+
+              {activeTab === 'profile' && (
                 <ProfileView
                   onLogout={handleLogout}
                   currentUser={currentUser}
@@ -544,34 +538,26 @@ export default function App() {
                 />
               )}
 
-              {activeTab === 'user_management' && hasTabPermission(currentUser, 'user_management') && (
+              {activeTab === 'user_management' && (
                 <UserManagementView
                   currentUser={currentUser}
                   onRefreshSession={handleRefreshSession}
                 />
               )}
-
-              {!hasTabPermission(currentUser, activeTab) && (
-                <div className="bg-white border border-[#D9E1EA] rounded-2xl p-8 text-center max-w-md mx-auto my-12 shadow-xs">
-                  <ShieldCheck className="w-10 h-10 text-amber-500 mx-auto mb-3" />
-                  <h3 className="text-base font-bold text-[#003B73] mb-1">Access Restricted</h3>
-                  <p className="text-xs text-[#6B7280] mb-4">
-                    You are not authorized to view this tab. Please select an authorized option from the navigation menu.
-                  </p>
-                </div>
-              )}
             </div>
 
-            {/* Application Footer */}
-            <footer className="relative z-10 w-full max-w-6xl mx-auto mt-8 pt-6 border-t border-[#D9E1EA] text-xs text-[#6B7280]">
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-2 text-[11px] text-[#4B5563]">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span>Facilitation & Admission Portal</span>
+            {/* Enterprise Institutional Footer */}
+            <footer className="w-full mt-8 pt-5 border-t border-[#DCE5F0] text-xs text-[#62738D]">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-[11px] text-[#102544] font-medium">
+                  <ShieldCheck className="w-4 h-4 text-[#079669]" />
+                  <span>FC-1102 Facilitation & Scrutiny Center &bull; Govt. of Maharashtra</span>
                 </div>
 
-                <div className="flex items-center gap-2 text-[11px] text-[#6B7280]">
-                  <span>Scrutiny & Verification Desk</span>
+                <div className="flex items-center gap-3 text-[11px] text-[#62738D]">
+                  <span>Operational Status: All Desks Active</span>
+                  <span>&bull;</span>
+                  <span>Washim District Nodal Supervision</span>
                 </div>
               </div>
             </footer>
@@ -579,7 +565,7 @@ export default function App() {
         </main>
       </div>
 
-      {/* 3 Core Interactive Modals */}
+      {/* Core Operational Modals */}
       <WhatsappTicketModal
         isOpen={isWhatsappTicketOpen}
         onClose={() => setIsWhatsappTicketOpen(false)}
@@ -624,13 +610,11 @@ export default function App() {
         onSendToTicketGenerator={handleOpenTicketWithData}
       />
 
-      {/* External Target Website (MHCET Tickets) Vault Integration Assistant & Simulator */}
       <ExternalWebsiteAssistantModal
         isOpen={isExternalAssistantOpen}
         onClose={() => setIsExternalAssistantOpen(false)}
       />
 
-      {/* Broadcast Notification Popup for Counsellors & Supporting Staff upon Login */}
       <BroadcastPopupModal
         isOpen={!!activeBroadcastPopup}
         broadcast={activeBroadcastPopup}
@@ -638,7 +622,6 @@ export default function App() {
         onClose={() => setActiveBroadcastPopup(null)}
       />
 
-      {/* Broadcast Composer Modal for Super Admin & DNO */}
       {isBroadcastComposerOpen && (
         <BroadcastComposerModal
           isOpen={isBroadcastComposerOpen}
@@ -647,14 +630,12 @@ export default function App() {
         />
       )}
 
-      {/* CET & CAP Knowledge Center RAG Document Repository & Assistant */}
       <KnowledgeCenterModal
         isOpen={isKnowledgeCenterOpen}
         onClose={() => setIsKnowledgeCenterOpen(false)}
         currentUser={currentUser}
       />
 
-      {/* Daily Motivational Quote Poster Modal */}
       <DailyMotivationalPosterModal
         isOpen={isDailyQuoteOpen}
         quote={dailyQuote}

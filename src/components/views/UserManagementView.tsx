@@ -31,6 +31,7 @@ import {
   Filter,
   Download,
   Power,
+  Wrench,
 } from 'lucide-react';
 import { UserProfile, TabPermission, FeaturePermission, UserRole } from '../../types/auth';
 import { MAHARASHTRA_DISTRICTS } from '../../constants/districts';
@@ -56,6 +57,9 @@ import {
 } from '../../services/apiConfigService';
 import { uploadImageToFirebase } from '../../services/imageStorageService';
 import { FormValidationErrorModal } from '../FormValidationErrorModal';
+import { UserTabAccessManager } from '../superadmin/UserTabAccessManager';
+import { UserFeatureAccessManager } from '../superadmin/UserFeatureAccessManager';
+import { UserBulkOperationsHub } from '../superadmin/UserBulkOperationsHub';
 
 interface UserManagementViewProps {
   currentUser: UserProfile;
@@ -72,6 +76,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   const [selectedDistrict, setSelectedDistrict] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+  const [viewSection, setViewSection] = useState<'profiles' | 'tab_permissions' | 'feature_permissions' | 'bulk_tools'>('profiles');
 
   const isSuperAdmin = currentUser?.role === 'super_admin' || currentUser?.username?.toLowerCase() === 'shrinath';
   const isDno = !isSuperAdmin && (currentUser?.role === 'dno' || currentUser?.username?.toLowerCase() === 'dno');
@@ -763,9 +768,76 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
         </button>
       </div>
 
-      {/* Rules Notice */}
-      <div className="p-4 bg-gradient-to-r from-blue-50/90 to-indigo-50/90 border border-blue-200/80 rounded-2xl flex items-start gap-3 text-xs text-blue-950 shadow-2xs">
-        <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+      {/* Super Admin User Management Suite: 4 Dedicated Tools */}
+      <div className="flex flex-wrap items-center gap-2 p-1.5 bg-slate-100 rounded-2xl w-fit border border-slate-200">
+        <button
+          type="button"
+          onClick={() => setViewSection('profiles')}
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+            viewSection === 'profiles'
+              ? 'bg-[#073B70] text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>User Profiles ({scopedUsers.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setViewSection('tab_permissions')}
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+            viewSection === 'tab_permissions'
+              ? 'bg-[#073B70] text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+          }`}
+        >
+          <Sliders className="w-4 h-4 text-sky-400" />
+          <span>Tab Access Matrix</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setViewSection('feature_permissions')}
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+            viewSection === 'feature_permissions'
+              ? 'bg-[#073B70] text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+          }`}
+        >
+          <Wrench className="w-4 h-4 text-emerald-400" />
+          <span>Feature Tools Access</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setViewSection('bulk_tools')}
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+            viewSection === 'bulk_tools'
+              ? 'bg-[#073B70] text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+          }`}
+        >
+          <Sparkles className="w-4 h-4 text-amber-400" />
+          <span>Bulk & District Operations</span>
+        </button>
+      </div>
+
+      {viewSection === 'tab_permissions' ? (
+        <UserTabAccessManager currentUser={currentUser} onRefreshSession={onRefreshSession} />
+      ) : viewSection === 'feature_permissions' ? (
+        <UserFeatureAccessManager currentUser={currentUser} onRefreshSession={onRefreshSession} />
+      ) : viewSection === 'bulk_tools' ? (
+        <UserBulkOperationsHub
+          currentUser={currentUser}
+          onRefreshSession={onRefreshSession}
+          onOpenMasterKeyModal={handleOpenApiKeyModal}
+        />
+      ) : (
+        <>
+          {/* Rules Notice */}
+          <div className="p-4 bg-gradient-to-r from-blue-50/90 to-indigo-50/90 border border-blue-200/80 rounded-2xl flex items-start gap-3 text-xs text-blue-950 shadow-2xs">
+            <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
         <div className="space-y-1">
           <p className="font-bold text-blue-900">Role-Based Access Control (RBAC) System</p>
           <p className="text-blue-800/90 leading-relaxed">
@@ -1274,6 +1346,8 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
           </table>
         </div>
       </div>
+      </>
+      )}
 
       {/* Create / Edit User Profile Modal */}
       {isModalOpen && (

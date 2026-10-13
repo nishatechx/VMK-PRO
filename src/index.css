@@ -1,43 +1,59 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #0056A6;
-  --color-primary-dark: #003B73;
-  --color-accent: #006BB6;
-  --color-app-bg: #F7F9FC;
+  --color-primary: #073B70;
+  --color-sidebar: #092744;
+  --color-action-blue: #0866D9;
+  --color-page-bg: #F4F7FB;
   --color-card-bg: #FFFFFF;
-  --color-light-blue: #EAF4FB;
-  --color-heading: #1F2937;
-  --color-app-text: #4B5563;
-  --color-app-border: #D9E1EA;
-  --color-success: #198754;
-  --color-warning: #F59E0B;
-  --color-danger: #DC3545;
+  --color-primary-text: #102544;
+  --color-secondary-text: #62738D;
+  --color-border: #DCE5F0;
+  --color-success: #079669;
+  --color-warning: #D99100;
+  --color-error: #D92D3A;
+  --font-sans: 'Poppins', 'Noto Sans Devanagari', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 :root {
-  --theme-primary: #0056A6;
-  --theme-primary-dark: #003B73;
-  --theme-accent: #006BB6;
-  --theme-bg: #F7F9FC;
+  --theme-primary: #073B70;
+  --theme-sidebar: #092744;
+  --theme-action-blue: #0866D9;
+  --theme-bg: #F4F7FB;
   --theme-card: #FFFFFF;
-  --theme-light-blue: #EAF4FB;
-  --theme-heading: #1F2937;
-  --theme-text: #4B5563;
-  --theme-border: #D9E1EA;
-  --theme-success: #198754;
-  --theme-warning: #F59E0B;
-  --theme-danger: #DC3545;
+  --theme-text-primary: #102544;
+  --theme-text-secondary: #62738D;
+  --theme-border: #DCE5F0;
+  --theme-success: #079669;
+  --theme-warning: #D99100;
+  --theme-error: #D92D3A;
 }
 
 body {
-  background-color: #F7F9FC;
-  color: #4B5563;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background-color: #F4F7FB;
+  color: #102544;
+  font-family: 'Poppins', 'Noto Sans Devanagari', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 h1, h2, h3, h4, h5, h6 {
-  color: #1F2937;
+  color: #102544;
+  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  letter-spacing: -0.01em;
+}
+
+/* Global data figures, candidate IDs, timestamps, and tables */
+code, kbd, samp, pre, .font-mono, [data-tabular] {
+  font-family: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-feature-settings: "tnum" 1, "zero" 1;
+  font-variant-numeric: tabular-nums;
+}
+
+table, .tabular-nums {
+  font-variant-numeric: tabular-nums;
 }
 
 @keyframes ticker-blink {
@@ -101,48 +117,39 @@ h1, h2, h3, h4, h5, h6 {
   animation: ocr-pulse 2s ease-in-out infinite;
 }
 
-/* Neon Animations for CIA Logo & Badges */
-@keyframes neon-glow-pulse {
-  0%, 100% {
-    filter: drop-shadow(0 0 2px #00f0ff) drop-shadow(0 0 6px rgba(0, 240, 255, 0.6)) drop-shadow(0 0 12px rgba(6, 182, 212, 0.4));
-    transform: scale(1);
+/* Professional CIA PDF Analysis & Cognitive Animations */
+@keyframes pdf-scan-sweep {
+  0% {
+    top: 0%;
+    opacity: 0.8;
   }
   50% {
-    filter: drop-shadow(0 0 4px #38bdf8) drop-shadow(0 0 12px rgba(56, 189, 248, 0.95)) drop-shadow(0 0 20px rgba(14, 165, 233, 0.7)) drop-shadow(0 0 30px rgba(99, 102, 241, 0.4));
-    transform: scale(1.05);
+    top: 90%;
+    opacity: 1;
+  }
+  100% {
+    top: 0%;
+    opacity: 0.8;
   }
 }
 
-@keyframes neon-box-pulse {
+@keyframes cognitive-pulse {
   0%, 100% {
-    box-shadow: 0 0 5px rgba(6, 182, 212, 0.5), inset 0 0 6px rgba(6, 182, 212, 0.3);
-    border-color: rgba(6, 182, 212, 0.7);
+    transform: scale(0.97);
+    opacity: 0.75;
   }
   50% {
-    box-shadow: 0 0 15px rgba(6, 182, 212, 0.9), 0 0 24px rgba(59, 130, 246, 0.6), inset 0 0 10px rgba(6, 182, 212, 0.5);
-    border-color: rgba(56, 189, 248, 1);
+    transform: scale(1.03);
+    opacity: 1;
   }
 }
 
-@keyframes neon-text-glow {
-  0%, 100% {
-    text-shadow: 0 0 3px rgba(6, 182, 212, 0.7), 0 0 8px rgba(6, 182, 212, 0.4);
-  }
-  50% {
-    text-shadow: 0 0 6px rgba(6, 182, 212, 1), 0 0 14px rgba(56, 189, 248, 0.9), 0 0 22px rgba(59, 130, 246, 0.6);
-  }
+.animate-pdf-scan {
+  animation: pdf-scan-sweep 2.2s ease-in-out infinite;
 }
 
-.animate-neon-glow {
-  animation: neon-glow-pulse 2.2s ease-in-out infinite;
-}
-
-.animate-neon-box {
-  animation: neon-box-pulse 2.2s ease-in-out infinite;
-}
-
-.animate-neon-text {
-  animation: neon-text-glow 2.2s ease-in-out infinite;
+.animate-cognitive-pulse {
+  animation: cognitive-pulse 1.8s ease-in-out infinite;
 }
 
 

@@ -740,7 +740,7 @@ export class GeminiCeraProvider implements AIProvider {
       sections: [
         {
           heading: 'Official Documents Search',
-          text: "I couldn't find a sufficiently clear answer in the available official Maharashtra State CET Cell documents for this specific phrasing.",
+          text: "I couldn't find a sufficiently clear answer in the available official Maharashtra admission documents for this specific phrasing.",
         },
       ],
       importantNotes: [

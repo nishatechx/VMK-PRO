@@ -95,16 +95,22 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
     const inputFiles = e.target.files;
     if (!inputFiles || inputFiles.length === 0) return;
 
-    const validTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg', 'image/webp'];
     const newItems: StagedFileItem[] = [];
     let skippedCount = 0;
+    const isFromCamera = e.target === cameraInputRef.current;
 
     for (let i = 0; i < inputFiles.length; i++) {
       const file = inputFiles[i];
+      const mime = (file.type || '').toLowerCase();
+      const isImage = mime.startsWith('image/');
+      const isPdf = mime === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
       const extension = file.name.split('.').pop()?.toLowerCase();
-      const isAllowedExt = extension && ['pdf', 'jpeg', 'jpg', 'png', 'webp'].includes(extension);
+      const isAllowedExt = extension && ['pdf', 'jpeg', 'jpg', 'png', 'webp', 'heic', 'heif'].includes(extension);
 
-      if (!validTypes.includes(file.type) && !isAllowedExt) {
+      // Camera captures on mobile often come with empty type or generic names without extensions
+      const isAccepted = isFromCamera || isImage || isPdf || isAllowedExt || (file.size > 0 && !file.name.match(/\.(exe|bat|sh|zip)$/i));
+
+      if (!isAccepted) {
         skippedCount++;
         continue;
       }
@@ -114,15 +120,28 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
         continue;
       }
 
-      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
       let previewUrl: string | null = null;
-      if (!isPdf && file.type.startsWith('image/')) {
-        previewUrl = await fileToDataUrl(file);
+      if (!isPdf) {
+        try {
+          previewUrl = await fileToDataUrl(file);
+        } catch {
+          // fallback without preview
+        }
       }
+
+      // Friendly clean name for camera snaps or unnamed captures
+      const isCameraSnap = isFromCamera || file.name.startsWith('image') || file.name === 'blob' || !file.name.includes('.');
+      const resolvedName = isCameraSnap
+        ? `Scan_${new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14)}_${i + 1}.jpg`
+        : file.name;
+
+      const resolvedFile = file.name !== resolvedName
+        ? new File([file], resolvedName, { type: file.type || 'image/jpeg' })
+        : file;
 
       newItems.push({
         id: `staged-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`,
-        file,
+        file: resolvedFile,
         previewUrl,
         isPdf,
       });
@@ -134,49 +153,14 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
         type: 'error',
       });
     } else {
-      setStatusMsg({ text: '', type: '' });
+      setStatusMsg({
+        text: `✓ ${newItems.length} document(s) captured/selected! Tap "Upload to Vault" below to upload.`,
+        type: 'success',
+      });
     }
 
     if (newItems.length > 0) {
-      // If captured directly via Camera, auto-upload immediately to the vault
-      const isFromCamera = e.target === cameraInputRef.current;
-      if (isFromCamera) {
-        setIsUploading(true);
-        setStatusMsg({ text: `Uploading ${newItems.length} scanned document(s) to computer...`, type: '' });
-        try {
-          for (const item of newItems) {
-            const dataUrl = item.previewUrl || (await fileToDataUrl(item.file));
-            await qrUploadService.uploadFile(cleanSessionId, {
-              name: item.file.name.startsWith('image') ? `Scan_${new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14)}.jpg` : item.file.name,
-              type: item.file.type || 'image/jpeg',
-              size: item.file.size,
-              dataUrl,
-              category: 'Camera-Scan',
-              uploadedBy: uploaderParams.uploadedBy,
-              uploaderName: uploaderParams.uploaderName,
-              uploaderRole: uploaderParams.uploaderRole,
-              district: uploaderParams.district,
-            });
-          }
-          setStatusMsg({
-            text: `✓ ${newItems.length} scanned document(s) uploaded to computer vault!`,
-            type: 'success',
-          });
-          await loadFiles();
-        } catch (err) {
-          console.error('Camera auto-upload error:', err);
-          setStagedFiles((prev) => [...prev, ...newItems]);
-          setStatusMsg({
-            text: 'Upload delayed. Tap "Upload" below to finish.',
-            type: 'error',
-          });
-        } finally {
-          setIsUploading(false);
-          if (cameraInputRef.current) cameraInputRef.current.value = '';
-        }
-        return;
-      }
-
+      // Stage files and let user tap the prominent "Upload" button
       setStagedFiles((prev) => [...prev, ...newItems]);
     }
 
@@ -197,63 +181,27 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
 
   const handleLiveCapture = async (capturedDataUrl: string) => {
     setShowLiveScanner(false);
-    setIsUploading(true);
-    setStatusMsg({
-      text: 'Uploading scanned document to computer...',
-      type: '',
-    });
-
     try {
       const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
       const fileName = `Scan_${timestamp}.jpg`;
-      const size = Math.round((capturedDataUrl.length * 3) / 4);
-
-      await qrUploadService.uploadFile(cleanSessionId, {
-        name: fileName,
-        type: 'image/jpeg',
-        size,
-        dataUrl: capturedDataUrl,
-        category: 'Camera-Scan',
-        uploadedBy: uploaderParams.uploadedBy,
-        uploaderName: uploaderParams.uploaderName,
-        uploaderRole: uploaderParams.uploaderRole,
-        district: uploaderParams.district,
-      });
-
+      const res = await fetch(capturedDataUrl);
+      const blob = await res.blob();
+      const file = new File([blob], fileName, { type: 'image/jpeg' });
+      setStagedFiles((prev) => [
+        ...prev,
+        {
+          id: `scan-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          file,
+          previewUrl: capturedDataUrl,
+          isPdf: false,
+        },
+      ]);
       setStatusMsg({
-        text: `✓ Scanned document "${fileName}" uploaded to computer successfully!`,
+        text: `✓ Scanned document captured! Tap "Upload to Vault" below to finish.`,
         type: 'success',
       });
-      await loadFiles();
-      setTimeout(() => {
-        setStatusMsg((prev) => (prev.type === 'success' ? { text: '', type: '' } : prev));
-      }, 5000);
-    } catch (err) {
-      console.error('Failed to auto-upload live scan capture:', err);
-      // Fallback: stage file locally so user can retry manually
-      try {
-        const res = await fetch(capturedDataUrl);
-        const blob = await res.blob();
-        const fallbackName = `Scan_${new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14)}.jpg`;
-        const file = new File([blob], fallbackName, { type: 'image/jpeg' });
-        setStagedFiles((prev) => [
-          ...prev,
-          {
-            id: `scan-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-            file,
-            previewUrl: capturedDataUrl,
-            isPdf: false,
-          },
-        ]);
-        setStatusMsg({
-          text: 'Auto-upload was delayed. Scanned document staged below — tap Upload to finish.',
-          type: 'error',
-        });
-      } catch {
-        setStatusMsg({ text: 'Failed to process capture', type: 'error' });
-      }
-    } finally {
-      setIsUploading(false);
+    } catch {
+      setStatusMsg({ text: 'Failed to process capture', type: 'error' });
     }
   };
 
@@ -303,11 +251,14 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
       try {
         const dataUrl = item.previewUrl || (await fileToDataUrl(item.file));
 
+        const fileType = item.file.type || (dataUrl.startsWith('data:image/') ? 'image/jpeg' : (item.isPdf ? 'application/pdf' : 'application/octet-stream'));
+
         await qrUploadService.uploadFile(cleanSessionId, {
           name: item.file.name,
-          type: item.file.type || 'application/octet-stream',
+          type: fileType,
           size: item.file.size,
           dataUrl,
+          category: item.isPdf ? 'PDF Document' : 'Scanned Image',
           uploadedBy: uploaderParams.uploadedBy,
           uploaderName: uploaderParams.uploaderName,
           uploaderRole: uploaderParams.uploaderRole,
@@ -337,6 +288,10 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
     }
 
     await loadFiles();
+    const vaultSection = document.getElementById('mobile-vault-documents-section');
+    if (vaultSection) {
+      vaultSection.scrollIntoView({ behavior: 'smooth' });
+    }
     setTimeout(() => {
       setStatusMsg((prev) => (prev.type === 'success' ? { text: '', type: '' } : prev));
     }, 4000);
@@ -608,7 +563,7 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
                   ) : (
                     <>
                       <FileUp className="w-4 h-4" />
-                      <span>Upload {stagedFiles.length} Document{stagedFiles.length > 1 ? 's' : ''}</span>
+                      <span>Upload {stagedFiles.length} Document{stagedFiles.length > 1 ? 's' : ''} to Vault</span>
                     </>
                   )}
                 </button>
@@ -617,11 +572,11 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
           </AnimatePresence>
         </div>
 
-        {/* Uploaded Documents in Session */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
+        {/* Uploaded Documents in Session / Vault */}
+        <div id="mobile-vault-documents-section" className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-semibold text-slate-900 flex items-center gap-1.5">
-              <span>Uploaded Documents</span>
+              <span>Uploaded Documents in Vault</span>
               <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-medium">
                 {files.length}
               </span>

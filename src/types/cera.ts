@@ -93,6 +93,7 @@ export interface CeraCitation {
 export interface CeraResponse {
   answerType: CeraAnswerType;
   title: string;
+  summary?: string;
   sections: {
     heading: string;
     items?: string[];

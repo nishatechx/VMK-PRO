@@ -327,7 +327,7 @@ export const NoticeHighlightTicker: React.FC = () => {
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-[#1F2937] leading-none">
-                      CET Cell Maharashtra — Official Notices
+                      Maharashtra Admission Notices
                     </h3>
                     <p className="text-[11px] text-[#4B5563] mt-1">
                       Live portal feed from{' '}

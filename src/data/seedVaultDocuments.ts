@@ -13,7 +13,7 @@ function generateScannedDocSvg(
       <g transform="translate(320, 480) rotate(-12)">
         <rect x="0" y="0" width="180" height="70" rx="8" fill="none" stroke="#16a34a" stroke-width="3" stroke-dasharray="6,3" />
         <text x="90" y="28" font-family="sans-serif" font-size="11" font-weight="bold" fill="#16a34a" text-anchor="middle">VERIFIED & SCRUTINIZED</text>
-        <text x="90" y="44" font-family="sans-serif" font-size="10" font-weight="bold" fill="#15803d" text-anchor="middle">STATE CET CELL WASHIM</text>
+        <text x="90" y="44" font-family="sans-serif" font-size="10" font-weight="bold" fill="#15803d" text-anchor="middle">FACILITATION CENTER WASHIM</text>
         <text x="90" y="58" font-family="sans-serif" font-size="8" fill="#166534" text-anchor="middle">NODAL OFFICER DESK #01</text>
       </g>
     `
@@ -44,7 +44,7 @@ function generateScannedDocSvg(
       <path d="M 68 70 L 75 62 L 82 70 L 78 70 L 78 86 L 72 86 L 72 70 Z" fill="#FFFFFF" />
       
       <text x="115" y="65" font-family="sans-serif" font-size="13" font-weight="bold" fill="#FFFFFF" letter-spacing="1">GOVERNMENT OF MAHARASHTRA</text>
-      <text x="115" y="82" font-family="sans-serif" font-size="16" font-weight="900" fill="#FFFFFF" letter-spacing="1.5">STATE COMMON ENTRANCE TEST CELL</text>
+      <text x="115" y="82" font-family="sans-serif" font-size="16" font-weight="900" fill="#FFFFFF" letter-spacing="1.5">FACILITATION & SCRUTINY CENTER</text>
       <text x="115" y="98" font-family="sans-serif" font-size="10" font-weight="bold" fill="#E0F2FE">ADMISSION REGULATORY AUTHORITY • SCRUTINY DIVISION</text>
 
       <!-- Document Barcode & Serial -->
@@ -109,7 +109,7 @@ function generateScannedDocSvg(
       <!-- Bottom Signature & Seal -->
       <line x1="50" y1="670" x2="550" y2="670" stroke="#CBD5E1" stroke-dasharray="4,4" />
       <text x="70" y="700" font-family="sans-serif" font-size="10" font-weight="bold" fill="#64748B">DIGITALLY GENERATED DOCUMENT</text>
-      <text x="70" y="715" font-family="sans-serif" font-size="9" fill="#94A3B8">State CET Cell Admission Portal • Washim District</text>
+      <text x="70" y="715" font-family="sans-serif" font-size="9" fill="#94A3B8">Facilitation Center Portal • Washim District</text>
       
       <g transform="translate(420, 680)">
         <path d="M 10 25 Q 35 5, 55 20 T 95 15" stroke="#1E40AF" stroke-width="2" fill="none" />
@@ -184,7 +184,7 @@ export function getDefaultVaultFiles(): QrUploadedFile[] {
       district: 'Washim',
       dataUrl: generateScannedDocSvg(
         'MHT-CET 2026 Score Card (PCM Group)',
-        'State Common Entrance Test Cell, Maharashtra State',
+        'Maharashtra Competent Authority Examination Cell',
         'CET-26-PCM-984210',
         false,
         '#003B73'

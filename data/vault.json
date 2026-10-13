@@ -1,5 +1,30 @@
 [
   {
+    "id": "doc-1791885452591-d4fo3",
+    "sessionId": "TEST100",
+    "name": "aadhaar_card.jpg",
+    "type": "image/jpeg",
+    "size": 1024,
+    "dataUrl": "data:image/jpeg;base64,/9j/4AAQSkZJRg==",
+    "uploadedAt": "2026-10-13T09:57:32.591Z",
+    "isDownloadedToSoftware": true,
+    "verifiedStamp": false,
+    "category": "Candidate Document",
+    "uploadedBy": "counsellor"
+  },
+  {
+    "id": "doc-1791883680481-ajj73",
+    "sessionId": "TEST1",
+    "name": "test.txt",
+    "type": "text/plain",
+    "size": 12,
+    "dataUrl": "data:text/plain;base64,dGVzdA==",
+    "uploadedAt": "2026-10-13T09:28:00.481Z",
+    "isDownloadedToSoftware": true,
+    "verifiedStamp": false,
+    "category": "Candidate Document"
+  },
+  {
     "id": "doc-1791439117090-6yxhb",
     "sessionId": "TEST1234",
     "name": "HSC_MarkSheet.pdf",

@@ -1,11 +1,20 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Send,
-  Loader2,
   BookOpen,
   ExternalLink,
-  ChevronRight,
   Info,
+  CheckCircle2,
+  Copy,
+  Check,
+  RotateCcw,
+  Sparkles,
+  FileText,
+  Search,
+  ShieldCheck,
+  ChevronRight,
+  Layers,
+  ArrowUpRight,
 } from 'lucide-react';
 import {
   CeraDocument,
@@ -23,10 +32,31 @@ interface AskCeraPanelProps {
 }
 
 const CONTEXTUAL_CHIPS = [
-  'Required documents',
   'Eligibility criteria',
+  'Required documents',
   'Application fee',
-  'Important dates',
+  'Important dates & schedule',
+  'Reservation & quota rules',
+  'CAP round options process',
+];
+
+const SCAN_STAGES = [
+  {
+    title: 'Accessing official CET Information Bulletin & Rules...',
+    detail: 'Loading official government circular and verified guidelines',
+  },
+  {
+    title: 'Scanning clauses, eligibility criteria & reservation norms...',
+    detail: 'Parsing official clauses, caste validity and OMS guidelines',
+  },
+  {
+    title: 'Analyzing fee structures, seat matrix & document checklists...',
+    detail: 'Correlating official tables, schedules and verification rules',
+  },
+  {
+    title: 'Cross-referencing verified page citations & synthesizing...',
+    detail: 'Formatting authoritative answer with verified source pages',
+  },
 ];
 
 export const AskCeraPanel: React.FC<AskCeraPanelProps> = ({
@@ -37,12 +67,55 @@ export const AskCeraPanel: React.FC<AskCeraPanelProps> = ({
 }) => {
   const [inputValue, setInputValue] = useState<string>('');
   const [isAsking, setIsAsking] = useState<boolean>(false);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [scanStageIndex, setScanStageIndex] = useState<number>(0);
 
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const prevIsAskingRef = useRef<boolean>(false);
+
+  // Rotate through scan stages while asking/analyzing
   useEffect(() => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    if (!isAsking) {
+      setScanStageIndex(0);
+      return;
     }
+
+    const interval = setInterval(() => {
+      setScanStageIndex((prev) => (prev + 1) % SCAN_STAGES.length);
+    }, 1800);
+
+    return () => clearInterval(interval);
+  }, [isAsking]);
+
+  // Handle precise scrolling:
+  // - When asking / loading: keep bottom visible to show live thinking & PDF analysis animation
+  // - When answer arrives: show answer from START (scroll smoothly to the top of the CIA response)
+  useEffect(() => {
+    if (isAsking) {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTo({
+          top: scrollContainerRef.current.scrollHeight,
+          behavior: 'smooth',
+        });
+      }
+    } else if (prevIsAskingRef.current && !isAsking) {
+      // CIA has finished answering! Find the newest CIA message and scroll to its START
+      const lastCeraMsg = [...messages].reverse().find((m) => m.role === 'cera' && !m.isLoading);
+      if (lastCeraMsg && messageRefs.current[lastCeraMsg.id]) {
+        // Small delay to ensure DOM render has completed
+        setTimeout(() => {
+          const el = messageRefs.current[lastCeraMsg.id];
+          if (el && scrollContainerRef.current) {
+            el.scrollIntoView({
+              behavior: 'smooth',
+              block: 'start',
+            });
+          }
+        }, 80);
+      }
+    }
+    prevIsAskingRef.current = isAsking;
   }, [messages, isAsking]);
 
   const handleSend = async (queryText?: string) => {
@@ -99,7 +172,7 @@ export const AskCeraPanel: React.FC<AskCeraPanelProps> = ({
             ? {
                 ...msg,
                 rawContent:
-                  "I couldn't find a clear answer in the available official documents.",
+                  "I couldn't find a clear answer in the available official documents. Please verify with the official admissions portal or choose another brochure.",
                 isLoading: false,
               }
             : msg
@@ -110,115 +183,335 @@ export const AskCeraPanel: React.FC<AskCeraPanelProps> = ({
     }
   };
 
+  const handleCopyAnswer = async (msg: CeraChatMessage) => {
+    let textToCopy = '';
+    if (msg.structuredAnswer) {
+      const ans = msg.structuredAnswer;
+      textToCopy = `*${ans.title}*\n\n`;
+      if (ans.summary) {
+        textToCopy += `${ans.summary}\n\n`;
+      }
+      ans.sections.forEach((sec, idx) => {
+        textToCopy += `${idx + 1}. ${sec.heading}\n`;
+        if (sec.text) textToCopy += `${sec.text}\n`;
+        if (sec.items && sec.items.length > 0) {
+          sec.items.forEach((item) => {
+            textToCopy += `   • ${item}\n`;
+          });
+        }
+        textToCopy += '\n';
+      });
+      if (ans.importantNotes && ans.importantNotes.length > 0) {
+        textToCopy += `*Important:*\n${ans.importantNotes.map((n) => `• ${n}`).join('\n')}\n\n`;
+      }
+      if (ans.sources && ans.sources.length > 0) {
+        textToCopy += `*Official Sources:*\n${ans.sources
+          .map((s) => `• ${s.documentTitle} (Page ${s.pageNumber})`)
+          .join('\n')}\n`;
+      }
+    } else if (msg.rawContent) {
+      textToCopy = msg.rawContent;
+    }
+
+    if (textToCopy) {
+      try {
+        await navigator.clipboard.writeText(textToCopy);
+        setCopiedId(msg.id);
+        setTimeout(() => setCopiedId(null), 2000);
+      } catch {
+        // Fallback
+      }
+    }
+  };
+
+  const handleClearChat = () => {
+    setMessages([]);
+  };
+
   return (
-    <div className="flex flex-col h-full bg-[#FFFFFF] text-[#172033] border-l border-[#E2E8F0] overflow-hidden select-none">
-      {/* 1. CLEAN ASK CIA HEADER */}
-      <div className="px-4 py-3 bg-[#FFFFFF] border-b border-[#E2E8F0] flex items-center justify-between gap-2 shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-md bg-white border border-cyan-400/80 p-0.5 flex items-center justify-center shrink-0 shadow-[0_0_8px_rgba(6,182,212,0.6)] animate-neon-box overflow-hidden relative">
-            <img src={APP_ASSETS.CIA} alt="CIA" className="w-full h-full object-contain animate-neon-glow" referrerPolicy="no-referrer" />
+    <div className="flex flex-col h-full bg-[#FFFFFF] text-[#0F172A] border-l border-[#E2E8F0] overflow-hidden select-none font-sans">
+      {/* 1. PROFESSIONAL CIA HEADER */}
+      <div className="px-4 py-3 bg-[#FFFFFF] border-b border-[#E2E8F0] flex items-center justify-between gap-3 shrink-0 shadow-2xs">
+        <div className="flex items-center gap-2.5">
+          {/* Crisp, professional CIA Logo Badge (No Neon Effect) */}
+          <div className="w-7 h-7 rounded-lg bg-white border border-slate-200 p-0.5 flex items-center justify-center shrink-0 shadow-xs overflow-hidden relative">
+            <img
+              src={APP_ASSETS.CIA}
+              alt="CIA"
+              className="w-full h-full object-contain"
+              referrerPolicy="no-referrer"
+            />
           </div>
-          <div className="flex items-center gap-1.5">
-            <h3 className="text-sm font-bold text-[#172033]">
-              Ask CIA
-            </h3>
-            <span className="text-[9px] px-1 py-0.2 rounded-full bg-cyan-500/20 text-cyan-700 font-extrabold border border-cyan-400/50 shadow-[0_0_6px_rgba(6,182,212,0.3)]">
-              AI
+          <div className="flex flex-col">
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-sm font-bold text-[#0F172A] tracking-tight">
+                Ask CIA
+              </h3>
+              <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 font-semibold bg-emerald-50 px-1.5 py-0.2 rounded-md border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Live
+              </span>
+            </div>
+            <span className="text-[10px] text-slate-500 font-medium truncate max-w-[170px] sm:max-w-[210px]">
+              Official CET Rulebook Assistant
             </span>
           </div>
         </div>
 
-        {activeDocument && (
-          <span className="text-[11px] text-[#64748B] truncate max-w-[180px] font-medium">
-            {activeDocument.courseName}
-          </span>
-        )}
+        <div className="flex items-center gap-1.5">
+          {activeDocument && (
+            <div className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-md bg-slate-50 border border-slate-200 text-[11px] font-medium text-slate-700 max-w-[150px] truncate" title={activeDocument.courseName}>
+              <BookOpen className="w-3 h-3 text-[#0056A6] shrink-0" />
+              <span className="truncate">{activeDocument.courseName}</span>
+            </div>
+          )}
+
+          {messages.length > 0 && (
+            <button
+              type="button"
+              onClick={handleClearChat}
+              disabled={isAsking}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-30"
+              title="Reset conversation"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 2. CHAT STREAM / RESEARCH RESULTS */}
       <div
         ref={scrollContainerRef}
-        className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 text-xs font-sans bg-[#FAFCFF]"
+        className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 text-xs font-sans bg-[#F8FAFC]"
       >
         {messages.length === 0 ? (
-          /* Empty State (Section: Chat Empty State) */
-          <div className="py-12 px-2 text-center space-y-3">
-            <div className="w-8 h-8 rounded-lg bg-[#F0F7FF] text-[#1677FF] flex items-center justify-center mx-auto font-bold text-xs">
-              C
+          /* Empty State: Pro Research Dashboard */
+          <div className="py-10 px-3 text-center space-y-4 max-w-sm mx-auto">
+            <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center mx-auto p-2">
+              <img
+                src={APP_ASSETS.CIA}
+                alt="CIA"
+                className="w-full h-full object-contain"
+                referrerPolicy="no-referrer"
+              />
             </div>
-            <h4 className="text-sm font-semibold text-[#172033]">Ask CIA</h4>
-            <p className="text-xs text-[#64748B] max-w-xs mx-auto">
-              Ask a question about this document
-            </p>
+            <div className="space-y-1">
+              <h4 className="text-sm font-bold text-[#0F172A] tracking-tight">
+                Ask CIA Official Assistant
+              </h4>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Instant, authoritative answers backed by verified official brochures & rulebooks with page citations.
+              </p>
+            </div>
 
-            <div className="pt-2 flex flex-wrap items-center justify-center gap-2 max-w-sm mx-auto">
-              {CONTEXTUAL_CHIPS.map((chip, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => handleSend(chip)}
-                  className="px-3 py-1.5 rounded-full text-xs font-medium text-[#475569] bg-[#FFFFFF] hover:bg-[#F0F7FF] hover:text-[#1677FF] border border-[#E2E8F0] hover:border-[#1677FF]/40 transition-colors cursor-pointer shadow-2xs"
-                >
-                  {chip}
-                </button>
-              ))}
+            {activeDocument && (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50/80 border border-blue-200/80 text-blue-900 text-[11px] font-medium">
+                <FileText className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                <span className="truncate">Active Brochure: <strong>{activeDocument.courseName}</strong></span>
+              </div>
+            )}
+
+            <div className="pt-2">
+              <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2.5">
+                Suggested Inquiries
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {CONTEXTUAL_CHIPS.map((chip, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => handleSend(chip)}
+                    className="px-3 py-1.5 rounded-xl text-xs font-medium text-slate-700 bg-white hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 border border-slate-200 shadow-2xs hover:shadow-xs transition-all cursor-pointer flex items-center gap-1.5 group"
+                  >
+                    <span>{chip}</span>
+                    <ArrowUpRight className="w-3 h-3 text-slate-400 group-hover:text-blue-600 transition-colors" />
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         ) : (
           messages.map((msg, idx) => (
-            <div key={`${msg.id}-${idx}`} className="space-y-2">
-              {/* USER QUESTION: Small light-blue bubble */}
+            <div
+              key={`${msg.id}-${idx}`}
+              ref={(el) => {
+                messageRefs.current[msg.id] = el;
+              }}
+              className="space-y-2 scroll-mt-3"
+            >
+              {/* USER QUESTION: Pro Modern Bubble */}
               {msg.role === 'user' && (
-                <div className="flex justify-end">
-                  <div className="max-w-[85%] px-3.5 py-2 rounded-2xl rounded-tr-xs bg-[#EAF3FF] text-[#062B66] border border-[#D0E2FF] font-medium text-xs leading-relaxed shadow-2xs">
+                <div className="flex justify-end items-end gap-2">
+                  <div className="max-w-[85%] px-4 py-2.5 rounded-2xl rounded-tr-xs bg-gradient-to-r from-[#0056A6] to-[#004080] text-white font-medium text-xs leading-relaxed shadow-xs">
                     {msg.question}
                   </div>
                 </div>
               )}
 
-              {/* CIA ANSWER: Editorial / Research Document Result Layout */}
+              {/* CIA ANSWER OR LIVE THINKING / PDF ANALYSIS ANIMATION */}
               {msg.role === 'cera' && (
-                <div className="p-4 rounded-xl bg-[#FFFFFF] border border-[#E2E8F0] text-[#172033] space-y-3 shadow-2xs">
+                <div>
                   {msg.isLoading ? (
-                    <div className="flex items-center gap-2 py-2 text-[#64748B] font-medium">
-                      <Loader2 className="w-4 h-4 animate-spin text-[#1677FF]" />
-                      <span>{msg.rawContent}</span>
+                    /* HIGH-END LIVE PDF ANALYSIS & COGNITIVE SCANNER ANIMATION */
+                    <div className="rounded-2xl bg-white border border-blue-200/90 shadow-sm p-4 space-y-4 overflow-hidden relative">
+                      {/* Ambient Glowing Background Sweep */}
+                      <div className="absolute top-0 right-0 w-36 h-36 bg-blue-500/5 rounded-full blur-2xl pointer-events-none" />
+
+                      {/* Header with Live Beacon */}
+                      <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center shrink-0">
+                            <FileText className="w-3.5 h-3.5 text-blue-600" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-bold text-slate-800 tracking-tight">
+                                CIA Neural Document Inspector
+                              </span>
+                              <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-blue-100/80 text-blue-800 font-extrabold uppercase tracking-wider">
+                                Scanning
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-medium">
+                              {activeDocument ? activeDocument.courseName : 'Official CET Rulebook Database'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200/80">
+                          <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
+                          <span>ANALYZING</span>
+                        </div>
+                      </div>
+
+                      {/* Animated Miniature PDF Document with Glowing Laser Scanline */}
+                      <div className="relative rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 overflow-hidden">
+                        {/* Horizontal Laser Beam Sweep that moves up and down */}
+                        <div className="absolute left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-blue-500 to-transparent shadow-[0_0_8px_rgba(59,130,246,0.9)] animate-pdf-scan z-20 pointer-events-none" />
+
+                        {/* Top Document Metadata Bar */}
+                        <div className="flex items-center justify-between mb-2.5 text-[10px] font-semibold text-slate-500 border-b border-slate-200/70 pb-1.5">
+                          <div className="flex items-center gap-1 text-slate-700">
+                            <BookOpen className="w-3 h-3 text-blue-600" />
+                            <span>Official Information Bulletin</span>
+                          </div>
+                          <span className="text-[9px] bg-slate-200/80 text-slate-600 px-1.5 py-0.5 rounded font-mono">
+                            OCR + VECTOR MATCH
+                          </span>
+                        </div>
+
+                        {/* Simulated Document Lines Shimmering as scanline passes */}
+                        <div className="space-y-2 opacity-85">
+                          <div className="h-2 bg-slate-200 rounded w-3/4 animate-pulse" />
+                          <div className="h-2 bg-blue-100 rounded w-full" />
+                          <div className="h-2 bg-slate-200 rounded w-5/6" />
+                          <div className="grid grid-cols-3 gap-2 pt-1">
+                            <div className="h-2 bg-blue-200/70 rounded" />
+                            <div className="h-2 bg-slate-200 rounded" />
+                            <div className="h-2 bg-slate-200 rounded" />
+                          </div>
+                          <div className="h-2 bg-slate-200 rounded w-2/3" />
+                        </div>
+                      </div>
+
+                      {/* Rotating Multi-Stage Status Ticker */}
+                      <div className="space-y-1.5 pt-1">
+                        <div className="flex items-start gap-2">
+                          <div className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center shrink-0 mt-0.5 text-[10px] font-bold">
+                            {scanStageIndex + 1}
+                          </div>
+                          <div className="space-y-0.5 flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-slate-800 transition-all duration-300">
+                              {SCAN_STAGES[scanStageIndex].title}
+                            </p>
+                            <p className="text-[11px] text-slate-500">
+                              {SCAN_STAGES[scanStageIndex].detail}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Shimmering Dynamic Progress Bar */}
+                        <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden mt-2 relative">
+                          <div
+                            className="h-full bg-gradient-to-r from-blue-600 via-indigo-500 to-cyan-400 rounded-full transition-all duration-500"
+                            style={{
+                              width: `${((scanStageIndex + 1) / SCAN_STAGES.length) * 100}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
                     </div>
                   ) : msg.structuredAnswer ? (
-                    <>
+                    /* PRO RESEARCH ANSWER CARD */
+                    <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 text-[#0F172A] space-y-4 shadow-xs hover:shadow-sm transition-shadow">
+                      {/* Top Action Bar: Verified Shield & Copy Answer Button */}
+                      <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                        <div className="flex items-center gap-1.5 text-blue-700">
+                          <ShieldCheck className="w-4 h-4 text-[#0056A6]" />
+                          <span className="text-[11px] font-bold tracking-wide uppercase">
+                            Official Verified Answer
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleCopyAnswer(msg)}
+                          className="px-2.5 py-1 rounded-lg text-slate-500 hover:text-blue-700 hover:bg-blue-50 border border-slate-200 hover:border-blue-200 transition-all text-[11px] font-semibold inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                          title="Copy answer text"
+                        >
+                          {copiedId === msg.id ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                              <span className="text-emerald-700">Copied!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5 text-slate-400" />
+                              <span>Copy Answer</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+
                       {/* Title & Summary */}
-                      <div className="space-y-1.5 pb-1">
-                        <h4 className="text-xs sm:text-sm font-semibold text-[#062B66] leading-snug">
+                      <div className="space-y-2">
+                        <h4 className="text-sm sm:text-base font-bold text-[#0F172A] tracking-tight leading-snug">
                           {msg.structuredAnswer.title}
                         </h4>
                         {msg.structuredAnswer.summary && (
-                          <p className="text-xs text-[#334155] leading-relaxed">
+                          <div className="p-3 rounded-xl bg-blue-50/70 border-l-3 border-[#0056A6] text-slate-700 text-xs leading-relaxed font-normal">
                             {msg.structuredAnswer.summary}
-                          </p>
+                          </div>
                         )}
                       </div>
 
                       {/* Structured Sections */}
-                      <div className="space-y-3 pt-1">
+                      <div className="space-y-3.5 pt-1">
                         {msg.structuredAnswer.sections.map((sec, sIdx) => (
-                          <div key={sIdx} className="space-y-1.5">
+                          <div key={sIdx} className="space-y-1.5 bg-slate-50/70 p-3 rounded-xl border border-slate-100">
                             {sec.heading && (
-                              <h5 className="text-[11px] font-semibold text-[#062B66] tracking-wide">
-                                {sec.heading}
-                              </h5>
+                              <div className="flex items-center gap-2">
+                                <span className="w-5 h-5 rounded-md bg-white border border-slate-200 text-blue-700 text-[10px] font-bold flex items-center justify-center shrink-0 shadow-2xs">
+                                  {String(sIdx + 1).padStart(2, '0')}
+                                </span>
+                                <h5 className="text-xs font-bold text-slate-900 tracking-tight">
+                                  {sec.heading}
+                                </h5>
+                              </div>
                             )}
 
                             {sec.text && (
-                              <p className="text-xs text-[#475569] leading-relaxed">
+                              <p className="text-xs text-slate-700 leading-relaxed pl-7">
                                 {sec.text}
                               </p>
                             )}
 
                             {sec.items && sec.items.length > 0 && (
-                              <ul className="space-y-1 text-xs text-[#172033]">
+                              <ul className="space-y-1.5 text-xs text-slate-800 pl-7 pt-1">
                                 {sec.items.map((it, iIdx) => (
                                   <li key={iIdx} className="flex items-start gap-2 leading-relaxed">
-                                    <span className="text-[#1677FF] font-bold shrink-0 mt-0.5">•</span>
+                                    <span className="text-[#0056A6] font-bold shrink-0 mt-0.5">•</span>
                                     <span>{it}</span>
                                   </li>
                                 ))}
@@ -228,55 +521,72 @@ export const AskCeraPanel: React.FC<AskCeraPanelProps> = ({
                         ))}
                       </div>
 
-                      {/* Important Notes */}
+                      {/* Important Notes Alert */}
                       {msg.structuredAnswer.importantNotes && msg.structuredAnswer.importantNotes.length > 0 && (
-                        <div className="p-2.5 rounded-lg bg-[#FFF9F0] border border-[#FFE4C4] text-[#8C4A00] text-[11px] leading-relaxed space-y-0.5">
-                          <div className="font-semibold flex items-center gap-1 text-[#FF8A00]">
-                            <Info className="w-3 h-3" />
-                            <span>Important</span>
+                        <div className="p-3.5 rounded-xl bg-amber-50/90 border border-amber-200/80 text-amber-950 text-xs leading-relaxed space-y-1 shadow-2xs">
+                          <div className="font-bold flex items-center gap-1.5 text-amber-800 text-[11px] uppercase tracking-wider">
+                            <Info className="w-3.5 h-3.5 text-amber-600" />
+                            <span>Important Rule Notice</span>
                           </div>
                           {msg.structuredAnswer.importantNotes.map((note, nIdx) => (
-                            <p key={nIdx}>{note}</p>
+                            <p key={nIdx} className="text-amber-900 font-medium">
+                              {note}
+                            </p>
                           ))}
                         </div>
                       )}
 
-                      {/* SOURCE CITATION SECTION */}
+                      {/* SOURCE CITATIONS SECTION: Professional Legal Citation Design */}
                       {msg.structuredAnswer.sources && msg.structuredAnswer.sources.length > 0 && (
-                        <div className="pt-3 border-t border-[#E2E8F0] space-y-2">
-                          <div className="text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">
-                            Source
+                        <div className="pt-3 border-t border-slate-100 space-y-2.5">
+                          <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                            <span>Official Source Citations</span>
+                            <span className="text-[10px] text-blue-600 font-semibold lowercase">
+                              click to inspect in PDF viewer
+                            </span>
                           </div>
 
-                          {msg.structuredAnswer.sources.map((src, srcIdx) => (
-                            <div
-                              key={srcIdx}
-                              className="p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] space-y-1 text-[#172033]"
-                            >
-                              <div className="font-medium text-xs text-[#062B66]">
-                                {src.documentTitle}
-                              </div>
-
-                              <div className="text-[11px] text-[#64748B]">
-                                {src.academicYear && `${src.academicYear} · `}
-                                Page {src.pageNumber}
-                                {src.section && ` · ${src.section}`}
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={() => onJumpToPage(src)}
-                                className="mt-2 py-1 px-2.5 rounded-md bg-[#FFFFFF] hover:bg-[#F0F7FF] text-[#1677FF] border border-[#CBD5E1] hover:border-[#1677FF]/40 font-semibold text-[11px] inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                          <div className="space-y-2">
+                            {msg.structuredAnswer.sources.map((src, srcIdx) => (
+                              <div
+                                key={srcIdx}
+                                className="p-3 rounded-xl bg-white border border-slate-200/90 hover:border-blue-300 space-y-1.5 text-slate-800 shadow-2xs hover:shadow-xs transition-all group"
                               >
-                                <span>Open Page {src.pageNumber}</span>
-                                <ExternalLink className="w-3 h-3" />
-                              </button>
-                            </div>
-                          ))}
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <FileText className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                                    <span className="font-semibold text-xs text-slate-900 truncate">
+                                      {src.documentTitle}
+                                    </span>
+                                  </div>
+                                  <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-200 shrink-0 font-mono">
+                                    Page {src.pageNumber}
+                                  </span>
+                                </div>
+
+                                {src.section && (
+                                  <div className="text-[11px] text-slate-500 pl-5">
+                                    {src.section}
+                                  </div>
+                                )}
+
+                                <div className="pt-1 pl-5">
+                                  <button
+                                    type="button"
+                                    onClick={() => onJumpToPage(src)}
+                                    className="py-1 px-2.5 rounded-lg bg-blue-50 hover:bg-blue-600 text-blue-700 hover:text-white border border-blue-200 hover:border-blue-600 font-bold text-[11px] inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs group-hover:bg-blue-600 group-hover:text-white"
+                                  >
+                                    <span>Jump to Page {src.pageNumber} in PDF</span>
+                                    <ExternalLink className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
 
-                      {/* Contextual Chips */}
+                      {/* Follow-up Contextual Chips */}
                       {msg.structuredAnswer.followUpQuestions && msg.structuredAnswer.followUpQuestions.length > 0 && (
                         <div className="pt-2 flex flex-wrap gap-1.5">
                           {msg.structuredAnswer.followUpQuestions.map((qChip, qIdx) => (
@@ -284,16 +594,19 @@ export const AskCeraPanel: React.FC<AskCeraPanelProps> = ({
                               key={qIdx}
                               type="button"
                               onClick={() => handleSend(qChip)}
-                              className="text-[11px] font-medium text-[#475569] hover:text-[#1677FF] bg-[#F1F5F9] hover:bg-[#F0F7FF] rounded-full px-2.5 py-1 transition-colors cursor-pointer"
+                              className="text-[11px] font-medium text-slate-600 hover:text-blue-700 bg-slate-100 hover:bg-blue-50 border border-slate-200/80 hover:border-blue-200 rounded-full px-3 py-1 transition-all cursor-pointer shadow-2xs inline-flex items-center gap-1"
                             >
-                              {qChip}
+                              <span>{qChip}</span>
+                              <ChevronRight className="w-3 h-3 opacity-60" />
                             </button>
                           ))}
                         </div>
                       )}
-                    </>
+                    </div>
                   ) : (
-                    <p className="text-xs text-[#475569] leading-relaxed whitespace-pre-wrap">{msg.rawContent}</p>
+                    <div className="p-4 rounded-2xl bg-white border border-slate-200 text-slate-700 text-xs leading-relaxed whitespace-pre-wrap shadow-2xs">
+                      {msg.rawContent}
+                    </div>
                   )}
                 </div>
               )}
@@ -302,43 +615,60 @@ export const AskCeraPanel: React.FC<AskCeraPanelProps> = ({
         )}
       </div>
 
-      {/* 3. CHAT INPUT (Section 28) */}
-      <div className="p-3 bg-[#FFFFFF] border-t border-[#E2E8F0] shrink-0">
+      {/* 3. PRO COMMAND BAR INPUT */}
+      <div className="p-3.5 bg-white border-t border-slate-200 shrink-0 shadow-lg">
         <form
           onSubmit={(e) => {
             e.preventDefault();
             handleSend();
           }}
-          className="flex items-center gap-1.5"
+          className="flex items-center gap-2"
         >
-          <input
-            type="text"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
+          <div className="flex-1 relative flex items-center">
+            <input
+              type="text"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              placeholder={
+                activeDocument
+                  ? `Ask CIA about ${activeDocument.courseName}...`
+                  : 'Ask CIA any question about official CET rules...'
               }
-            }}
-            placeholder={
-              activeDocument
-                ? `Ask about ${activeDocument.courseName}...`
-                : 'Ask about this document...'
-            }
-            disabled={isAsking}
-            className="flex-1 text-xs px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-[#172033] placeholder:text-[#94A3B8] focus:border-[#1677FF] focus:bg-[#FFFFFF] outline-none font-sans transition-all"
-          />
+              disabled={isAsking}
+              className="w-full text-xs pl-3.5 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none font-sans transition-all disabled:opacity-50"
+            />
+            {inputValue && (
+              <button
+                type="button"
+                onClick={() => setInputValue('')}
+                className="absolute right-2.5 text-slate-400 hover:text-slate-600 text-xs p-0.5 cursor-pointer"
+                title="Clear input"
+              >
+                ✕
+              </button>
+            )}
+          </div>
 
           <button
             type="submit"
             disabled={!inputValue.trim() || isAsking}
-            className="p-2.5 rounded-xl bg-[#1677FF] hover:bg-[#1677FF]/90 text-white disabled:opacity-30 transition-colors cursor-pointer shrink-0"
-            title="Send query"
+            className="px-3.5 py-2.5 rounded-xl bg-[#0056A6] hover:bg-[#004080] text-white font-bold text-xs disabled:opacity-35 transition-all cursor-pointer shrink-0 shadow-xs flex items-center gap-1.5 active:scale-95"
+            title="Ask CIA"
           >
-            {isAsking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            <Send className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Ask</span>
           </button>
         </form>
+        <div className="flex items-center justify-between pt-2 px-1 text-[10px] text-slate-400">
+          <span>Official Maharashtra Admission Brochure Analysis</span>
+          <span className="hidden sm:inline font-mono">Press Enter to ask</span>
+        </div>
       </div>
     </div>
   );

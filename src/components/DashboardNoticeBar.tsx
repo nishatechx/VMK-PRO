@@ -234,10 +234,10 @@ export const DashboardNoticeBar: React.FC<DashboardNoticeBarProps> = ({ classNam
     <>
       <div
         id="dashboard-notice-bar"
-        className={`bg-white border border-[#D9E1EA] rounded-2xl shadow-xs flex flex-col overflow-hidden select-none h-[540px] max-h-[540px] shrink-0 ${className}`}
+        className={`bg-white border border-[#DCE5F0] rounded-2xl shadow-xs flex flex-col overflow-hidden select-none h-full min-h-[580px] max-h-[720px] shrink-0 ${className}`}
       >
         {/* Notice Bar Header */}
-        <div className="bg-gradient-to-r from-[#003B73] via-[#004B8D] to-[#0056A6] text-white px-4 py-3 flex items-center justify-between shrink-0 shadow-xs">
+        <div className="bg-[#073B70] text-white px-4 py-3 flex items-center justify-between shrink-0 shadow-xs border-b border-[#092744]">
           <div className="flex items-center gap-2.5">
             <div className="relative">
               <div className="w-8 h-8 rounded-xl bg-white/15 border border-white/25 flex items-center justify-center text-white shadow-xs">
@@ -251,7 +251,7 @@ export const DashboardNoticeBar: React.FC<DashboardNoticeBarProps> = ({ classNam
             <div>
               <div className="flex items-center gap-1.5">
                 <h2 className="text-xs sm:text-sm font-bold tracking-tight text-white leading-tight">
-                  CET Cell Notices
+                  Admission Notices
                 </h2>
                 <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 font-bold uppercase tracking-wider">
                   Live
@@ -626,7 +626,7 @@ export const DashboardNoticeBar: React.FC<DashboardNoticeBarProps> = ({ classNam
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-white leading-none">
-                      CET Cell Maharashtra — Official Circulars
+                      Maharashtra Admission Circulars
                     </h3>
                     <p className="text-[11px] text-blue-100 mt-1">
                       Direct feed from{' '}

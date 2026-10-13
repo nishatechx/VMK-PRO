@@ -207,6 +207,16 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
   const [showScanChoiceModal, setShowScanChoiceModal] = useState<boolean>(false);
   const [newUploadCropFile, setNewUploadCropFile] = useState<QrUploadedFile | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState<boolean>(false);
+  const [stagedFiles, setStagedFiles] = useState<{
+    id: string;
+    name: string;
+    size: number;
+    type: string;
+    dataUrl: string;
+    isPdf: boolean;
+    folder?: string;
+  }[]>([]);
+  const [isUploadingStaged, setIsUploadingStaged] = useState<boolean>(false);
 
   const localFileInputRef = useRef<HTMLInputElement>(null);
   const singleScanFileInputRef = useRef<HTMLInputElement>(null);
@@ -451,8 +461,131 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
   };
 
   const handleLocalFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      await processFilesForVault(e.target.files);
+    if (!e.target.files || e.target.files.length === 0) return;
+    const inputFiles: File[] = Array.from(e.target.files);
+    const newItems: {
+      id: string;
+      name: string;
+      size: number;
+      type: string;
+      dataUrl: string;
+      isPdf: boolean;
+      folder?: string;
+    }[] = [];
+
+    for (const file of inputFiles) {
+      const isImage = file.type ? file.type.startsWith('image/') : false;
+      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+      const ext = file.name.split('.').pop()?.toLowerCase();
+      const isAllowedExt = ext && ['pdf', 'jpeg', 'jpg', 'png', 'webp', 'heic', 'heif'].includes(ext);
+
+      if (!isImage && !isPdf && !isAllowedExt) {
+        setStatusMessage({
+          text: `Skipped "${file.name}": Only PDF, JPEG, PNG, and WebP files are allowed.`,
+          type: 'error',
+        });
+        continue;
+      }
+
+      try {
+        const dataUrl = await fileToDataUrl(file);
+        newItems.push({
+          id: `staged-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          name: file.name,
+          size: file.size,
+          type: file.type || (isPdf ? 'application/pdf' : 'image/jpeg'),
+          dataUrl,
+          isPdf,
+          folder: activeFolder?.type === 'custom' ? activeFolder.key : undefined,
+        });
+      } catch (err) {
+        console.warn('Failed to read file:', file.name, err);
+      }
+    }
+
+    if (newItems.length > 0) {
+      setStagedFiles((prev) => [...prev, ...newItems]);
+      setStatusMessage({
+        text: `✓ ${newItems.length} file(s) selected! Click "Upload to Vault" below to save to Software Vault.`,
+        type: 'success',
+      });
+    }
+
+    if (localFileInputRef.current) localFileInputRef.current.value = '';
+  };
+
+  const removeStagedFile = (id: string) => {
+    setStagedFiles((prev) => prev.filter((f) => f.id !== id));
+  };
+
+  const clearAllStaged = () => {
+    setStagedFiles([]);
+    if (localFileInputRef.current) localFileInputRef.current.value = '';
+  };
+
+  const handleUploadAllStaged = async () => {
+    if (stagedFiles.length === 0) return;
+    setIsUploadingStaged(true);
+    setStatusMessage({
+      text: `Uploading ${stagedFiles.length} file(s) to Software Vault...`,
+      type: '',
+    });
+
+    try {
+      const createdDocs: QrUploadedFile[] = [];
+      for (const item of stagedFiles) {
+        let finalDataUrl = item.dataUrl;
+        let finalSize = item.size;
+
+        if (!item.isPdf && autoCropOnUpload) {
+          try {
+            const optimized = await autoCropAndOptimizeDocument(item.dataUrl);
+            if (optimized?.dataUrl) {
+              finalDataUrl = optimized.dataUrl;
+              finalSize = optimized.size;
+            }
+          } catch (cropErr) {
+            console.warn('Perspective correction skipped, saving original file:', cropErr);
+          }
+        }
+
+        const uploadedDoc = await qrUploadService.uploadFile(sessionId, {
+          name: item.name,
+          type: item.type,
+          size: finalSize,
+          dataUrl: finalDataUrl,
+          category: item.isPdf ? 'PDF Document' : (autoCropOnUpload ? 'Auto-Cropped' : 'Camera-Scan'),
+          folder: activeFolder?.type === 'custom' ? activeFolder.key : undefined,
+          uploadedBy: activeUser?.username,
+          uploaderName: activeUser?.fullName || activeUser?.username,
+          uploaderRole: activeUser?.role,
+          district: userDistrict,
+        });
+
+        createdDocs.push(uploadedDoc);
+      }
+
+      setVaultFiles((prev) => {
+        const existingIds = new Set(createdDocs.map((d) => d.id));
+        return [...createdDocs, ...prev.filter((f) => !existingIds.has(f.id))];
+      });
+
+      await fetchFiles();
+      setStagedFiles([]);
+      setActiveTab('vault');
+
+      setStatusMessage({
+        text: `✓ ${createdDocs.length} document(s) uploaded successfully & available in Software Vault!`,
+        type: 'success',
+      });
+    } catch (err) {
+      console.error('Failed to upload staged files:', err);
+      setStatusMessage({
+        text: 'Failed to upload document(s) to Vault. Please try again.',
+        type: 'error',
+      });
+    } finally {
+      setIsUploadingStaged(false);
     }
   };
 
@@ -540,59 +673,43 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
     }
   };
 
-  const handleLiveCameraCapture = async (capturedDataUrl: string) => {
+  const handleLiveCameraCapture = async (capturedDataUrl: string, allPages?: string[]) => {
     setShowLiveCameraModal(false);
-    setIsProcessingAutoCrop(true);
-    setAutoCropProgressText('Processing scanned document...');
-    try {
-      let finalDataUrl = capturedDataUrl;
-      let finalSize = Math.round((capturedDataUrl.length * 3) / 4);
+    const pagesToStage = allPages && allPages.length > 0 ? allPages : [capturedDataUrl];
+    const newItems: {
+      id: string;
+      name: string;
+      size: number;
+      type: string;
+      dataUrl: string;
+      isPdf: boolean;
+      folder?: string;
+    }[] = [];
 
-      // Attempt perspective correction safely with graceful fallback
-      try {
-        const optimized = await autoCropAndOptimizeDocument(capturedDataUrl);
-        if (optimized?.dataUrl) {
-          finalDataUrl = optimized.dataUrl;
-          finalSize = optimized.size;
-        }
-      } catch (cropErr) {
-        console.warn('Perspective correction skipped, saving original camera scan:', cropErr);
-      }
-
+    for (let i = 0; i < pagesToStage.length; i++) {
+      const pageDataUrl = pagesToStage[i];
       const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
-      const fileName = `Scan_${timestamp}.jpg`;
-      const uploadedDoc = await qrUploadService.uploadFile(sessionId, {
+      const fileName = pagesToStage.length > 1
+        ? `Scan_${timestamp}_p${i + 1}.jpg`
+        : `Scan_${timestamp}.jpg`;
+      const size = Math.round((pageDataUrl.length * 3) / 4);
+
+      newItems.push({
+        id: `scan-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`,
         name: fileName,
+        size,
         type: 'image/jpeg',
-        size: finalSize,
-        dataUrl: finalDataUrl,
-        category: 'Camera-Scan',
+        dataUrl: pageDataUrl,
+        isPdf: false,
         folder: activeFolder?.type === 'custom' ? activeFolder.key : undefined,
-        uploadedBy: activeUser?.username,
-        uploaderName: activeUser?.fullName || activeUser?.username,
-        uploaderRole: activeUser?.role,
-        district: userDistrict,
       });
-
-      // Update state and switch to vault immediately so user sees their scanned file
-      setVaultFiles((prev) => [uploadedDoc, ...prev.filter((f) => f.id !== uploadedDoc.id)]);
-      await fetchFiles();
-      setActiveTab('vault');
-
-      setStatusMessage({
-        text: `✓ Scanned document "${fileName}" saved in Software Vault!`,
-        type: 'success',
-      });
-    } catch (err) {
-      console.error('Camera capture error:', err);
-      setStatusMessage({
-        text: 'Failed to save scanned document. Please try again.',
-        type: 'error',
-      });
-    } finally {
-      setIsProcessingAutoCrop(false);
-      setAutoCropProgressText('');
     }
+
+    setStagedFiles((prev) => [...prev, ...newItems]);
+    setStatusMessage({
+      text: `✓ ${newItems.length} scanned photo(s) captured! Click "Upload to Vault" below to save to Software Vault.`,
+      type: 'success',
+    });
   };
 
   const handleCreateFolder = (name: string) => {
@@ -1198,6 +1315,108 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                           </button>
                         </div>
 
+                        {/* Staged Files Queue - Gives User Option to Review & Make Upload */}
+                        {stagedFiles.length > 0 && (
+                          <div className="bg-white border-2 border-[#0B57D0]/30 rounded-2xl p-4 shadow-sm space-y-3">
+                            <div className="flex items-center justify-between pb-2 border-b border-[#E0E2EC]">
+                              <div className="flex items-center gap-2">
+                                <span className="w-2.5 h-2.5 rounded-full bg-[#0B57D0] animate-pulse" />
+                                <h3 className="text-xs font-bold text-[#1F1F1F]">
+                                  Selected &amp; Captured Files ({stagedFiles.length})
+                                </h3>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={clearAllStaged}
+                                disabled={isUploadingStaged}
+                                className="text-[11px] font-semibold text-slate-400 hover:text-red-600 transition-colors cursor-pointer"
+                              >
+                                Clear all
+                              </button>
+                            </div>
+
+                            {/* List of staged files */}
+                            <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                              {stagedFiles.map((staged, idx) => (
+                                <div
+                                  key={staged.id}
+                                  className="bg-[#F8F9FA] border border-[#E0E2EC] rounded-xl p-2.5 flex items-center justify-between gap-3"
+                                >
+                                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                    {staged.isPdf ? (
+                                      <div className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0 border border-red-200">
+                                        <FileText className="w-4 h-4" />
+                                      </div>
+                                    ) : staged.dataUrl ? (
+                                      <div className="w-8 h-8 rounded-lg bg-slate-200 flex items-center justify-center shrink-0 overflow-hidden border border-slate-300">
+                                        <img
+                                          src={staged.dataUrl}
+                                          alt={staged.name}
+                                          className="w-full h-full object-cover"
+                                        />
+                                      </div>
+                                    ) : (
+                                      <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#0B57D0] flex items-center justify-center shrink-0">
+                                        <ImageIcon className="w-4 h-4" />
+                                      </div>
+                                    )}
+
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-xs font-medium text-[#1F1F1F] truncate">
+                                        {staged.name}
+                                      </p>
+                                      <p className="text-[10px] text-[#747775]">
+                                        {formatBytes(staged.size)} &bull; #{idx + 1}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => removeStagedFile(staged.id)}
+                                    disabled={isUploadingStaged}
+                                    className="p-1 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer transition-colors"
+                                    title="Remove file"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Destination folder indicator */}
+                            {activeFolder && (
+                              <div className="text-[11px] text-[#0056A6] bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100 flex items-center gap-1.5 font-medium">
+                                <Folder className="w-3 h-3 text-[#0056A6]" />
+                                <span>Destination: {activeFolder.name}</span>
+                              </div>
+                            )}
+
+                            {/* Main Upload to Vault Button */}
+                            <button
+                              type="button"
+                              id="modal-upload-to-vault-btn"
+                              onClick={handleUploadAllStaged}
+                              disabled={isUploadingStaged}
+                              className="w-full h-11 rounded-xl bg-[#0B57D0] hover:bg-[#0842A0] active:scale-98 text-white font-semibold text-xs sm:text-sm shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60"
+                            >
+                              {isUploadingStaged ? (
+                                <>
+                                  <RotateCw className="w-4 h-4 animate-spin text-white" />
+                                  <span>Uploading to Software Vault...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <UploadCloud className="w-4 h-4 text-white" />
+                                  <span>
+                                    Upload {stagedFiles.length} Document{stagedFiles.length > 1 ? 's' : ''} to Vault
+                                  </span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
+
                         {/* Switch to Vault Quick Bar */}
                         {activeTab !== 'dual' && (
                           <div className="pt-1">
@@ -1495,6 +1714,98 @@ export const QrUploadModal: React.FC<QrUploadModalProps> = ({
                           </div>
                         </div>
                       </div>
+
+                      {/* Staged Files Queue inside Vault View - Allows Review & Instant Upload */}
+                      {stagedFiles.length > 0 && (
+                        <div className="m-4 bg-white border-2 border-[#0B57D0]/40 rounded-2xl p-4 shadow-sm space-y-3">
+                          <div className="flex items-center justify-between pb-2 border-b border-[#E0E2EC]">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-full bg-[#0B57D0] animate-pulse" />
+                              <h3 className="text-xs font-bold text-[#1F1F1F]">
+                                Selected &amp; Ready for Vault ({stagedFiles.length} file{stagedFiles.length > 1 ? 's' : ''})
+                              </h3>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={clearAllStaged}
+                              disabled={isUploadingStaged}
+                              className="text-[11px] font-semibold text-slate-400 hover:text-red-600 transition-colors cursor-pointer"
+                            >
+                              Clear all
+                            </button>
+                          </div>
+
+                          <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                            {stagedFiles.map((staged, idx) => (
+                              <div
+                                key={staged.id}
+                                className="bg-[#F8F9FA] border border-[#E0E2EC] rounded-xl p-2.5 flex items-center justify-between gap-3"
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                  {staged.isPdf ? (
+                                    <div className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0 border border-red-200">
+                                      <FileText className="w-4 h-4" />
+                                    </div>
+                                  ) : staged.dataUrl ? (
+                                    <div className="w-8 h-8 rounded-lg bg-slate-200 flex items-center justify-center shrink-0 overflow-hidden border border-slate-300">
+                                      <img
+                                        src={staged.dataUrl}
+                                        alt={staged.name}
+                                        className="w-full h-full object-cover"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#0B57D0] flex items-center justify-center shrink-0">
+                                      <ImageIcon className="w-4 h-4" />
+                                    </div>
+                                  )}
+
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-xs font-medium text-[#1F1F1F] truncate">
+                                      {staged.name}
+                                    </p>
+                                    <p className="text-[10px] text-[#747775]">
+                                      {formatBytes(staged.size)} &bull; #{idx + 1}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => removeStagedFile(staged.id)}
+                                  disabled={isUploadingStaged}
+                                  className="p-1 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer transition-colors"
+                                  title="Remove file"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+
+                          <button
+                            type="button"
+                            id="vault-panel-make-upload-btn"
+                            onClick={handleUploadAllStaged}
+                            disabled={isUploadingStaged}
+                            className="w-full h-11 rounded-xl bg-[#0B57D0] hover:bg-[#0842A0] active:scale-98 text-white font-semibold text-xs sm:text-sm shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60"
+                          >
+                            {isUploadingStaged ? (
+                              <>
+                                <RotateCw className="w-4 h-4 animate-spin text-white" />
+                                <span>Uploading to Software Vault...</span>
+                              </>
+                            ) : (
+                              <>
+                                <UploadCloud className="w-4 h-4 text-white" />
+                                <span>
+                                  Upload {stagedFiles.length} File{stagedFiles.length > 1 ? 's' : ''} to Vault
+                                </span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
 
                       {/* Section Header: Today's Uploads or Current Folder */}
                       <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs select-none">

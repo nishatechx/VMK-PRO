@@ -420,7 +420,7 @@ export const ExternalWebsiteAssistantModal: React.FC<ExternalWebsiteAssistantMod
                   <div className="border-b border-[#D9E1EA] pb-3 flex items-center justify-between">
                     <div>
                       <h4 className="text-sm font-bold text-[#003B73]">
-                        Maharashtra State CET Cell • Scrutiny Grievance Ticket Form
+                        Maharashtra Admission Portal • Scrutiny Grievance Ticket Form
                       </h4>
                       <p className="text-[11px] text-[#6B7280]">
                         Portal Form ID: #CET-GRIEV-2026-FORM • Target: sac.maharashtracet.org

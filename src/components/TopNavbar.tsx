@@ -1,5 +1,20 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Menu, ChevronDown, LogOut, Settings, UserCheck, ShieldCheck, Building2, Phone, Clock, ExternalLink, Radio, Wifi, WifiOff, RefreshCw } from 'lucide-react';
+import {
+  ChevronDown,
+  LogOut,
+  Settings,
+  UserCheck,
+  ShieldCheck,
+  Clock,
+  ExternalLink,
+  Radio,
+  Wifi,
+  WifiOff,
+  RefreshCw,
+  Bell,
+  HelpCircle,
+  FileSpreadsheet,
+} from 'lucide-react';
 import { NavTab } from './Sidebar';
 import { UserProfile } from '../types/auth';
 import { hasTabPermission } from '../services/authService';
@@ -8,7 +23,7 @@ import { subscribeToSyncStatus, SyncQueueStatus } from '../services/offlineSyncS
 import { processOfflineSyncQueue } from '../services/backgroundSyncProcessor';
 
 interface TopNavbarProps {
-  onToggleSidebar: () => void;
+  onToggleSidebar?: () => void;
   onNavigateTab: (tab: NavTab) => void;
   onLogout: () => void;
   onOpenImgToPdf?: () => void;
@@ -23,10 +38,9 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
   onToggleSidebar,
   onNavigateTab,
   onLogout,
-  onOpenImgToPdf,
-  onOpenImageToText,
   onOpenExternalPortal,
   onOpenBroadcastModal,
+  unreadCount = 0,
   currentUser,
 }) => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -65,8 +79,8 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const displayName = currentUser ? currentUser.fullName || currentUser.username : 'DNO Officer';
-  const roleLabel = currentUser ? currentUser.designation || currentUser.role.toUpperCase() : 'District Nodal Officer';
+  const displayName = currentUser ? currentUser.fullName || currentUser.username : 'Center Officer';
+  const roleLabel = currentUser ? currentUser.designation || currentUser.role.toUpperCase() : 'Facilitation Officer';
 
   const formattedDate = currentTime.toLocaleDateString('en-IN', {
     weekday: 'short',
@@ -85,34 +99,40 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
   return (
     <header
       id="top-navbar"
-      className="w-full bg-white border-b border-[#D9E1EA] px-3 sm:px-6 py-2 flex items-center justify-between z-30 select-none shadow-xs min-h-[72px] sm:min-h-[84px]"
+      className="w-full bg-[#FFFFFF] px-4 sm:px-6 h-[74px] flex items-center justify-between z-30 select-none shadow-[0_1px_3px_rgba(16,37,68,0.03)] shrink-0 border-b-0"
     >
-      {/* Left: Hamburger & Government Portal Identity */}
-      <div className="flex items-center gap-3 sm:gap-4">
-        <button
-          id="mobile-menu-toggle"
-          onClick={onToggleSidebar}
-          className="p-2 rounded-xl text-[#003B73] hover:text-[#0056A6] hover:bg-[#EAF4FB] active:scale-95 transition-all cursor-pointer border border-transparent hover:border-[#D9E1EA]"
-          title="Toggle Navigation Menu"
-          aria-label="Toggle navigation menu"
-        >
-          <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
-        </button>
+      {/* Left: Portal Institutional Branding */}
+      <div className="flex items-center gap-3 sm:gap-4 min-w-0">
 
-        <div className="flex items-center shrink-0">
+        {/* Institutional Branding: Logo + Title + Subtitle (Zero Divider Lines) */}
+        <div className="flex items-center gap-3 min-w-0">
           <img
             id="top-navbar-brand-logo"
             src={APP_ASSETS.LOGO}
-            alt="State Common Entrance Test Cell, Maharashtra"
-            className="h-14 sm:h-16 md:h-20 lg:h-22 w-auto max-w-[280px] sm:max-w-[420px] md:max-w-[540px] lg:max-w-[620px] object-contain block py-0.5 select-none rounded-xl"
+            alt="VMK Facilitation Portal"
+            className="h-10 sm:h-12 w-auto object-contain block select-none shrink-0"
             referrerPolicy="no-referrer"
           />
+
+          <div className="hidden sm:flex flex-col min-w-0 pl-1 py-0.5">
+            <div className="flex items-center gap-2">
+              <h1 className="text-sm font-bold text-[#102544] tracking-tight truncate">
+                Facilitation Support Portal
+              </h1>
+              <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.2 rounded bg-[#EBF3FC] text-[#0866D9] shrink-0 border-0">
+                VMK FC-1102
+              </span>
+            </div>
+            <p className="text-[11px] text-[#62738D] font-normal truncate">
+              Facilitation & Scrutiny Center &bull; Govt. of Maharashtra
+            </p>
+          </div>
         </div>
       </div>
 
-      {/* Right: Live Digital Clock, Helpline & User Profile */}
-      <div className="flex items-center gap-2.5 sm:gap-3">
-        {/* Open Target Website Quick Action */}
+      {/* Right: Actions, Connectivity, Date/Time, Notifications & User Avatar (Zero Border Lines) */}
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        {/* Open Target Website Shortcut with Vault indicator */}
         <button
           type="button"
           id="navbar-open-mhcet-portal-btn"
@@ -120,49 +140,32 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
             window.open('https://sac.maharashtracet.org/mhcet/portal/tickets/my-tickets', '_blank', 'noopener,noreferrer');
             if (onOpenExternalPortal) onOpenExternalPortal();
           }}
-          className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#003B73] hover:bg-[#002850] text-white text-xs font-semibold shadow-2xs transition-all cursor-pointer border border-[#002850] active:scale-95"
-          title="Open MHCET External Portal in New Tab"
+          className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#073B70] hover:bg-[#092744] text-white text-xs font-semibold shadow-2xs transition-all cursor-pointer border-0 active:scale-95"
+          title="Open MHCET External Portal with Vault file attachment"
         >
           <ExternalLink className="w-3.5 h-3.5 text-amber-300" />
           <span>Open Website</span>
-          <span className="hidden lg:inline text-[10px] px-1 py-0.2 rounded bg-white/20 text-white font-bold">
+          <span className="text-[10px] px-1 py-0.2 rounded bg-white/20 text-white font-mono font-bold">
             Vault
           </span>
         </button>
 
-        {/* Broadcast Action for Super Admin & DNO */}
-        {(currentUser?.role === 'super_admin' ||
-          currentUser?.role === 'dno' ||
-          currentUser?.username?.toLowerCase() === 'shrinath' ||
-          currentUser?.username?.toLowerCase() === 'dno') &&
-          onOpenBroadcastModal && (
-            <button
-              type="button"
-              onClick={onOpenBroadcastModal}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-2xs transition-all cursor-pointer border border-amber-600 active:scale-95"
-              title="Broadcast notification to counsellors & supporting staff"
-            >
-              <Radio className="w-3.5 h-3.5 animate-pulse text-slate-950" />
-              <span>Broadcast</span>
-            </button>
-          )}
-
-        {/* Network & Offline Auto-Sync Status Badge */}
+        {/* Network Connectivity Status Indicator (Clean Borderless Pill) */}
         <div
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border-0 transition-all cursor-pointer ${
             !syncStatus.isOnline
-              ? 'bg-amber-100 text-amber-900 border-amber-300'
+              ? 'bg-amber-100/70 text-amber-900'
               : syncStatus.isSyncing
-              ? 'bg-[#EAF4FB] text-[#0056A6] border-[#0056A6]/30'
+              ? 'bg-[#EBF3FC] text-[#0866D9]'
               : syncStatus.totalPendingCount > 0
-              ? 'bg-blue-50 text-blue-800 border-blue-200'
-              : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              ? 'bg-blue-100/70 text-blue-800'
+              : 'bg-emerald-100/60 text-emerald-800'
           }`}
           title={
             !syncStatus.isOnline
-              ? `Offline mode: ${syncStatus.totalPendingCount} items in local queue ready to auto-sync`
+              ? `Offline mode: ${syncStatus.totalPendingCount} items in local queue`
               : syncStatus.isSyncing
-              ? 'Syncing local queue with cloud database...'
+              ? 'Syncing local records with cloud database...'
               : syncStatus.totalPendingCount > 0
               ? `${syncStatus.totalPendingCount} queued items - click to sync`
               : 'Connected: Real-time cloud sync active'
@@ -176,7 +179,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           {!syncStatus.isOnline ? (
             <>
               <WifiOff className="w-3.5 h-3.5 text-amber-700 animate-pulse" />
-              <span className="hidden md:inline">Offline</span>
+              <span className="hidden lg:inline text-[11px]">Offline</span>
               {syncStatus.totalPendingCount > 0 && (
                 <span className="px-1.5 py-0.2 rounded-full bg-amber-600 text-white text-[10px] font-bold">
                   {syncStatus.totalPendingCount}
@@ -185,84 +188,96 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
             </>
           ) : syncStatus.isSyncing ? (
             <>
-              <RefreshCw className="w-3.5 h-3.5 text-[#0056A6] animate-spin" />
-              <span className="hidden md:inline">Syncing...</span>
-            </>
-          ) : syncStatus.totalPendingCount > 0 ? (
-            <>
-              <RefreshCw className="w-3.5 h-3.5 text-blue-600" />
-              <span className="hidden md:inline">Sync</span>
-              <span className="px-1.5 py-0.2 rounded-full bg-blue-600 text-white text-[10px] font-bold">
-                {syncStatus.totalPendingCount}
-              </span>
+              <RefreshCw className="w-3.5 h-3.5 text-[#0866D9] animate-spin" />
+              <span className="hidden lg:inline text-[11px]">Syncing...</span>
             </>
           ) : (
             <>
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="hidden lg:inline text-[11px]">Online</span>
+              <span className="w-2 h-2 rounded-full bg-[#079669] animate-pulse" />
+              <span className="hidden lg:inline text-[11px] text-[#079669]">Online</span>
             </>
           )}
         </div>
 
-        {/* Live Clock Strip */}
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#F7F9FC] border border-[#D9E1EA] text-xs text-[#003B73]">
-          <Clock className="w-3.5 h-3.5 text-[#0056A6]" />
-          <span className="font-medium text-[#4B5563]">{formattedDate}</span>
-          <span className="font-mono font-bold text-[#003B73]">{formattedTime}</span>
+        {/* Current Date & Live Time (Clean Borderless Pill) */}
+        <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#F4F7FB] border-0 text-xs">
+          <Clock className="w-3.5 h-3.5 text-[#0866D9]" />
+          <span className="font-normal text-[#62738D]">{formattedDate}</span>
+          <span className="font-mono font-bold text-[#102544]">{formattedTime}</span>
         </div>
 
-        {/* User Profile Pill */}
+        {/* Notification Bell with unread count (Borderless) */}
+        <button
+          type="button"
+          onClick={() => {
+            if (onOpenBroadcastModal) onOpenBroadcastModal();
+          }}
+          className="relative p-2 rounded-lg text-[#62738D] hover:text-[#102544] hover:bg-[#F4F7FB] border-0 transition-colors cursor-pointer"
+          title={unreadCount > 0 ? `${unreadCount} unread notices` : 'Notices & Broadcasts'}
+          aria-label="View notifications"
+        >
+          <Bell className="w-4 h-4" />
+          {unreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#D92D3A] text-white text-[10px] font-bold flex items-center justify-center shadow-xs animate-pulse">
+              {unreadCount}
+            </span>
+          )}
+        </button>
+
+        {/* User Profile Pill & Dropdown (Borderless Pill) */}
         <div className="relative" ref={profileRef}>
           <button
             id="navbar-profile-btn"
             onClick={() => setIsProfileOpen(!isProfileOpen)}
-            className="flex items-center gap-2.5 p-1 sm:pr-3 rounded-full sm:rounded-xl hover:bg-[#EAF4FB] border border-transparent hover:border-[#D9E1EA] transition-all cursor-pointer group text-left"
+            className="flex items-center gap-2.5 p-1 sm:pr-2.5 rounded-xl hover:bg-[#F4F7FB] border-0 transition-all cursor-pointer group text-left bg-transparent"
             aria-label="User account menu"
           >
             {currentUser?.profilePicture ? (
               <img
                 src={currentUser.profilePicture}
                 alt={displayName}
-                className="w-8 h-8 rounded-full object-cover border-2 border-[#0056A6] shadow-xs"
+                className="w-8 h-8 rounded-lg object-cover border-0"
               />
             ) : (
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#0056A6] to-[#003B73] text-white flex items-center justify-center font-bold text-xs shadow-xs">
+              <div className="w-8 h-8 rounded-lg bg-[#073B70] text-white flex items-center justify-center font-bold text-xs shadow-2xs">
                 {displayName.charAt(0).toUpperCase()}
               </div>
             )}
 
-            <div className="hidden sm:flex flex-col text-left leading-tight">
-              <span className="text-[10px] text-[#6B7280] uppercase tracking-wider font-semibold">Authorized User</span>
-              <span className="text-xs font-bold text-[#1F2937] flex items-center gap-1">
-                {displayName}
-                <ChevronDown className="w-3.5 h-3.5 text-[#6B7280] group-hover:text-[#0056A6] transition-transform" />
-              </span>
+            <div className="hidden sm:flex flex-col text-left leading-tight min-w-0 max-w-[130px]">
+              <span className="text-xs font-bold text-[#102544] truncate">{displayName}</span>
+              <span className="text-[10px] text-[#62738D] truncate">{roleLabel}</span>
             </div>
+            <ChevronDown className="w-3.5 h-3.5 text-[#62738D] group-hover:text-[#102544] transition-transform hidden sm:inline" />
           </button>
 
           {isProfileOpen && (
-            <div className="absolute right-0 mt-2 w-64 bg-white border border-[#D9E1EA] rounded-2xl shadow-xl p-2 z-50">
-              <div className="px-3 py-2.5 border-b border-[#D9E1EA]">
-                <p className="text-xs font-bold text-[#1F2937]">{displayName}</p>
-                <p className="text-[11px] text-[#6B7280] truncate">{roleLabel}</p>
-                <p className="text-[10px] font-mono text-[#0056A6] mt-0.5">
-                  User ID: {currentUser?.username || 'dno'}
-                </p>
+            <div className="absolute right-0 mt-2 w-64 bg-[#FFFFFF] border border-[#DCE5F0] rounded-xl shadow-lg p-1.5 z-50">
+              <div className="px-3 py-2.5 border-b border-[#DCE5F0]">
+                <p className="text-xs font-bold text-[#102544]">{displayName}</p>
+                <p className="text-[11px] text-[#62738D] truncate">{roleLabel}</p>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-[#F4F7FB] text-[#073B70] border border-[#DCE5F0]">
+                    @{currentUser?.username || 'officer'}
+                  </span>
+                  <span className="text-[10px] text-[#079669] font-semibold flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#079669]" />
+                    Active Session
+                  </span>
+                </div>
               </div>
 
-              <div className="py-1">
-                {hasTabPermission(currentUser, 'profile') && (
-                  <button
-                    onClick={() => {
-                      setIsProfileOpen(false);
-                      onNavigateTab('profile');
-                    }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[#4B5563] hover:bg-[#EAF4FB] hover:text-[#003B73] rounded-xl cursor-pointer transition-colors"
-                  >
-                    <UserCheck className="w-4 h-4 text-[#0056A6]" />
-                    <span>My Profile & Security</span>
-                  </button>
-                )}
+              <div className="py-1 space-y-0.5">
+                <button
+                  onClick={() => {
+                    setIsProfileOpen(false);
+                    onNavigateTab('profile');
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[#102544] hover:bg-[#F4F7FB] hover:text-[#0866D9] rounded-lg cursor-pointer transition-colors"
+                >
+                  <UserCheck className="w-4 h-4 text-[#0866D9]" />
+                  <span>Officer Profile & Security</span>
+                </button>
 
                 {hasTabPermission(currentUser, 'user_management') && (
                   <button
@@ -270,53 +285,47 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
                       setIsProfileOpen(false);
                       onNavigateTab('user_management');
                     }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[#003B73] font-semibold hover:bg-[#EAF4FB] rounded-xl cursor-pointer transition-colors"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[#073B70] font-semibold hover:bg-[#F4F7FB] rounded-lg cursor-pointer transition-colors"
                   >
-                    <ShieldCheck className="w-4 h-4 text-[#0056A6]" />
-                    <span>{currentUser?.role === 'super_admin' ? 'User Management (Super Admin)' : 'User Management (DNO)'}</span>
+                    <ShieldCheck className="w-4 h-4 text-[#073B70]" />
+                    <span>User Management (RBAC)</span>
                   </button>
                 )}
 
-                {hasTabPermission(currentUser, 'settings') && (
+                {hasTabPermission(currentUser, 'google_sheets') && (
                   <button
                     onClick={() => {
                       setIsProfileOpen(false);
-                      onNavigateTab('settings');
+                      onNavigateTab('google_sheets');
                     }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[#4B5563] hover:bg-[#EAF4FB] hover:text-[#003B73] rounded-xl cursor-pointer transition-colors"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[#102544] hover:bg-[#F4F7FB] rounded-lg cursor-pointer transition-colors"
                   >
-                    <Settings className="w-4 h-4 text-[#4B5563]" />
-                    <span>Center Settings</span>
+                    <FileSpreadsheet className="w-4 h-4 text-[#079669]" />
+                    <span>Google Sheets Sync</span>
                   </button>
                 )}
 
-                {(currentUser?.role === 'super_admin' ||
-                  currentUser?.role === 'dno' ||
-                  currentUser?.username?.toLowerCase() === 'shrinath' ||
-                  currentUser?.username?.toLowerCase() === 'dno') &&
-                  onOpenBroadcastModal && (
-                    <button
-                      onClick={() => {
-                        setIsProfileOpen(false);
-                        onOpenBroadcastModal();
-                      }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-amber-800 font-bold hover:bg-amber-50 rounded-xl cursor-pointer transition-colors"
-                    >
-                      <Radio className="w-4 h-4 text-amber-600" />
-                      <span>Broadcast to Staff</span>
-                    </button>
-                  )}
+                <button
+                  onClick={() => {
+                    setIsProfileOpen(false);
+                    onNavigateTab('settings');
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[#102544] hover:bg-[#F4F7FB] hover:text-[#0866D9] rounded-lg cursor-pointer transition-colors"
+                >
+                  <Settings className="w-4 h-4 text-[#62738D]" />
+                  <span>Center Settings</span>
+                </button>
               </div>
 
-              <div className="pt-1 border-t border-[#D9E1EA]">
+              <div className="pt-1 border-t border-[#DCE5F0]">
                 <button
                   onClick={() => {
                     setIsProfileOpen(false);
                     onLogout();
                   }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-xl cursor-pointer font-bold transition-colors"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[#D92D3A] hover:bg-rose-50 rounded-lg cursor-pointer font-bold transition-colors"
                 >
-                  <LogOut className="w-4 h-4 text-rose-600" />
+                  <LogOut className="w-4 h-4 text-[#D92D3A]" />
                   <span>Sign Out</span>
                 </button>
               </div>

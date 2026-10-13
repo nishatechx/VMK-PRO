@@ -1,31 +1,25 @@
 import React, { useState } from 'react';
 import {
   LayoutDashboard,
+  Wrench,
+  Users,
+  Ticket,
+  Calendar,
   UserCheck,
-  GraduationCap,
+  BarChart3,
+  Bell,
+  BookOpen,
   Settings,
-  UserCircle,
-  LogOut,
   ChevronLeft,
   ChevronRight,
+  LogOut,
+  HelpCircle,
+  ExternalLink,
   ShieldCheck,
   FileSpreadsheet,
-  Lock,
-  Ticket,
   X,
-  MessageSquareText,
-  QrCode,
-  FileImage,
-  FileText,
-  Wrench,
-  ExternalLink,
-  Key,
-  Eye,
-  EyeOff,
-  AlertCircle,
-  UserPlus,
-  Users,
-  Download,
+  Phone,
+  MessageCircle,
 } from 'lucide-react';
 import { TabPermission, UserProfile } from '../types/auth';
 import { hasTabPermission, hasFeaturePermission } from '../services/authService';
@@ -60,687 +54,232 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onClose,
   unreadCount = 0,
   currentUser,
-  onOpenWhatsappTool,
-  onOpenQrTool,
-  onOpenTicketTool,
-  onOpenImgToPdfTool,
-  onOpenImageToTextTool,
-  onOpenExternalPortal,
-  onOpenKnowledgeCenter,
 }) => {
-  const [isBridgePassModalOpen, setIsBridgePassModalOpen] = useState<boolean>(false);
-  const [bridgePassInput, setBridgePassInput] = useState<string>('');
-  const [bridgePassError, setBridgePassError] = useState<string | null>(null);
-  const [showBridgePass, setShowBridgePass] = useState<boolean>(false);
+  const [showSupportModal, setShowSupportModal] = useState(false);
 
+  // Standard Enterprise Navigation Items (Filtered by Super Admin Role & User Tab Permissions)
   const allNavItems: {
     id: NavTab;
     label: string;
     icon: React.ComponentType<{ className?: string }>;
     badge?: number;
-    isProtected?: boolean;
+    requiresAdmin?: boolean;
   }[] = [
-    { id: 'dashboard' as NavTab, label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'visitors' as NavTab, label: 'Visitors Entry', icon: UserCheck },
-    { id: 'tickets' as NavTab, label: 'Counsellor Tickets', icon: Ticket },
-    { id: 'google_sheets' as NavTab, label: 'Google Sheets', icon: FileSpreadsheet, isProtected: true },
-    { id: 'students' as NavTab, label: 'Students', icon: GraduationCap },
-    { id: 'settings' as NavTab, label: 'Settings', icon: Settings },
-    { id: 'profile' as NavTab, label: 'Profile', icon: UserCircle },
-    { id: 'user_management' as NavTab, label: 'User Management', icon: ShieldCheck },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'facilitation_tools', label: 'Facilitation Tools', icon: Wrench },
+    { id: 'candidates', label: 'Candidates', icon: Users },
+    { id: 'visitors', label: 'Visitors Entry', icon: UserCheck },
+    { id: 'tickets', label: 'Tickets Desk', icon: Ticket },
+    { id: 'reports', label: 'Reports', icon: BarChart3 },
+    { id: 'notices_circulars', label: 'Notices & Circulars', icon: Bell, badge: unreadCount },
+    { id: 'knowledge_base', label: 'Knowledge Base', icon: BookOpen },
+    { id: 'google_sheets', label: 'Google Sheets (DNO)', icon: FileSpreadsheet },
+    { id: 'user_management', label: 'Manage Users (RBAC)', icon: ShieldCheck, requiresAdmin: true },
+    { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
-  // Check if current user is Super Admin or DNO administrator
+  // Dynamically filter nav items according to user's permissions set by Super Admin
+  const navItems = allNavItems.filter((item) => hasTabPermission(currentUser, item.id));
+
+  // Map legacy active tabs for seamless active indicator matching
+  const resolvedActiveTab: NavTab =
+    activeTab === 'students' ? 'candidates' :
+    activeTab === 'profile' ? 'settings' :
+    activeTab;
+
   const isSuperAdmin = currentUser?.role === 'super_admin' || currentUser?.username?.toLowerCase() === 'shrinath';
-  const isDnoAdmin = currentUser?.role === 'dno' || currentUser?.username?.toLowerCase() === 'dno';
-
-  // Tool permissions for active facilitation utilities
-  const canWhatsapp = hasFeaturePermission(currentUser, 'whatsapp_tool');
-  const canQr = hasFeaturePermission(currentUser, 'qr_upload_tool');
-  const canTicket = hasFeaturePermission(currentUser, 'ticket_generator_tool');
-  const canImgToPdf = hasFeaturePermission(currentUser, 'img_to_pdf_tool');
-  const canImageToText = hasFeaturePermission(currentUser, 'image_to_text_tool');
-  const hasAnyTools = canWhatsapp || canQr || canTicket || canImgToPdf || canImageToText;
-
-  // Filter tabs according to the logged-in user's allowedTabs RBAC rules (Google Sheets exclusively for DNO Admin)
-  const allowedNavItems = allNavItems.filter((item) => {
-    return hasTabPermission(currentUser, item.id);
-  });
-
-  // Get user role display label
-  const getRoleLabel = (role?: string) => {
-    if (!role) return 'Authorized User';
-    switch (role.toLowerCase()) {
-      case 'super_admin':
-        return 'Super Admin';
-      case 'dno':
-        return 'DNO Admin';
-      case 'counsellor':
-        return 'Counsellor';
-      case 'supporting_staff':
-      case 'operator':
-        return 'Supporting Staff';
-      default:
-        return role.toUpperCase();
-    }
-  };
-
-  const displayName = currentUser?.fullName || currentUser?.username || 'Officer / User';
-  const displayRole = currentUser?.designation || getRoleLabel(currentUser?.role);
+  const isDno = currentUser?.role === 'dno' || currentUser?.username?.toLowerCase() === 'dno';
 
   return (
     <aside
       id="portal-sidebar"
-      className={`relative h-full flex flex-col justify-between bg-[#F7F9FC] border-r border-[#D9E1EA] transition-all duration-300 select-none z-20 shrink-0 ${
-        isCollapsed ? 'w-20' : 'w-64 lg:w-72'
+      className={`relative h-full flex flex-col justify-between bg-[#092744] text-slate-200 border-r border-[#0d345a] transition-all duration-300 select-none z-20 shrink-0 ${
+        isCollapsed ? 'w-16' : 'w-[220px]'
       }`}
     >
-      {/* Top Brand Logo Header */}
-      <div className="pt-3.5 pb-3 px-3 border-b border-[#D9E1EA] bg-transparent flex items-center justify-between gap-1.5 shrink-0">
-        <div className={`flex items-center ${isCollapsed ? 'justify-center w-full' : 'gap-2 flex-1 min-w-0'}`}>
-          <img
-            id="sidebar-brand-logo"
-            src={APP_ASSETS.LOGO}
-            alt="State Common Entrance Test Cell, Maharashtra"
-            className={`${isCollapsed ? 'h-9 w-auto max-w-[60px]' : 'h-10 sm:h-12 w-auto max-w-[220px]'} object-contain block`}
-            referrerPolicy="no-referrer"
-          />
-        </div>
-        {onClose && !isCollapsed && (
+      {/* Top Branding Section in Navy Sidebar */}
+      <div>
+        <div className="h-[74px] px-3.5 border-b border-[#0d345a] flex items-center justify-between gap-2">
+          {!isCollapsed ? (
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-white p-1 flex items-center justify-center shrink-0 shadow-xs">
+                <img
+                  src={APP_ASSETS.LOGO}
+                  alt="VMK Tools"
+                  className="w-full h-full object-contain"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="text-xs font-bold text-white tracking-wide truncate">
+                  VMK Tools
+                </span>
+                <span className="text-[10px] text-sky-200/70 font-medium truncate">
+                  Center FC-1102
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="w-full flex justify-center">
+              <div className="w-8 h-8 rounded-lg bg-white p-1 flex items-center justify-center shadow-xs">
+                <img
+                  src={APP_ASSETS.LOGO}
+                  alt="VMK Tools"
+                  className="w-full h-full object-contain"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Collapse/Expand Toggle Button */}
           <button
             type="button"
-            id="sidebar-close-btn"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-[#4B5563] hover:text-[#DC3545] hover:bg-[#DC3545]/10 active:scale-95 transition-all cursor-pointer shrink-0"
-            title="Hide / Close Sidebar"
-            aria-label="Hide sidebar"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        )}
-      </div>
-
-      {/* Top User Profile Section */}
-      <div className="pt-3 pb-4 px-3.5 border-b border-[#D9E1EA] bg-gradient-to-b from-[#FFFFFF]/90 to-transparent">
-        {onClose && isCollapsed && (
-          <div className="flex items-center justify-center pb-2 mb-2 border-b border-[#D9E1EA]">
-            <button
-              type="button"
-              id="sidebar-close-btn-collapsed"
-              onClick={onClose}
-              className="p-1.5 rounded-lg text-[#4B5563] hover:text-[#DC3545] hover:bg-[#DC3545]/10 active:scale-95 transition-all cursor-pointer"
-              title="Hide / Close Sidebar"
-              aria-label="Hide sidebar"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-
-        {isCollapsed ? (
-          /* Collapsed User Avatar */
-          <div
-            className={`flex flex-col items-center justify-center group ${hasTabPermission(currentUser, 'profile') ? 'cursor-pointer' : 'cursor-default'}`}
-            onClick={() => hasTabPermission(currentUser, 'profile') && onSelectTab('profile')}
-            title={`${displayName} (${displayRole})`}
-          >
-            <div className="relative">
-              {currentUser?.profilePicture ? (
-                <img
-                  src={currentUser.profilePicture}
-                  alt={displayName}
-                  className="w-11 h-11 rounded-2xl object-cover border-2 border-white shadow-xs ring-2 ring-[#0056A6]/20 group-hover:ring-[#0056A6] transition-all"
-                />
-              ) : (
-                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#0056A6] to-[#003B73] text-white flex items-center justify-center font-bold text-base shadow-xs ring-2 ring-[#0056A6]/20 group-hover:ring-[#0056A6] transition-all">
-                  {displayName.charAt(0).toUpperCase()}
-                </div>
-              )}
-              <span
-                className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-[#198754] rounded-full border-2 border-white shadow-xs"
-                title="Online & Active"
-              />
-            </div>
-          </div>
-        ) : (
-          /* Expanded User Info Card */
-          <div
-            className={`p-3 bg-[#FFFFFF] rounded-2xl border border-[#D9E1EA] shadow-2xs hover:shadow-xs transition-all ${
-              hasTabPermission(currentUser, 'profile')
-                ? 'hover:border-[#006BB6] cursor-pointer group'
-                : 'cursor-default'
+            onClick={onToggleCollapse}
+            className={`p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer ${
+              isCollapsed ? 'mx-auto' : ''
             }`}
-            onClick={() => hasTabPermission(currentUser, 'profile') && onSelectTab('profile')}
+            title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            <div className="flex items-center gap-3">
-              <div className="relative shrink-0">
-                {currentUser?.profilePicture ? (
-                  <img
-                    src={currentUser.profilePicture}
-                    alt={displayName}
-                    className="w-12 h-12 rounded-2xl object-cover border-2 border-white shadow-xs ring-2 ring-[#0056A6]/15 group-hover:ring-[#0056A6]/40 transition-all"
-                  />
-                ) : (
-                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#0056A6] to-[#003B73] text-white flex items-center justify-center font-bold text-lg shadow-xs ring-2 ring-[#0056A6]/15 group-hover:ring-[#0056A6]/40 transition-all">
-                    {displayName.charAt(0).toUpperCase()}
-                  </div>
-                )}
-                <span
-                  className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-[#198754] rounded-full border-2 border-white shadow-xs"
-                  title="Online & Active"
-                />
-              </div>
+            {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          </button>
+        </div>
 
-              <div className="flex-1 min-w-0">
-                <h2 className="text-sm font-bold text-[#1F2937] truncate leading-snug group-hover:text-[#0056A6] transition-colors">
-                  {displayName}
-                </h2>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#EAF4FB] text-[#0056A6] border border-[#D9E1EA] truncate max-w-[150px]">
-                    {getRoleLabel(currentUser?.role)}
+        {/* 10 Enterprise Navigation Items */}
+        <nav className="p-2 space-y-1 overflow-y-auto max-h-[calc(100vh-220px)]">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = resolvedActiveTab === item.id;
+
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onSelectTab(item.id)}
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-medium transition-all cursor-pointer group relative ${
+                  isActive
+                    ? 'bg-[#0866D9] text-white shadow-xs font-semibold'
+                    : 'text-slate-300 hover:text-white hover:bg-white/8'
+                } ${isCollapsed ? 'justify-center px-0' : ''}`}
+                title={isCollapsed ? item.label : undefined}
+              >
+                <Icon
+                  className={`w-4 h-4 shrink-0 transition-transform ${
+                    isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
+                  }`}
+                />
+
+                {!isCollapsed && (
+                  <span className="flex-1 text-left truncate tracking-normal">
+                    {item.label}
                   </span>
-                </div>
-                {currentUser?.designation && (
-                  <p className="text-[11px] text-[#4B5563] truncate mt-0.5 font-medium">
-                    {currentUser.designation}
-                  </p>
                 )}
-              </div>
-            </div>
-          </div>
-        )}
+
+                {!isCollapsed && typeof item.badge === 'number' && item.badge > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-[#D92D3A] text-white">
+                    {item.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
       </div>
 
-      {/* Nav Menu Items */}
-      <div className="flex-1 px-3 py-3 space-y-1.5 overflow-y-auto">
-        {allowedNavItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
-
-          return (
-            <button
-              key={item.id}
-              id={`nav-item-${item.id}`}
-              onClick={() => onSelectTab(item.id)}
-              title={isCollapsed ? item.label : undefined}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
-                isActive
-                  ? 'bg-[#0056A6] text-white shadow-md shadow-[#003B73]/20 font-semibold'
-                  : 'text-[#4B5563] hover:text-[#003B73] hover:bg-[#EAF4FB]'
-              } ${isCollapsed ? 'justify-center px-0' : ''}`}
-            >
-              <Icon
-                className={`w-5 h-5 shrink-0 transition-transform ${
-                  isActive ? 'text-white' : 'text-[#4B5563] group-hover:text-[#0056A6]'
-                }`}
-              />
-
-              {!isCollapsed && (
-                <span className="flex-1 text-left whitespace-nowrap flex items-center justify-between">
-                  <span>{item.label}</span>
-                  {item.isProtected && (
-                    <span
-                      title="Password Protected (dno1)"
-                      className={`ml-1.5 p-1 rounded-md text-[10px] flex items-center gap-1 ${
-                        isActive ? 'bg-white/20 text-white' : 'bg-[#EAF4FB] text-[#0056A6]'
-                      }`}
-                    >
-                      <Lock className="w-3 h-3" />
-                    </span>
-                  )}
-                </span>
-              )}
-
-              {!isCollapsed && item.badge && item.badge > 0 ? (
-                <span
-                  className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full ${
-                    isActive ? 'bg-white/20 text-white' : 'bg-[#DC3545] text-white'
-                  }`}
-                >
-                  {item.badge}
-                </span>
-              ) : null}
-            </button>
-          );
-        })}
-
-        {/* Super Admin: User Management Tools Section */}
-        {isSuperAdmin && (
-          <div className="pt-2 pb-1">
-            <div className="my-2 border-t border-purple-200" />
-            {!isCollapsed && (
-              <div className="px-1 pb-1.5 flex items-center justify-between">
-                <span className="text-[10px] font-bold text-purple-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-purple-700" />
-                  User Mgmt Tools
-                </span>
-                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
-                  Super Admin
-                </span>
-              </div>
-            )}
-
-            <div className="space-y-1.5">
-              <button
-                type="button"
-                id="sidebar-superadmin-create-user"
-                onClick={() => {
-                  onSelectTab('user_management');
-                  setTimeout(() => {
-                    window.dispatchEvent(new CustomEvent('open-create-user-modal'));
-                  }, 50);
-                  if (onClose && window.innerWidth < 768) onClose();
-                }}
-                title={isCollapsed ? 'Add New User Profile' : undefined}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-purple-900 hover:text-white bg-purple-50 hover:bg-purple-700 border border-purple-200/80 hover:border-purple-700 transition-all cursor-pointer shadow-2xs group ${
-                  isCollapsed ? 'justify-center px-0 py-2.5' : ''
-                }`}
-              >
-                <div className="w-7 h-7 rounded-xl bg-white border border-purple-200 p-1 flex items-center justify-center shrink-0 shadow-2xs text-purple-700 group-hover:text-purple-700">
-                  <UserPlus className="w-4 h-4 text-purple-700" />
-                </div>
-                {!isCollapsed && (
-                  <span className="flex-1 text-left truncate font-bold">Add New User</span>
-                )}
-              </button>
-
-              <button
-                type="button"
-                id="sidebar-superadmin-master-key"
-                onClick={() => {
-                  onSelectTab('user_management');
-                  setTimeout(() => {
-                    window.dispatchEvent(new CustomEvent('open-master-key-modal'));
-                  }, 50);
-                  if (onClose && window.innerWidth < 768) onClose();
-                }}
-                title={isCollapsed ? 'Master Gemini OCR Key' : undefined}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-indigo-900 hover:text-white bg-indigo-50 hover:bg-indigo-700 border border-indigo-200/80 hover:border-indigo-700 transition-all cursor-pointer shadow-2xs group ${
-                  isCollapsed ? 'justify-center px-0 py-2.5' : ''
-                }`}
-              >
-                <div className="w-7 h-7 rounded-xl bg-white border border-indigo-200 p-1 flex items-center justify-center shrink-0 shadow-2xs text-indigo-700">
-                  <Key className="w-4 h-4 text-indigo-700" />
-                </div>
-                {!isCollapsed && (
-                  <span className="flex-1 text-left truncate font-bold">Master Gemini Key</span>
-                )}
-              </button>
-
-              <button
-                type="button"
-                id="sidebar-superadmin-export-users"
-                onClick={() => {
-                  onSelectTab('user_management');
-                  setTimeout(() => {
-                    window.dispatchEvent(new CustomEvent('export-users-directory'));
-                  }, 50);
-                  if (onClose && window.innerWidth < 768) onClose();
-                }}
-                title={isCollapsed ? 'Export User Directory' : undefined}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-800 hover:text-white bg-slate-100 hover:bg-slate-800 border border-slate-200 hover:border-slate-800 transition-all cursor-pointer shadow-2xs group ${
-                  isCollapsed ? 'justify-center px-0 py-2.5' : ''
-                }`}
-              >
-                <div className="w-7 h-7 rounded-xl bg-white border border-slate-200 p-1 flex items-center justify-center shrink-0 shadow-2xs text-slate-700">
-                  <Download className="w-4 h-4 text-slate-700" />
-                </div>
-                {!isCollapsed && (
-                  <span className="flex-1 text-left truncate font-bold">Export Directory</span>
-                )}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Tools & Utilities Section (Shifted to Sidebar) */}
-        {hasAnyTools && (
-          <div className="pt-2 pb-1">
-            <div className="my-2 border-t border-[#D9E1EA]" />
-            {!isCollapsed && (
-              <div className="px-1 pb-1.5 flex items-center justify-between">
-                <span className="text-[10px] font-bold text-[#003B73] uppercase tracking-wider flex items-center gap-1.5">
-                  <Wrench className="w-3 h-3 text-[#0056A6]" />
-                  Facilitation Tools
-                </span>
-                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-[#EAF4FB] text-[#0056A6]">
-                  Utilities
-                </span>
-              </div>
-            )}
-
-            <div className="space-y-1">
-              {canWhatsapp && onOpenWhatsappTool && (
-                <button
-                  type="button"
-                  id="sidebar-tool-whatsapp"
-                  onClick={() => {
-                    onOpenWhatsappTool();
-                    if (onClose && window.innerWidth < 768) onClose();
-                  }}
-                  title={isCollapsed ? 'WhatsApp Ticket Tool' : undefined}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-[#075E54] hover:text-white bg-emerald-50 hover:bg-[#075E54] border border-emerald-200/80 hover:border-[#075E54] transition-all cursor-pointer shadow-2xs group ${
-                    isCollapsed ? 'justify-center px-0 py-2.5' : ''
-                  }`}
-                >
-                  <div className="w-7 h-7 rounded-xl bg-white border border-[#D9E1EA] p-0.5 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
-                    <img src={APP_ASSETS.WHATSAPP_TOOL} alt="WhatsApp" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
-                  </div>
-                  {!isCollapsed && (
-                    <span className="flex-1 text-left truncate">WhatsApp Ticket</span>
-                  )}
-                </button>
-              )}
-
-              {canQr && onOpenQrTool && (
-                <button
-                  type="button"
-                  id="sidebar-tool-qr"
-                  onClick={() => {
-                    onOpenQrTool();
-                    if (onClose && window.innerWidth < 768) onClose();
-                  }}
-                  title={isCollapsed ? 'Files by QR Code' : undefined}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-amber-800 hover:text-white bg-amber-50 hover:bg-amber-600 border border-amber-200/80 hover:border-amber-600 transition-all cursor-pointer shadow-2xs group ${
-                    isCollapsed ? 'justify-center px-0 py-2.5' : ''
-                  }`}
-                >
-                  <div className="w-7 h-7 rounded-xl bg-white border border-[#D9E1EA] p-0.5 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
-                    <img src={APP_ASSETS.FILES_BY_QR} alt="Files by QR" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
-                  </div>
-                  {!isCollapsed && (
-                    <span className="flex-1 text-left truncate">Files by QR</span>
-                  )}
-                </button>
-              )}
-
-              {canTicket && onOpenTicketTool && (
-                <button
-                  type="button"
-                  id="sidebar-tool-ticket"
-                  onClick={() => {
-                    onOpenTicketTool();
-                    if (onClose && window.innerWidth < 768) onClose();
-                  }}
-                  title={isCollapsed ? 'SAC Ticket Generator' : undefined}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-[#003B73] hover:text-white bg-[#EAF4FB] hover:bg-[#0056A6] border border-[#D9E1EA] hover:border-[#0056A6] transition-all cursor-pointer shadow-2xs group ${
-                    isCollapsed ? 'justify-center px-0 py-2.5' : ''
-                  }`}
-                >
-                  <div className="w-7 h-7 rounded-xl bg-white border border-[#D9E1EA] p-0.5 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
-                    <img src={APP_ASSETS.SAC_TICKET_GENERATOR} alt="SAC Ticket" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
-                  </div>
-                  {!isCollapsed && (
-                    <span className="flex-1 text-left truncate">SAC Ticket Generator</span>
-                  )}
-                </button>
-              )}
-
-              {canImgToPdf && onOpenImgToPdfTool && (
-                <button
-                  type="button"
-                  id="sidebar-tool-img-to-pdf"
-                  onClick={() => {
-                    onOpenImgToPdfTool();
-                    if (onClose && window.innerWidth < 768) onClose();
-                  }}
-                  title={isCollapsed ? 'Image to PDF Converter' : undefined}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-indigo-800 hover:text-white bg-indigo-50 hover:bg-indigo-600 border border-indigo-200/80 hover:border-indigo-600 transition-all cursor-pointer shadow-2xs group ${
-                    isCollapsed ? 'justify-center px-0 py-2.5' : ''
-                  }`}
-                >
-                  <div className="w-7 h-7 rounded-xl bg-white border border-[#D9E1EA] p-0.5 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
-                    <img src={APP_ASSETS.IMAGE_TO_PDF} alt="Image to PDF" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
-                  </div>
-                  {!isCollapsed && (
-                    <span className="flex-1 text-left truncate">Image to PDF</span>
-                  )}
-                </button>
-              )}
-
-              {canImageToText && onOpenImageToTextTool && (
-                <button
-                  type="button"
-                  id="sidebar-tool-img-to-text"
-                  onClick={() => {
-                    onOpenImageToTextTool();
-                    if (onClose && window.innerWidth < 768) onClose();
-                  }}
-                  title={isCollapsed ? 'Image to Text' : undefined}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-violet-800 hover:text-white bg-violet-50 hover:bg-violet-600 border border-violet-200/80 hover:border-violet-600 transition-all cursor-pointer shadow-2xs group ${
-                    isCollapsed ? 'justify-center px-0 py-2.5' : ''
-                  }`}
-                >
-                  <div className="w-7 h-7 rounded-xl bg-white border border-[#D9E1EA] p-0.5 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
-                    <img src={APP_ASSETS.IMAGE_TO_TEXT} alt="Image to Text" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
-                  </div>
-                  {!isCollapsed && (
-                    <span className="flex-1 text-left truncate">Image to Text</span>
-                  )}
-                </button>
-              )}
-
-              {onOpenKnowledgeCenter && (
-                <button
-                  type="button"
-                  id="sidebar-tool-knowledge-center"
-                  onClick={() => {
-                    onOpenKnowledgeCenter();
-                    if (onClose && window.innerWidth < 768) onClose();
-                  }}
-                  title={isCollapsed ? 'CIA' : undefined}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-[#003B73] hover:text-white bg-[#EAF4FB] hover:bg-[#0056A6] border border-[#BAE0FD] hover:border-[#0056A6] transition-all cursor-pointer shadow-2xs group relative overflow-hidden ${
-                    isCollapsed ? 'justify-center px-0 py-2.5' : ''
-                  }`}
-                >
-                  <div className="w-7 h-7 rounded-xl bg-white border border-cyan-400/80 p-0.5 flex items-center justify-center shrink-0 shadow-[0_0_8px_rgba(6,182,212,0.6)] animate-neon-box overflow-hidden relative">
-                    <img src={APP_ASSETS.CIA} alt="CIA" className="w-full h-full object-contain animate-neon-glow" referrerPolicy="no-referrer" />
-                  </div>
-                  {!isCollapsed && (
-                    <span className="flex-1 text-left truncate font-bold flex items-center gap-1.5">
-                      <span className="tracking-wide">CIA</span>
-                      <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-cyan-500/20 text-cyan-700 font-extrabold border border-cyan-400/50 shadow-[0_0_6px_rgba(6,182,212,0.4)]">
-                        AI
-                      </span>
-                    </span>
-                  )}
-                </button>
-              )}
-
-              {/* Shifted Vault Picker Bridge Banner - Password Protected (vmk@8975) */}
-              {!isCollapsed ? (
-                <div className="mt-1.5 bg-gradient-to-br from-[#003B73] via-[#004f98] to-[#0284C7] rounded-xl p-2.5 text-white shadow-xs border border-[#002850]">
-                  <div className="flex items-center justify-between gap-1 mb-1">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <div className="w-5 h-5 rounded-md bg-white/20 flex items-center justify-center text-amber-300 shrink-0">
-                        <Lock className="w-3 h-3" />
-                      </div>
-                      <span className="text-[11px] font-bold text-white truncate">
-                        Vault Picker Bridge
-                      </span>
-                    </div>
-                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-400 text-slate-950 shrink-0">
-                      PIN
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-blue-100 leading-tight mb-2">
-                    MHCET Ticket Portal file upload bridge for external website.
-                  </p>
-                  <button
-                    type="button"
-                    id="sidebar-vault-bridge-btn"
-                    onClick={() => {
-                      setIsBridgePassModalOpen(true);
-                      setBridgePassInput('');
-                      setBridgePassError(null);
-                    }}
-                    className="w-full py-1.5 px-2 rounded-lg bg-white hover:bg-blue-50 text-[#003B73] font-bold text-[11px] flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-98"
-                    title="Unlock Vault Picker Bridge (Password Protected: vmk@8975)"
-                  >
-                    <Key className="w-3 h-3 text-[#0056A6]" />
-                    <span>Unlock Bridge</span>
-                    <ExternalLink className="w-3 h-3 text-slate-400 ml-auto" />
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  id="sidebar-vault-bridge-btn-collapsed"
-                  onClick={() => {
-                    setIsBridgePassModalOpen(true);
-                    setBridgePassInput('');
-                    setBridgePassError(null);
-                  }}
-                  title="Vault Picker Bridge (Password: vmk@8975)"
-                  className="relative w-full flex items-center justify-center py-2.5 rounded-xl text-[#003B73] bg-[#EAF4FB] hover:bg-[#003B73] hover:text-white border border-[#D9E1EA] transition-all cursor-pointer shadow-2xs group"
-                >
-                  <div className="w-7 h-7 rounded-xl bg-white border border-[#D9E1EA] p-1 flex items-center justify-center shrink-0 shadow-2xs text-[#0056A6] group-hover:text-[#003B73]">
-                    <ExternalLink className="w-4 h-4" />
-                  </div>
-                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-400 text-slate-950 flex items-center justify-center shadow-xs">
-                    <Lock className="w-2.5 h-2.5" />
-                  </span>
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        <div className="my-1 border-t border-[#D9E1EA]" />
-
-        {/* Logout Menu Item */}
+      {/* Bottom Anchored Support & Status Section */}
+      <div className="p-2.5 border-t border-[#0d345a] space-y-2">
+        {/* Support Shortcut Button anchored at bottom per Section 3 */}
         <button
-          id="nav-item-logout"
-          onClick={onLogout}
-          title={isCollapsed ? 'Logout' : undefined}
-          className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-medium text-sm text-[#4B5563] hover:text-[#DC3545] hover:bg-[#DC3545]/10 transition-all cursor-pointer ${
+          type="button"
+          onClick={() => setShowSupportModal(true)}
+          className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white text-xs font-medium transition-colors border border-white/8 cursor-pointer ${
             isCollapsed ? 'justify-center px-0' : ''
           }`}
+          title="Center Support & Helpline"
         >
-          <LogOut className="w-5 h-5 shrink-0 text-[#4B5563]" />
-          {!isCollapsed && <span className="flex-1 text-left">Logout</span>}
-        </button>
-      </div>
-
-      {/* Collapse/Expand Toggle Circular Button at Bottom-Right */}
-      <div className="relative p-3 flex justify-end">
-        <button
-          id="sidebar-toggle-btn"
-          onClick={onToggleCollapse}
-          className="w-8 h-8 rounded-full bg-[#FFFFFF] border border-[#D9E1EA] shadow-2xs flex items-center justify-center text-[#4B5563] hover:text-[#0056A6] hover:bg-[#EAF4FB] active:scale-95 transition-all cursor-pointer"
-          title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-          aria-label={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-        >
-          {isCollapsed ? (
-            <ChevronRight className="w-4 h-4" />
-          ) : (
-            <ChevronLeft className="w-4 h-4" />
+          <HelpCircle className="w-4 h-4 text-sky-400 shrink-0" />
+          {!isCollapsed && (
+            <div className="flex flex-col text-left leading-tight min-w-0">
+              <span className="text-[11px] font-semibold text-white truncate">Center Support</span>
+              <span className="text-[9px] text-slate-400 truncate">Helpline & Manuals</span>
+            </div>
           )}
         </button>
-      </div>
 
-      {/* Password Verification Modal for Vault Picker Bridge (vmk@8975) */}
-      {isBridgePassModalOpen && (
-        <div
-          id="vault-bridge-password-modal"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setIsBridgePassModalOpen(false);
-          }}
-        >
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-5 sm:p-6 relative animate-in fade-in zoom-in-95 duration-150">
+        {/* User Mini Identity & Sign Out */}
+        {!isCollapsed && (
+          <div className="px-2 py-1 flex items-center justify-between text-[11px] text-slate-400">
+            <span className="truncate max-w-[120px]">
+              {currentUser?.username || 'Officer'} &bull; {currentUser?.district || 'Washim'}
+            </span>
             <button
               type="button"
-              onClick={() => setIsBridgePassModalOpen(false)}
-              className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+              onClick={onLogout}
+              className="text-slate-400 hover:text-rose-400 cursor-pointer p-1"
+              title="Sign Out"
+              aria-label="Sign Out"
             >
-              <X className="w-5 h-5" />
+              <LogOut className="w-3.5 h-3.5" />
             </button>
+          </div>
+        )}
+      </div>
 
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-11 h-11 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-[#0056A6] shrink-0">
-                <Lock className="w-5 h-5" />
+      {/* Quick Center Support Modal */}
+      {showSupportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-2xs">
+          <div className="bg-white rounded-2xl border border-[#DCE5F0] p-6 max-w-md w-full shadow-2xl text-[#102544] space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#DCE5F0]">
+              <div className="flex items-center gap-2">
+                <HelpCircle className="w-5 h-5 text-[#0866D9]" />
+                <h3 className="font-bold text-sm text-[#102544]">Facilitation Desk Support</h3>
               </div>
-              <div>
-                <h3 className="text-base font-bold text-slate-900">Vault Picker Bridge Security</h3>
-                <p className="text-xs text-slate-500">MHCET Ticket Portal Integration</p>
+              <button
+                type="button"
+                onClick={() => setShowSupportModal(false)}
+                className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3 bg-[#F4F7FB] rounded-xl border border-[#DCE5F0] space-y-1">
+                <span className="font-semibold text-[#073B70] block">Central Admission Helpline (Toll-Free)</span>
+                <p className="text-[#62738D]">1800 209 0191 / 022 2201 6159</p>
+                <p className="text-[11px] text-slate-400">Monday to Saturday: 10:00 AM – 6:00 PM</p>
+              </div>
+
+              <div className="p-3 bg-[#EBF3FC] rounded-xl border border-[#DCE5F0] space-y-1">
+                <span className="font-semibold text-[#0866D9] block">District Nodal Officer (Washim)</span>
+                <p className="text-[#102544] font-medium">+91 98220 12345 &bull; dno.washim@cetcell.mah.gov.in</p>
+              </div>
+
+              <div className="p-3 bg-white rounded-xl border border-[#DCE5F0] space-y-1 text-slate-600">
+                <span className="font-semibold text-slate-800 block">External Candidate Ticket Portal</span>
+                <a
+                  href="https://sac.maharashtracet.org/mhcet/portal/tickets/my-tickets"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[#0866D9] hover:underline inline-flex items-center gap-1 font-medium"
+                >
+                  <span>sac.maharashtracet.org/mhcet/portal/tickets</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
               </div>
             </div>
 
-            <p className="text-xs text-slate-600 mb-4 leading-relaxed">
-              This bridge opens the official Maharashtra CET ticket portal and enables direct Vault file uploads for ticket forms. Enter the authorization password to proceed.
-            </p>
-
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (bridgePassInput.trim() === 'vmk@8975') {
-                  window.open('https://sac.maharashtracet.org/mhcet/portal/tickets/my-tickets', '_blank', 'noopener,noreferrer');
-                  if (onOpenExternalPortal) onOpenExternalPortal();
-                  if (onClose && window.innerWidth < 768) onClose();
-                  setIsBridgePassModalOpen(false);
-                  setBridgePassInput('');
-                  setBridgePassError(null);
-                } else {
-                  setBridgePassError('Invalid password. Correct password is vmk@8975');
-                }
-              }}
-              className="space-y-4"
+            <button
+              type="button"
+              onClick={() => setShowSupportModal(false)}
+              className="w-full py-2.5 rounded-xl bg-[#073B70] hover:bg-[#092744] text-white font-bold text-xs transition-colors cursor-pointer"
             >
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Bridge Security Password
-                </label>
-                <div className="relative">
-                  <input
-                    type={showBridgePass ? 'text' : 'password'}
-                    value={bridgePassInput}
-                    onChange={(e) => {
-                      setBridgePassInput(e.target.value);
-                      if (bridgePassError) setBridgePassError(null);
-                    }}
-                    placeholder="Enter password (vmk@8975)"
-                    autoFocus
-                    required
-                    className="w-full px-3.5 py-2.5 pr-10 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#0056A6]/30 focus:border-[#0056A6]"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowBridgePass(!showBridgePass)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
-                  >
-                    {showBridgePass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                {bridgePassError && (
-                  <p className="mt-1.5 text-xs text-red-600 font-medium flex items-center gap-1">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                    <span>{bridgePassError}</span>
-                  </p>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2.5 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setIsBridgePassModalOpen(false)}
-                  className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 px-4 rounded-xl bg-[#003B73] hover:bg-[#002b54] text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5"
-                >
-                  <Key className="w-3.5 h-3.5" />
-                  <span>Verify & Unlock</span>
-                </button>
-              </div>
-            </form>
+              Close
+            </button>
           </div>
         </div>
       )}
     </aside>
   );
 };
-

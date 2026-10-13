@@ -18,7 +18,7 @@ export const CetLogo: React.FC<CetLogoProps> = ({ className = '', size = 'md' })
     <img
       id="cet-logo-badge"
       src={APP_ASSETS.LOGO}
-      alt="State Common Entrance Test Cell, Maharashtra"
+      alt="Facilitation Portal Logo"
       className={`object-contain shrink-0 select-none bg-transparent ${sizeClasses[size]} ${className}`}
       referrerPolicy="no-referrer"
     />

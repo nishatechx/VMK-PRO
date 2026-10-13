@@ -36,7 +36,7 @@ export function validateOfficialUrl(urlStr: string): { isValid: boolean; error?:
     if (parsed.hostname !== APPROVED_DOMAIN && !parsed.hostname.endsWith(`.${APPROVED_DOMAIN}`)) {
       return {
         isValid: false,
-        error: `Only official State CET Cell domain (${APPROVED_DOMAIN}) is permitted for official source documents.`,
+        error: `Only official portal domain (${APPROVED_DOMAIN}) is permitted for official source documents.`,
       };
     }
     return { isValid: true };

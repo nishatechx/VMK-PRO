@@ -181,7 +181,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             <img
               id="login-page-brand-logo"
               src={APP_ASSETS.LOGO}
-              alt="State Common Entrance Test Cell, Maharashtra"
+              alt="Facilitation Portal Logo"
               className="h-12 sm:h-14 md:h-16 lg:h-18 w-auto max-w-[240px] sm:max-w-[320px] md:max-w-[380px] object-contain block select-none rounded-br-xl sm:rounded-br-2xl transition-transform hover:scale-[1.01]"
               referrerPolicy="no-referrer"
             />

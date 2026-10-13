@@ -230,19 +230,14 @@ export const CeraKnowledgeCenterModal: React.FC<CeraKnowledgeCenterModalProps> =
               <span className="hidden sm:inline">{isSidebarOpen ? 'Hide sidebar' : 'Sidebar'}</span>
             </button>
 
-            {/* CIA Logo with Neon Animation */}
+            {/* CIA Logo Badge */}
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-white border border-cyan-400/80 p-0.5 flex items-center justify-center shrink-0 shadow-[0_0_8px_rgba(6,182,212,0.6)] animate-neon-box overflow-hidden relative">
-                <img src={APP_ASSETS.CIA} alt="CIA" className="w-full h-full object-contain animate-neon-glow" referrerPolicy="no-referrer" />
+              <div className="w-7 h-7 rounded-lg bg-white border border-slate-200 p-0.5 flex items-center justify-center shrink-0 shadow-xs overflow-hidden relative">
+                <img src={APP_ASSETS.CIA} alt="CIA" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="font-bold text-base tracking-tight text-[#172033]">
-                  CIA
-                </span>
-                <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-cyan-500/20 text-cyan-700 font-extrabold border border-cyan-400/50 shadow-[0_0_6px_rgba(6,182,212,0.3)]">
-                  AI
-                </span>
-              </div>
+              <span className="font-bold text-base tracking-tight text-[#172033]">
+                CIA
+              </span>
             </div>
 
             {/* Courses Toggle Button (dont give courses by default open) */}
