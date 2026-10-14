@@ -87,9 +87,14 @@ export const DNO_USER: UserProfile = {
   district: 'Washim',
   allowedTabs: [
     'dashboard',
+    'facilitation_tools',
     'visitors',
     'tickets',
+    'candidates',
     'students',
+    'reports',
+    'notices_circulars',
+    'knowledge_base',
     'settings',
     'profile',
     'user_management',
@@ -124,19 +129,27 @@ export const DEFAULT_STAFF_USER: UserProfile = {
   district: 'Washim',
   allowedTabs: [
     'dashboard',
+    'facilitation_tools',
     'visitors',
+    'candidates',
     'students',
+    'tickets',
+    'notices_circulars',
+    'knowledge_base',
+    'settings',
     'profile',
   ],
   allowedFeatures: [
     'whatsapp_tool',
     'qr_upload_tool',
     'ticket_generator_tool',
+    'img_to_pdf_tool',
+    'image_to_text_tool',
     'add_candidate',
     'add_visitor',
     'export_reports',
   ],
-  canUseApiKey: false,
+  canUseApiKey: true,
   isActive: true,
   createdAt: '2026-08-25T00:00:00.000Z',
   phone: '+91 98220 12345',
@@ -202,10 +215,6 @@ export function hasTabPermission(user: UserProfile | null | undefined, tab: TabP
     // Super Administrator has MASTER access across ALL portal tabs
     return true;
   }
-  const isDno = user.role === 'dno' || user.username.toLowerCase() === 'dno';
-  if (isDno) {
-    return true;
-  }
 
   // Check user's allowedTabs explicitly configured by Super Admin
   const allowed = Array.isArray(user.allowedTabs) ? user.allowedTabs : [];
@@ -219,12 +228,19 @@ export function hasTabPermission(user: UserProfile | null | undefined, tab: TabP
   if (tab === 'settings' && allowed.includes('profile')) return true;
   if (tab === 'profile' && allowed.includes('settings')) return true;
 
-  // Fallback defaults if allowedTabs was empty
-  if (allowed.length === 0) {
-    if (tab === 'dashboard' || tab === 'profile') return true;
-    if (user.role === 'counsellor' && (tab === 'tickets' || tab === 'candidates' || tab === 'knowledge_base')) return true;
-    if ((user.role === 'supporting_staff' || user.role === 'operator') && (tab === 'visitors' || tab === 'candidates' || tab === 'facilitation_tools')) return true;
+  // If Super Admin explicitly configured allowedTabs (non-empty), honor that configuration
+  if (allowed.length > 0) {
+    return false;
   }
+
+  // Fallback defaults only if allowedTabs was completely empty/unconfigured
+  const isDno = user.role === 'dno' || user.username.toLowerCase() === 'dno';
+  if (isDno) {
+    return true;
+  }
+  if (tab === 'dashboard' || tab === 'profile') return true;
+  if (user.role === 'counsellor' && (tab === 'tickets' || tab === 'candidates' || tab === 'knowledge_base')) return true;
+  if ((user.role === 'supporting_staff' || user.role === 'operator') && (tab === 'visitors' || tab === 'candidates' || tab === 'facilitation_tools')) return true;
 
   return false;
 }
@@ -239,14 +255,16 @@ export function hasFeaturePermission(user: UserProfile | null | undefined, featu
     // Super Administrator has MASTER access across ALL interactive tools and utilities
     return true;
   }
-  // Counsellors always have permission for ticket generator tool
-  if (feature === 'ticket_generator_tool' && user.role === 'counsellor') {
-    return true;
-  }
+
+  // If Super Admin explicitly configured allowedFeatures array (even if empty to revoke all tools)
   if (Array.isArray(user.allowedFeatures)) {
     return user.allowedFeatures.includes(feature);
   }
-  // Fallback for root DNO
+
+  // Fallback defaults only if allowedFeatures is unconfigured
+  if (feature === 'ticket_generator_tool' && user.role === 'counsellor') {
+    return true;
+  }
   return user.role === 'dno' || user.username.toLowerCase() === 'dno';
 }
 
@@ -552,42 +570,119 @@ if (typeof window !== 'undefined') {
   }, 50);
 }
 
+// Broadcast channel for real-time instant cross-tab user permission synchronization
+const userBroadcastChannel = typeof window !== 'undefined' && 'BroadcastChannel' in window
+  ? new BroadcastChannel('vmk_user_permissions_channel')
+  : null;
+
+export function broadcastUserUpdate(updatedUser: UserProfile) {
+  if (userBroadcastChannel) {
+    try {
+      userBroadcastChannel.postMessage({ type: 'USER_PERMISSIONS_UPDATED', user: updatedUser });
+    } catch {}
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('vmk_user_updated', { detail: updatedUser }));
+  }
+}
+
+if (userBroadcastChannel) {
+  userBroadcastChannel.onmessage = (event) => {
+    if (event.data?.type === 'USER_PERMISSIONS_UPDATED' && event.data?.user) {
+      const u = event.data.user as UserProfile;
+      const all = getAllUsers();
+      const idx = all.findIndex(
+        (existing) =>
+          existing.id === u.id ||
+          (existing.uid && existing.uid === u.id) ||
+          existing.username.toLowerCase() === u.username.toLowerCase()
+      );
+      if (idx >= 0) {
+        all[idx] = { ...all[idx], ...u };
+      } else {
+        all.push(u);
+      }
+      safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(all));
+      notifyUserSubscribers(all);
+
+      // If the currently logged in user in this tab is the one updated, update currentUser instantly
+      const current = getCurrentUser();
+      if (
+        current &&
+        (current.id === u.id ||
+          (current.uid && current.uid === u.id) ||
+          current.username.toLowerCase() === u.username.toLowerCase())
+      ) {
+        setCurrentUser({
+          ...current,
+          ...u,
+          allowedTabs: Array.isArray(u.allowedTabs) ? u.allowedTabs : current.allowedTabs,
+          allowedFeatures: Array.isArray(u.allowedFeatures) ? u.allowedFeatures : current.allowedFeatures,
+        });
+      }
+    }
+  };
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === USERS_STORAGE_KEY && e.newValue) {
+      try {
+        const freshList = JSON.parse(e.newValue);
+        if (Array.isArray(freshList)) {
+          notifyUserSubscribers(freshList);
+          const current = getCurrentUser();
+          if (current) {
+            const freshCur = freshList.find(
+              (u: any) =>
+                u.id === current.id ||
+                (u.uid && u.uid === current.id) ||
+                u.username?.toLowerCase() === current.username.toLowerCase()
+            );
+            if (freshCur) {
+              setCurrentUser({
+                ...current,
+                ...freshCur,
+                allowedTabs: freshCur.allowedTabs,
+                allowedFeatures: freshCur.allowedFeatures,
+              });
+            }
+          }
+        }
+      } catch {}
+    }
+  });
+}
+
 export async function saveUserAsync(user: UserProfile): Promise<{ success: boolean; message: string }> {
   try {
+    const users = getAllUsers();
+    const cleanUsername = (user.username || user.email?.split('@')[0] || '').trim().toLowerCase();
     const userUid = user.id || (user as any).uid || `user_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+
+    const existingIndex = users.findIndex(
+      (u) =>
+        u.id === userUid ||
+        (u.uid && u.uid === userUid) ||
+        (user.id && u.id === user.id) ||
+        u.username?.toLowerCase() === cleanUsername
+    );
+
+    const existingUser = existingIndex >= 0 ? users[existingIndex] : null;
+
     let cleanUser: UserProfile = {
       ...user,
-      id: userUid,
-      uid: userUid,
-      username: (user.username || user.email?.split('@')[0] || '').trim().toLowerCase(),
-      fullName: user.fullName?.trim() || user.username.trim(),
+      id: existingUser ? existingUser.id : userUid,
+      uid: existingUser ? (existingUser.uid || existingUser.id) : userUid,
+      username: cleanUsername,
+      fullName: user.fullName?.trim() || cleanUsername,
+      allowedTabs: Array.isArray(user.allowedTabs) ? [...user.allowedTabs] : ['dashboard', 'profile'],
+      allowedFeatures: Array.isArray(user.allowedFeatures) ? [...user.allowedFeatures] : [],
+      isActive: user.isActive !== false,
+      canUseApiKey: user.canUseApiKey !== false,
     };
 
-    // 1. Post to persistent server API first
-    try {
-      const resp = await fetch('/api/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cleanUser),
-      });
-      const data = await resp.json().catch(() => null);
-      if (resp.ok && data?.success && data?.user) {
-        cleanUser = { ...cleanUser, ...data.user, id: userUid, uid: userUid };
-      } else if (data && !data.success && data.message) {
-        // Only error out if the server reported a real conflict like duplicate username
-        if (data.message.includes('already in use')) {
-          return { success: false, message: data.message };
-        }
-      }
-    } catch (e: any) {
-      console.warn('Server user save network notice, saving locally:', e?.message);
-    }
-
-    // 2. Update local storage & subscribers
-    const users = getAllUsers();
-    const existingIndex = users.findIndex(
-      (u) => u.id === cleanUser.id || (u.uid && u.uid === cleanUser.id) || u.username?.toLowerCase() === cleanUser.username.toLowerCase()
-    );
+    // 1. Immediately persist locally to ensure zero-lag instant UI responsiveness
     if (existingIndex >= 0) {
       users[existingIndex] = { ...users[existingIndex], ...cleanUser };
       if (!cleanUser.profilePicture) {
@@ -599,6 +694,40 @@ export async function saveUserAsync(user: UserProfile): Promise<{ success: boole
     safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
     notifyUserSubscribers(users);
 
+    // Update active session if this is the currently logged in user
+    const currentUser = getCurrentUser();
+    if (
+      currentUser &&
+      (currentUser.id === cleanUser.id ||
+        (currentUser.uid && currentUser.uid === cleanUser.id) ||
+        currentUser.username.toLowerCase() === cleanUser.username.toLowerCase())
+    ) {
+      setCurrentUser({
+        ...currentUser,
+        ...cleanUser,
+        allowedTabs: cleanUser.allowedTabs,
+        allowedFeatures: cleanUser.allowedFeatures,
+      });
+    }
+
+    // Broadcast permission changes to all open tabs and windows
+    broadcastUserUpdate(cleanUser);
+
+    // 2. Post to persistent server API
+    try {
+      const resp = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cleanUser),
+      });
+      const data = await resp.json().catch(() => null);
+      if (resp.ok && data?.success && data?.user) {
+        cleanUser = { ...cleanUser, ...data.user };
+      }
+    } catch (e: any) {
+      console.warn('Server user save network notice, saved locally:', e?.message);
+    }
+
     // Sync full user array across serverless instances in background
     fetch('/api/users/sync', {
       method: 'POST',
@@ -606,18 +735,12 @@ export async function saveUserAsync(user: UserProfile): Promise<{ success: boole
       body: JSON.stringify({ users }),
     }).catch(() => {});
 
-    // Update current session if the edited user is currently logged in
-    const currentUser = getCurrentUser();
-    if (currentUser && (currentUser.id === cleanUser.id || (currentUser.uid && currentUser.uid === cleanUser.id) || currentUser.username.toLowerCase() === cleanUser.username.toLowerCase())) {
-      setCurrentUser(cleanUser);
-    }
-
     // 3. Save directly to Firestore cloud database with UID & lookup aliases
     try {
       const sanitized = sanitizeForFirestore(cleanUser);
       // Primary document by UID
       await setDoc(doc(db, 'users', cleanUser.id), sanitized, { merge: true });
-      // Alias document by username for instant 0ms lookup
+      // Alias document by username for instant lookup
       if (cleanUser.username) {
         await setDoc(doc(db, 'users', cleanUser.username.toLowerCase()), sanitized, { merge: true });
       }
@@ -625,11 +748,9 @@ export async function saveUserAsync(user: UserProfile): Promise<{ success: boole
       if (cleanUser.email) {
         await setDoc(doc(db, 'users', cleanUser.email.toLowerCase()), sanitized, { merge: true });
       }
-    } catch (e: any) {
-      // Gracefully handle Firestore quota/offline
-    }
+    } catch {}
 
-    return { success: true, message: 'User profile saved successfully across all systems.' };
+    return { success: true, message: 'User profile and permissions saved successfully.' };
   } catch (err: any) {
     console.error('Error saving user:', err);
     return { success: false, message: err?.message || 'Failed to save user profile.' };
@@ -639,20 +760,33 @@ export async function saveUserAsync(user: UserProfile): Promise<{ success: boole
 export function saveUser(user: UserProfile): { success: boolean; message: string } {
   try {
     const users = getAllUsers();
-    const existingIndex = users.findIndex((u) => u.id === user.id);
+    const cleanUsername = (user.username || '').trim().toLowerCase();
+    const cleanId = (user.id || (user as any).uid || '').trim();
 
-    // Check duplicate username for another user
-    const usernameTaken = users.some(
-      (u) => u.username.toLowerCase() === user.username.toLowerCase() && u.id !== user.id
+    const existingIndex = users.findIndex(
+      (u) =>
+        (cleanId && (u.id === cleanId || (u.uid && u.uid === cleanId))) ||
+        u.username.toLowerCase() === cleanUsername
     );
-    if (usernameTaken) {
-      return { success: false, message: `Username "${user.username}" is already taken.` };
+
+    // Check duplicate username for another user with different id
+    if (existingIndex === -1) {
+      const usernameTaken = users.some(
+        (u) => u.username.toLowerCase() === cleanUsername && u.id !== cleanId
+      );
+      if (usernameTaken) {
+        return { success: false, message: `Username "${user.username}" is already taken.` };
+      }
     }
 
     const cleanUser: UserProfile = {
       ...user,
-      username: user.username.trim().toLowerCase(),
-      fullName: user.fullName?.trim() || user.username.trim(),
+      id: cleanId || (existingIndex >= 0 ? users[existingIndex].id : `user_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`),
+      uid: cleanId || (existingIndex >= 0 ? (users[existingIndex].uid || users[existingIndex].id) : undefined),
+      username: cleanUsername,
+      fullName: user.fullName?.trim() || cleanUsername,
+      allowedTabs: Array.isArray(user.allowedTabs) ? [...user.allowedTabs] : ['dashboard', 'profile'],
+      allowedFeatures: Array.isArray(user.allowedFeatures) ? [...user.allowedFeatures] : [],
     };
 
     if (existingIndex >= 0) {
@@ -670,9 +804,22 @@ export function saveUser(user: UserProfile): { success: boolean; message: string
 
     // Update current session if the edited user is currently logged in
     const currentUser = getCurrentUser();
-    if (currentUser && (currentUser.id === user.id || currentUser.username.toLowerCase() === user.username.toLowerCase())) {
-      setCurrentUser(cleanUser);
+    if (
+      currentUser &&
+      (currentUser.id === cleanUser.id ||
+        (currentUser.uid && currentUser.uid === cleanUser.id) ||
+        currentUser.username.toLowerCase() === cleanUser.username.toLowerCase())
+    ) {
+      setCurrentUser({
+        ...currentUser,
+        ...cleanUser,
+        allowedTabs: cleanUser.allowedTabs,
+        allowedFeatures: cleanUser.allowedFeatures,
+      });
     }
+
+    // Broadcast across all tabs
+    broadcastUserUpdate(cleanUser);
 
     // Background sync to server API
     fetch('/api/users', {
@@ -829,32 +976,7 @@ export function matchUserLocally(users: UserProfile[], identifier: string): User
   const raw = String(identifier || '').trim().toLowerCase();
   if (!raw) return null;
 
-  if (
-    raw === 'shrinath' ||
-    raw === 'shri123' ||
-    raw === 'shri' ||
-    raw === 'super_admin_shrinath' ||
-    raw === 'shrinathyg@gmail.com' ||
-    raw.replace(/\D/g, '') === '9822089750'
-  ) {
-    return SUPER_ADMIN_USER;
-  }
-  if (
-    raw === 'dno' ||
-    raw === 'dno_washim_admin' ||
-    raw === 'dno.washim@cetcell.mah.gov.in'
-  ) {
-    return DNO_USER;
-  }
-  if (
-    raw === 'staff' ||
-    raw === 'staff_operator_1' ||
-    raw === 'staff.washim@cetcell.mah.gov.in'
-  ) {
-    return DEFAULT_STAFF_USER;
-  }
-
-  // 1. Direct match on username or id / uid
+  // 1. Direct match on username or id / uid from the provided users database FIRST
   const direct = users.find(
     (u) =>
       u.username?.toLowerCase() === raw ||
@@ -890,6 +1012,32 @@ export function matchUserLocally(users: UserProfile[], identifier: string): User
     (u) => u.fullName && u.fullName.toLowerCase().trim() === raw
   );
   if (nameMatch) return nameMatch;
+
+  // 5. Fallback defaults only if NOT found in stored database list
+  if (
+    raw === 'shrinath' ||
+    raw === 'shri123' ||
+    raw === 'shri' ||
+    raw === 'super_admin_shrinath' ||
+    raw === 'shrinathyg@gmail.com' ||
+    raw.replace(/\D/g, '') === '9822089750'
+  ) {
+    return SUPER_ADMIN_USER;
+  }
+  if (
+    raw === 'dno' ||
+    raw === 'dno_washim_admin' ||
+    raw === 'dno.washim@cetcell.mah.gov.in'
+  ) {
+    return DNO_USER;
+  }
+  if (
+    raw === 'staff' ||
+    raw === 'staff_operator_1' ||
+    raw === 'staff.washim@cetcell.mah.gov.in'
+  ) {
+    return DEFAULT_STAFF_USER;
+  }
 
   return null;
 }
@@ -1308,7 +1456,27 @@ export async function findUserByUsername(username: string): Promise<UserProfile 
   const localFound = matchUserLocally(localUsers, clean);
   if (localFound) return localFound;
 
-  // 2. Root Super Admin fallback if not customized in local storage
+  // 2. Query persistent server API for dynamically updated user
+  try {
+    const res = await fetch(`/api/users/lookup/${encodeURIComponent(clean)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.success && data?.found && data?.user) {
+        const u = data.user as UserProfile;
+        const all = getAllUsers();
+        const idx = all.findIndex((x) => x.id === u.id || x.username?.toLowerCase() === u.username?.toLowerCase());
+        if (idx >= 0) all[idx] = u; else all.push(u);
+        safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(all));
+        return u;
+      }
+    }
+  } catch {}
+
+  // 3. Check official portal seed baseline
+  const official = matchUserLocally(OFFICIAL_PORTAL_USERS, clean);
+  if (official) return official;
+
+  // 4. Default accounts fallback only if not in database
   if (
     trimmed === 'shrinath' ||
     trimmed === 'shri123' ||
@@ -1333,10 +1501,6 @@ export async function findUserByUsername(username: string): Promise<UserProfile 
   ) {
     return DEFAULT_STAFF_USER;
   }
-
-  // 3. Check official portal seed baseline
-  const official = matchUserLocally(OFFICIAL_PORTAL_USERS, clean);
-  if (official) return official;
 
   // Helper to cache in localStorage
   const cacheUserLocally = (candidate: UserProfile) => {

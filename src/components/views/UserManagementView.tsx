@@ -479,10 +479,17 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     setIsUploadingImage(false);
     setUploadError('');
     setRole(user.role === 'operator' ? 'supporting_staff' : user.role);
-    setAllowedTabs([...user.allowedTabs]);
-    setAllowedFeatures([...user.allowedFeatures]);
+    const userTabs = Array.isArray(user.allowedTabs) ? [...user.allowedTabs] : [];
+    if (userTabs.includes('students') && !userTabs.includes('candidates')) userTabs.push('candidates');
+    if (userTabs.includes('candidates') && !userTabs.includes('students')) userTabs.push('students');
+    if (userTabs.includes('profile') && !userTabs.includes('settings')) userTabs.push('settings');
+    if (userTabs.includes('settings') && !userTabs.includes('profile')) userTabs.push('profile');
+    setAllowedTabs(userTabs);
+
+    const userFeatures = Array.isArray(user.allowedFeatures) ? [...user.allowedFeatures] : [];
+    setAllowedFeatures(userFeatures);
     setCanUseApiKey(user.canUseApiKey !== false);
-    setIsActive(user.isActive);
+    setIsActive(user.isActive !== false);
     setFeedback({ message: '', type: '' });
     setIsModalOpen(true);
   };
@@ -545,9 +552,32 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     ) {
       return;
     }
-    setAllowedTabs((prev) =>
-      prev.includes(tabId) ? prev.filter((t) => t !== tabId) : [...prev, tabId]
-    );
+
+    const hasThisTab =
+      allowedTabs.includes(tabId) ||
+      (tabId === 'candidates' && allowedTabs.includes('students')) ||
+      (tabId === 'students' && allowedTabs.includes('candidates')) ||
+      (tabId === 'settings' && allowedTabs.includes('profile')) ||
+      (tabId === 'profile' && allowedTabs.includes('settings'));
+
+    setAllowedTabs((prev) => {
+      if (hasThisTab) {
+        return prev.filter((t) => {
+          if (tabId === 'candidates' || tabId === 'students') {
+            return t !== 'candidates' && t !== 'students';
+          }
+          if (tabId === 'settings' || tabId === 'profile') {
+            return t !== 'settings' && t !== 'profile';
+          }
+          return t !== tabId;
+        });
+      } else {
+        const next = [...prev, tabId];
+        if (tabId === 'candidates' && !next.includes('students')) next.push('students');
+        if (tabId === 'settings' && !next.includes('profile')) next.push('profile');
+        return next;
+      }
+    });
   };
 
   const handleToggleFeature = (featureId: FeaturePermission) => {
@@ -557,36 +587,98 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   };
 
   const handleSelectAllTabs = () => {
-    setAllowedTabs(AVAILABLE_TABS.map((t) => t.id));
+    setAllowedTabs([...AVAILABLE_TABS.map((t) => t.id), 'students', 'profile']);
   };
 
   const handleClearAllTabs = () => {
-    setAllowedTabs(['profile']);
+    setAllowedTabs(['profile', 'settings']);
   };
 
   const handleRolePreset = (selectedRole: 'super_admin' | 'dno' | 'counsellor' | 'supporting_staff' | 'student') => {
     setRole(selectedRole);
     if (selectedRole === 'super_admin') {
       setDesignation('Super Administrator');
-      setAllowedTabs(['user_management', 'profile']);
+      setAllowedTabs(['user_management', 'profile', 'settings']);
       setAllowedFeatures([]);
       setCanUseApiKey(true);
     } else if (selectedRole === 'dno') {
       setDesignation('District Nodal Officer (DNO)');
-      setAllowedTabs(['dashboard', 'visitors', 'tickets', 'students', 'user_management', 'settings', 'profile', 'google_sheets']);
-      setAllowedFeatures(['whatsapp_tool', 'qr_upload_tool', 'ticket_generator_tool', 'img_to_pdf_tool', 'image_to_text_tool', 'add_candidate', 'add_visitor', 'export_reports']);
+      setAllowedTabs([
+        'dashboard',
+        'facilitation_tools',
+        'visitors',
+        'tickets',
+        'candidates',
+        'students',
+        'reports',
+        'notices_circulars',
+        'knowledge_base',
+        'user_management',
+        'settings',
+        'profile',
+        'google_sheets',
+      ]);
+      setAllowedFeatures([
+        'whatsapp_tool',
+        'qr_upload_tool',
+        'ticket_generator_tool',
+        'img_to_pdf_tool',
+        'image_to_text_tool',
+        'add_candidate',
+        'add_visitor',
+        'export_reports',
+      ]);
       setCanUseApiKey(true);
     } else if (selectedRole === 'counsellor') {
       setDesignation('Student Guidance Counsellor');
-      setAllowedTabs(['dashboard', 'tickets', 'visitors', 'students', 'profile']);
-      setAllowedFeatures(['whatsapp_tool', 'ticket_generator_tool', 'add_candidate', 'add_visitor']);
+      setAllowedTabs([
+        'dashboard',
+        'facilitation_tools',
+        'tickets',
+        'visitors',
+        'candidates',
+        'students',
+        'notices_circulars',
+        'knowledge_base',
+        'settings',
+        'profile',
+      ]);
+      setAllowedFeatures([
+        'whatsapp_tool',
+        'ticket_generator_tool',
+        'qr_upload_tool',
+        'img_to_pdf_tool',
+        'image_to_text_tool',
+        'add_candidate',
+        'add_visitor',
+      ]);
     } else if (selectedRole === 'supporting_staff') {
       setDesignation('Supporting Staff');
-      setAllowedTabs(['dashboard', 'visitors', 'students', 'profile']);
-      setAllowedFeatures(['whatsapp_tool', 'qr_upload_tool', 'ticket_generator_tool', 'add_candidate', 'add_visitor', 'export_reports']);
+      setAllowedTabs([
+        'dashboard',
+        'facilitation_tools',
+        'visitors',
+        'candidates',
+        'students',
+        'tickets',
+        'notices_circulars',
+        'knowledge_base',
+        'settings',
+        'profile',
+      ]);
+      setAllowedFeatures([
+        'whatsapp_tool',
+        'qr_upload_tool',
+        'ticket_generator_tool',
+        'img_to_pdf_tool',
+        'image_to_text_tool',
+        'add_candidate',
+        'add_visitor',
+        'export_reports',
+      ]);
     } else if (selectedRole === 'student') {
       setDesignation('Student / Candidate');
-      setAllowedTabs(['dashboard', 'students', 'profile']);
+      setAllowedTabs(['dashboard', 'candidates', 'students', 'knowledge_base', 'notices_circulars', 'settings', 'profile']);
       setAllowedFeatures([]);
     }
   };
@@ -1732,7 +1824,10 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {AVAILABLE_TABS.map((tab) => {
-                    const isChecked = allowedTabs.includes(tab.id);
+                    const isChecked =
+                      allowedTabs.includes(tab.id) ||
+                      (tab.id === 'candidates' && allowedTabs.includes('students')) ||
+                      (tab.id === 'settings' && allowedTabs.includes('profile'));
                     return (
                       <label
                         key={tab.id}

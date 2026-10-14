@@ -71,12 +71,34 @@ export const UserTabAccessManager: React.FC<UserTabAccessManagerProps> = ({
   const handleToggleTab = async (user: UserProfile, tabId: TabPermission) => {
     setSavingUserId(user.id);
     const currentTabs = Array.isArray(user.allowedTabs) ? [...user.allowedTabs] : [];
+
+    const hasThisTab =
+      currentTabs.includes(tabId) ||
+      (tabId === 'candidates' && currentTabs.includes('students')) ||
+      (tabId === 'students' && currentTabs.includes('candidates')) ||
+      (tabId === 'settings' && currentTabs.includes('profile')) ||
+      (tabId === 'profile' && currentTabs.includes('settings'));
+
     let updatedTabs: TabPermission[];
 
-    if (currentTabs.includes(tabId)) {
-      updatedTabs = currentTabs.filter((t) => t !== tabId);
+    if (hasThisTab) {
+      updatedTabs = currentTabs.filter((t) => {
+        if (tabId === 'candidates' || tabId === 'students') {
+          return t !== 'candidates' && t !== 'students';
+        }
+        if (tabId === 'settings' || tabId === 'profile') {
+          return t !== 'settings' && t !== 'profile';
+        }
+        return t !== tabId;
+      });
     } else {
       updatedTabs = [...currentTabs, tabId];
+      if (tabId === 'candidates' && !updatedTabs.includes('students')) {
+        updatedTabs.push('students');
+      }
+      if (tabId === 'settings' && !updatedTabs.includes('profile')) {
+        updatedTabs.push('profile');
+      }
     }
 
     const updatedUser: UserProfile = {
@@ -116,12 +138,15 @@ export const UserTabAccessManager: React.FC<UserTabAccessManagerProps> = ({
           'dashboard',
           'facilitation_tools',
           'candidates',
+          'students',
           'tickets',
           'reports',
           'notices_circulars',
           'knowledge_base',
           'settings',
+          'profile',
           'visitors',
+          'google_sheets',
         ];
         break;
       case 'scrutiny':
@@ -129,8 +154,11 @@ export const UserTabAccessManager: React.FC<UserTabAccessManagerProps> = ({
           'dashboard',
           'facilitation_tools',
           'candidates',
+          'students',
           'notices_circulars',
           'knowledge_base',
+          'settings',
+          'profile',
         ];
         break;
       case 'helpdesk':
@@ -140,10 +168,14 @@ export const UserTabAccessManager: React.FC<UserTabAccessManagerProps> = ({
           'tickets',
           'knowledge_base',
           'visitors',
+          'candidates',
+          'students',
+          'settings',
+          'profile',
         ];
         break;
       case 'minimal':
-        targetTabs = ['dashboard', 'facilitation_tools'];
+        targetTabs = ['dashboard', 'facilitation_tools', 'settings', 'profile'];
         break;
     }
 

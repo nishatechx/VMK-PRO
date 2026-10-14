@@ -24,12 +24,30 @@ export const firebaseConfig = {
 // Initialize Firebase App
 export const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Set Firestore log level to error to prevent noisy 10-second backend connection warnings
+// Set Firestore log level to silent to prevent noisy backend connection warnings
 try {
-  setLogLevel('error');
+  setLogLevel('silent');
 } catch {}
 
-// Initialize Firestore with auto-detect long-polling and multi-tab persistent cache
+// Suppress transient 10-second offline warning in console when offline/in proxy
+if (typeof window !== 'undefined') {
+  const originalError = console.error;
+  console.error = (...args: any[]) => {
+    const text = args
+      .map((a) => (typeof a === 'string' ? a : a instanceof Error ? a.message : ''))
+      .join(' ');
+    if (
+      text.includes('Could not reach Cloud Firestore backend') ||
+      text.includes('Backend didn\'t respond within 10 seconds')
+    ) {
+      // Suppress offline mode warning - app runs with persistent local cache and server API
+      return;
+    }
+    originalError.apply(console, args);
+  };
+}
+
+// Initialize Firestore with force long-polling and multi-tab persistent cache
 const databaseId = (firebaseConfigData as Record<string, any>)?.firestoreDatabaseId;
 
 function createFirestoreInstance(): Firestore {
@@ -37,7 +55,7 @@ function createFirestoreInstance(): Firestore {
     return initializeFirestore(
       firebaseApp,
       {
-        experimentalAutoDetectLongPolling: true,
+        experimentalForceLongPolling: true,
         localCache: persistentLocalCache({
           tabManager: persistentMultipleTabManager(),
         }),
@@ -49,7 +67,7 @@ function createFirestoreInstance(): Firestore {
       return initializeFirestore(
         firebaseApp,
         {
-          experimentalAutoDetectLongPolling: true,
+          experimentalForceLongPolling: true,
         },
         databaseId
       );

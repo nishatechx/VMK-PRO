@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   Zap,
   Info,
+  Lock,
 } from 'lucide-react';
 import { APP_ASSETS } from '../../constants/assets';
 import { UserProfile } from '../../types/auth';
@@ -187,10 +188,15 @@ export const FacilitationToolsView: React.FC<FacilitationToolsViewProps> = ({
                   type="button"
                   onClick={tool.onClick}
                   disabled={!tool.allowed}
-                  className="w-full py-2.5 px-4 rounded-xl bg-[#073B70] hover:bg-[#0866D9] text-white text-xs font-bold transition-all cursor-pointer shadow-xs flex items-center justify-center gap-2 group-hover:shadow-md disabled:opacity-40 disabled:cursor-not-allowed active:scale-98"
+                  className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-2 group-hover:shadow-md ${
+                    tool.allowed
+                      ? 'bg-[#073B70] hover:bg-[#0866D9] text-white cursor-pointer active:scale-98'
+                      : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-75'
+                  }`}
                 >
-                  <span>{tool.actionLabel}</span>
-                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                  {!tool.allowed && <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
+                  <span>{tool.allowed ? tool.actionLabel : 'Access Restricted by Super Admin'}</span>
+                  {tool.allowed && <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />}
                 </button>
               </div>
             </div>

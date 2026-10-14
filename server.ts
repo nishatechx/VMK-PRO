@@ -511,20 +511,25 @@ async function startServer() {
     const cleanPassword = user.password ? String(user.password).trim() : "";
     const users = getStoredUsers();
 
-    // Check duplicate username for another user ID
-    const duplicate = users.find(
-      (u: any) => u.username?.toLowerCase() === cleanUsername && u.id !== user.id
-    );
-    if (duplicate) {
-      return res.status(400).json({
-        success: false,
-        message: `Username "${user.username}" is already in use by another profile.`,
-      });
-    }
-
     const existingIndex = users.findIndex(
-      (u: any) => u.id === user.id || u.username?.toLowerCase() === cleanUsername
+      (u: any) =>
+        (user.id && u.id === user.id) ||
+        (user.uid && (u.id === user.uid || u.uid === user.uid)) ||
+        u.username?.toLowerCase() === cleanUsername
     );
+
+    // Check duplicate username only if creating a new user profile
+    if (existingIndex === -1) {
+      const duplicate = users.find(
+        (u: any) => u.username?.toLowerCase() === cleanUsername
+      );
+      if (duplicate) {
+        return res.status(400).json({
+          success: false,
+          message: `Username "${user.username}" is already in use by another profile.`,
+        });
+      }
+    }
 
     const existingUser = existingIndex >= 0 ? users[existingIndex] : null;
 
