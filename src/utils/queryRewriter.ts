@@ -84,11 +84,9 @@ Do not return:
 The final output must be concise, natural, professional, and ready to paste directly into the SAC ticket Query field.`;
 
 const CANDIDATE_MODELS = [
-  "gemini-3.6-flash",
-  "gemini-3.7-flash",
-  "gemini-3.8-flash",
-  "gemini-3.5-flash",
+  "gemini-flash-latest",
   "gemini-3.1-flash-lite",
+  "gemini-4-argon",
 ];
 
 /**

@@ -1514,14 +1514,12 @@ Query: <value>`;
 
       const results: Array<{ pageIndex: number; name?: string; text: string }> = [];
 
-      // Multi-model resilience: prioritize Google's recommended gemini-3.6-flash and immediately
+      // Multi-model resilience: prioritize Google's recommended gemini-flash-latest and immediately
       // fallback across companion vision models if any individual model encounters temporary demand spikes (503/429/UNAVAILABLE).
       const candidateModels = [
-        "gemini-3.6-flash",
-        "gemini-3.7-flash",
-        "gemini-3.8-flash",
-        "gemini-3.5-flash",
+        "gemini-flash-latest",
         "gemini-3.1-flash-lite",
+        "gemini-4-argon",
       ];
 
       for (let i = 0; i < imageList.length; i++) {
@@ -1663,11 +1661,9 @@ Do not extract any other text. Follow the system instructions strictly.`
       const ai = getGeminiClient(customKey);
 
       const candidateModels = [
-        "gemini-3.6-flash",
-        "gemini-3.7-flash",
-        "gemini-3.8-flash",
-        "gemini-3.5-flash",
+        "gemini-flash-latest",
         "gemini-3.1-flash-lite",
+        "gemini-4-argon",
       ];
 
       const systemInstruction = `You are a professional bilingual translator specialized in translating Marathi (मराठी) and Hindi (हिन्दी) documents into natural, highly accurate, and fluent English.
@@ -1766,11 +1762,9 @@ CRITICAL DIRECTIVES:
       const ai = getGeminiClient(customKey);
 
       const candidateModels = [
-        "gemini-3.6-flash",
-        "gemini-3.7-flash",
-        "gemini-3.8-flash",
-        "gemini-3.5-flash",
+        "gemini-flash-latest",
         "gemini-3.1-flash-lite",
+        "gemini-4-argon",
       ];
 
       const systemInstruction = `You are an expert SAC (Scrutiny and Admission Centre) Ticket counsellor assistant for Maharashtra State Common Entrance Test (CET) and CAP admission portals.

@@ -75,6 +75,7 @@ export interface UserProfile {
   email?: string;
   profilePicture?: string;
   permissionVersion?: number; // Tracks version of permission changes for instant sync & cache invalidation
+  restrictedFeatures?: FeaturePermission[]; // Granular tool restrictions set by Super Admin
 }
 
 export interface StudentRecord {

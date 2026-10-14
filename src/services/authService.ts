@@ -245,8 +245,28 @@ export function hasTabPermission(user: UserProfile | null | undefined, tab: TabP
   return false;
 }
 
+export function getParentTabForFeature(feature: FeaturePermission): TabPermission {
+  switch (feature) {
+    case 'whatsapp_tool':
+    case 'qr_upload_tool':
+    case 'ticket_generator_tool':
+    case 'img_to_pdf_tool':
+    case 'image_to_text_tool':
+      return 'facilitation_tools';
+    case 'add_candidate':
+      return 'candidates';
+    case 'add_visitor':
+      return 'visitors';
+    case 'export_reports':
+      return 'reports';
+    default:
+      return 'dashboard';
+  }
+}
+
 /**
- * Check whether a user has been granted a specific interactive tool/feature permission
+ * Check whether a user has been granted a specific interactive tool/feature permission.
+ * Rule: Tab access = access to all tools within that tab, unless individually restricted by Super Admin.
  */
 export function hasFeaturePermission(user: UserProfile | null | undefined, feature: FeaturePermission): boolean {
   if (!user) return false;
@@ -256,16 +276,19 @@ export function hasFeaturePermission(user: UserProfile | null | undefined, featu
     return true;
   }
 
-  // If Super Admin explicitly configured allowedFeatures array (even if empty to revoke all tools)
-  if (Array.isArray(user.allowedFeatures)) {
-    return user.allowedFeatures.includes(feature);
+  const parentTab = getParentTabForFeature(feature);
+  // 1. If user does not have permission to the parent tab, they cannot access the feature
+  if (!hasTabPermission(user, parentTab)) {
+    return false;
   }
 
-  // Fallback defaults only if allowedFeatures is unconfigured
-  if (feature === 'ticket_generator_tool' && user.role === 'counsellor') {
-    return true;
+  // 2. Check if Super Admin has explicitly restricted this individual tool
+  if (Array.isArray(user.restrictedFeatures) && user.restrictedFeatures.includes(feature)) {
+    return false;
   }
-  return user.role === 'dno' || user.username.toLowerCase() === 'dno';
+
+  // 3. Tab access grants access to all tools within that tab by default
+  return true;
 }
 
 // In-memory subscribers

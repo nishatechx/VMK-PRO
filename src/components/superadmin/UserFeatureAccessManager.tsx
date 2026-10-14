@@ -18,6 +18,7 @@ import {
   subscribeToUsers,
   AVAILABLE_FEATURES,
   SUPER_ADMIN_USER,
+  hasFeaturePermission,
 } from '../../services/authService';
 
 interface UserFeatureAccessManagerProps {
@@ -56,18 +57,19 @@ export const UserFeatureAccessManager: React.FC<UserFeatureAccessManagerProps> =
 
   const handleToggleFeature = async (user: UserProfile, featureId: FeaturePermission) => {
     setSavingUserId(user.id);
-    const currentFeatures = Array.isArray(user.allowedFeatures) ? [...user.allowedFeatures] : [];
-    let updatedFeatures: FeaturePermission[];
+    const restricted = Array.isArray(user.restrictedFeatures) ? [...user.restrictedFeatures] : [];
+    const currentlyHasAccess = hasFeaturePermission(user, featureId);
+    let updatedRestricted: FeaturePermission[];
 
-    if (currentFeatures.includes(featureId)) {
-      updatedFeatures = currentFeatures.filter((f) => f !== featureId);
+    if (currentlyHasAccess) {
+      updatedRestricted = restricted.includes(featureId) ? restricted : [...restricted, featureId];
     } else {
-      updatedFeatures = [...currentFeatures, featureId];
+      updatedRestricted = restricted.filter((f) => f !== featureId);
     }
 
     const updatedUser: UserProfile = {
       ...user,
-      allowedFeatures: updatedFeatures,
+      restrictedFeatures: updatedRestricted,
     };
 
     saveUser(updatedUser);
@@ -94,23 +96,15 @@ export const UserFeatureAccessManager: React.FC<UserFeatureAccessManagerProps> =
     preset: 'all' | 'scrutiny' | 'reception' | 'clear'
   ) => {
     setSavingUserId(user.id);
-    let targetFeatures: FeaturePermission[] = [];
+    let targetRestricted: FeaturePermission[] = [];
+    const allFeatureIds = AVAILABLE_FEATURES.map((f) => f.id);
 
     switch (preset) {
       case 'all':
-        targetFeatures = [
-          'whatsapp_tool',
-          'qr_upload_tool',
-          'ticket_generator_tool',
-          'img_to_pdf_tool',
-          'image_to_text_tool',
-          'add_candidate',
-          'add_visitor',
-          'export_reports',
-        ];
+        targetRestricted = [];
         break;
-      case 'scrutiny':
-        targetFeatures = [
+      case 'scrutiny': {
+        const scrutinyAllowed: FeaturePermission[] = [
           'qr_upload_tool',
           'ticket_generator_tool',
           'img_to_pdf_tool',
@@ -118,18 +112,22 @@ export const UserFeatureAccessManager: React.FC<UserFeatureAccessManagerProps> =
           'add_candidate',
           'export_reports',
         ];
+        targetRestricted = allFeatureIds.filter((f) => !scrutinyAllowed.includes(f));
         break;
-      case 'reception':
-        targetFeatures = ['whatsapp_tool', 'add_visitor', 'qr_upload_tool'];
+      }
+      case 'reception': {
+        const receptionAllowed: FeaturePermission[] = ['whatsapp_tool', 'add_visitor', 'qr_upload_tool'];
+        targetRestricted = allFeatureIds.filter((f) => !receptionAllowed.includes(f));
         break;
+      }
       case 'clear':
-        targetFeatures = [];
+        targetRestricted = [...allFeatureIds];
         break;
     }
 
     const updatedUser: UserProfile = {
       ...user,
-      allowedFeatures: targetFeatures,
+      restrictedFeatures: targetRestricted,
     };
 
     saveUser(updatedUser);
@@ -274,7 +272,7 @@ export const UserFeatureAccessManager: React.FC<UserFeatureAccessManagerProps> =
 
                     {/* Feature Checkboxes */}
                     {AVAILABLE_FEATURES.map((feature) => {
-                      const hasAccess = userFeatures.includes(feature.id);
+                      const hasAccess = hasFeaturePermission(user, feature.id);
 
                       return (
                         <td key={feature.id} className="py-3 px-2 text-center">
