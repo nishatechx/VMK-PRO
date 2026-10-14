@@ -22,6 +22,8 @@ import {
   subscribeToUsers,
   AVAILABLE_TABS,
   SUPER_ADMIN_USER,
+  getFeaturesForTabs,
+  getParentTabForFeature,
 } from '../../services/authService';
 
 interface UserTabAccessManagerProps {
@@ -101,16 +103,31 @@ export const UserTabAccessManager: React.FC<UserTabAccessManagerProps> = ({
       }
     }
 
+    if (!updatedTabs.includes('facilitation_tools')) {
+      updatedTabs.push('facilitation_tools');
+    }
+
+    const autoFeatures = getFeaturesForTabs(updatedTabs);
+    const existingFeatures = Array.isArray(user.allowedFeatures) ? user.allowedFeatures : [];
+    const combinedFeatures = Array.from(new Set([...autoFeatures, ...existingFeatures]))
+      .filter((feat) => {
+        const parentTab = getParentTabForFeature(feat);
+        return updatedTabs.includes(parentTab) ||
+          (parentTab === 'candidates' && updatedTabs.includes('students')) ||
+          (parentTab === 'students' && updatedTabs.includes('candidates'));
+      });
+
     const updatedUser: UserProfile = {
       ...user,
       allowedTabs: updatedTabs,
+      allowedFeatures: combinedFeatures,
     };
 
     saveUser(updatedUser);
     try {
       await saveUserAsync(updatedUser);
       setFeedback({
-        msg: `Updated tab permissions for ${user.fullName} (${user.username})`,
+        msg: `Updated tab & tool permissions for ${user.fullName} (${user.username})`,
         type: 'success',
       });
       if (onRefreshSession) onRefreshSession();

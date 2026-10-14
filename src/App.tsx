@@ -41,6 +41,7 @@ import {
   setCurrentUser,
   subscribeToUsers,
   syncUsersFromServer,
+  refreshUserPermissionsFromBackend,
   hasTabPermission,
   hasFeaturePermission,
 } from './services/authService';
@@ -263,19 +264,30 @@ export default function App() {
     syncUsersFromServer().catch(() => {});
     registerServiceWorkerAndSync();
 
+    // Check backend permissions for currently authenticated user immediately on session restore
+    const cur = getCurrentUser();
+    if (cur) {
+      refreshUserPermissionsFromBackend(cur).then((refreshed) => {
+        if (refreshed) {
+          setCurUser(refreshed);
+        }
+      });
+    }
+
     const unsubscribe = subscribeToUsers((users) => {
-      const cur = getCurrentUser();
-      if (cur) {
+      const activeUser = getCurrentUser();
+      if (activeUser) {
         const fresh = users.find(
-          (u) => u.id === cur.id || u.username.toLowerCase() === cur.username.toLowerCase()
+          (u) => u.id === activeUser.id || u.username.toLowerCase() === activeUser.username.toLowerCase()
         );
         if (fresh) {
-          const curVer = cur.permissionVersion || 0;
+          const curVer = activeUser.permissionVersion || 0;
           const freshVer = fresh.permissionVersion || 0;
           if (
             freshVer > curVer ||
-            JSON.stringify(fresh.allowedTabs) !== JSON.stringify(cur.allowedTabs) ||
-            JSON.stringify(fresh.allowedFeatures) !== JSON.stringify(cur.allowedFeatures)
+            JSON.stringify(fresh.allowedTabs) !== JSON.stringify(activeUser.allowedTabs) ||
+            JSON.stringify(fresh.allowedFeatures) !== JSON.stringify(activeUser.allowedFeatures) ||
+            fresh.isActive !== activeUser.isActive
           ) {
             setCurrentUser(fresh);
             setCurUser(fresh);
@@ -284,15 +296,50 @@ export default function App() {
       }
     });
 
+    const handleWindowActive = () => {
+      const activeUser = getCurrentUser();
+      if (activeUser) {
+        refreshUserPermissionsFromBackend(activeUser).then((refreshed) => {
+          if (refreshed) {
+            setCurUser(refreshed);
+          }
+        });
+      }
+      syncUsersFromServer().catch(() => {});
+    };
+
+    window.addEventListener('focus', handleWindowActive);
+    window.addEventListener('online', handleWindowActive);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        handleWindowActive();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     const syncInterval = setInterval(() => {
       syncUsersFromServer().catch(() => {});
-    }, 15000);
+      const activeUser = getCurrentUser();
+      if (activeUser) {
+        refreshUserPermissionsFromBackend(activeUser).catch(() => {});
+      }
+    }, 12000);
 
     return () => {
       unsubscribe();
       clearInterval(syncInterval);
+      window.removeEventListener('focus', handleWindowActive);
+      window.removeEventListener('online', handleWindowActive);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
+
+  // Enforce tab permissions: if active tab is revoked, automatically redirect to permitted dashboard
+  useEffect(() => {
+    if (currentUser && !hasTabPermission(currentUser, activeTab)) {
+      setActiveTab('dashboard');
+    }
+  }, [currentUser, activeTab]);
 
   // Handle Mobile QR scanning view
   if (qrSessionParam) {

@@ -49,10 +49,46 @@ export function sanitizeForFirestore<T>(obj: T): T {
 }
 
 const USERS_STORAGE_KEY = 'vmk_user_profiles_v1';
+const DELETED_USERS_STORAGE_KEY = 'vmk_deleted_user_ids_v1';
 const CURRENT_USER_KEY = 'vmk_current_logged_user';
 const STUDENTS_STORAGE_KEY = 'vmk_students_records_v1';
 const NOTICES_STORAGE_KEY = 'vmk_center_notices_v1';
 const VISITORS_STORAGE_KEY = 'vmk_visitors_records_v1';
+
+export function getDeletedUserIdsLocal(): Set<string> {
+  try {
+    const raw = safeStorage.getItem(DELETED_USERS_STORAGE_KEY);
+    if (raw) {
+      const list = JSON.parse(raw);
+      if (Array.isArray(list)) {
+        return new Set(list.map((id: string) => String(id).toLowerCase().trim()));
+      }
+    }
+  } catch {}
+  return new Set<string>();
+}
+
+export function markUserDeletedLocal(id: string) {
+  try {
+    const clean = String(id || '').toLowerCase().trim();
+    if (!clean) return;
+    const set = getDeletedUserIdsLocal();
+    set.add(clean);
+    safeStorage.setItem(DELETED_USERS_STORAGE_KEY, JSON.stringify(Array.from(set)));
+  } catch {}
+}
+
+export function unmarkUserDeletedLocal(id: string) {
+  try {
+    const clean = String(id || '').toLowerCase().trim();
+    if (!clean) return;
+    const set = getDeletedUserIdsLocal();
+    if (set.has(clean)) {
+      set.delete(clean);
+      safeStorage.setItem(DELETED_USERS_STORAGE_KEY, JSON.stringify(Array.from(set)));
+    }
+  } catch {}
+}
 
 // Default Master Super Admin Account (Root Administrator for all districts)
 export const SUPER_ADMIN_USER: UserProfile = {
@@ -216,6 +252,16 @@ export function hasTabPermission(user: UserProfile | null | undefined, tab: TabP
     return true;
   }
 
+  // Facilitation Tools is accessible by default to all users
+  if (tab === 'facilitation_tools') {
+    return true;
+  }
+
+  // Dashboard and profile are accessible to all users
+  if (tab === 'dashboard' || tab === 'profile') {
+    return true;
+  }
+
   // Check user's allowedTabs explicitly configured by Super Admin
   const allowed = Array.isArray(user.allowedTabs) ? user.allowedTabs : [];
 
@@ -226,23 +272,43 @@ export function hasTabPermission(user: UserProfile | null | undefined, tab: TabP
   if (tab === 'candidates' && allowed.includes('students')) return true;
   if (tab === 'students' && allowed.includes('candidates')) return true;
   if (tab === 'settings' && allowed.includes('profile')) return true;
-  if (tab === 'profile' && allowed.includes('settings')) return true;
-
-  // If Super Admin explicitly configured allowedTabs (non-empty), honor that configuration
-  if (allowed.length > 0) {
-    return false;
-  }
-
-  // Fallback defaults only if allowedTabs was completely empty/unconfigured
-  const isDno = user.role === 'dno' || user.username.toLowerCase() === 'dno';
-  if (isDno) {
-    return true;
-  }
-  if (tab === 'dashboard' || tab === 'profile') return true;
-  if (user.role === 'counsellor' && (tab === 'tickets' || tab === 'candidates' || tab === 'knowledge_base')) return true;
-  if ((user.role === 'supporting_staff' || user.role === 'operator') && (tab === 'visitors' || tab === 'candidates' || tab === 'facilitation_tools')) return true;
 
   return false;
+}
+
+export const TAB_TO_FEATURES_MAP: Record<TabPermission, FeaturePermission[]> = {
+  facilitation_tools: [
+    'whatsapp_tool',
+    'qr_upload_tool',
+    'ticket_generator_tool',
+    'img_to_pdf_tool',
+    'image_to_text_tool',
+  ],
+  candidates: ['add_candidate'],
+  students: ['add_candidate'],
+  visitors: ['add_visitor'],
+  reports: ['export_reports'],
+  dashboard: [],
+  tickets: [],
+  events_camps: [],
+  counsellor_tools: [],
+  notices_circulars: [],
+  knowledge_base: [],
+  settings: [],
+  profile: [],
+  user_management: [],
+  google_sheets: [],
+};
+
+export function getFeaturesForTabs(tabs: TabPermission[]): FeaturePermission[] {
+  const features = new Set<FeaturePermission>();
+  for (const t of tabs) {
+    const list = TAB_TO_FEATURES_MAP[t] || [];
+    for (const f of list) {
+      features.add(f);
+    }
+  }
+  return Array.from(features);
 }
 
 export function getParentTabForFeature(feature: FeaturePermission): TabPermission {
@@ -315,14 +381,31 @@ export function getAllUsers(): UserProfile[] {
     parsed = JSON.parse(raw);
 
     let modified = false;
+    const deletedSet = getDeletedUserIdsLocal();
 
-    // Guarantee all official portal users created by Super Admin & DNO are present
+    // Filter out deleted users from parsed
+    const nonDeleted = parsed.filter((u) => {
+      const uId = String(u.id || '').toLowerCase().trim();
+      const uName = String(u.username || '').toLowerCase().trim();
+      return !deletedSet.has(uId) && !deletedSet.has(uName);
+    });
+    if (nonDeleted.length !== parsed.length) {
+      parsed = nonDeleted;
+      modified = true;
+    }
+
+    // Guarantee official portal users created by Super Admin & DNO are present (unless deleted)
     for (const seed of OFFICIAL_PORTAL_USERS) {
+      const sId = String(seed.id || '').toLowerCase().trim();
+      const sName = String(seed.username || '').toLowerCase().trim();
+      if (deletedSet.has(sId) || deletedSet.has(sName)) {
+        continue;
+      }
       const idx = parsed.findIndex(
-        (u) => u.username?.toLowerCase() === seed.username.toLowerCase() || u.id === seed.id
+        (u) => u.username?.toLowerCase() === sName || u.id === sId
       );
       if (idx === -1) {
-        parsed.push({ ...seed });
+        parsed.push({ ...seed, permissionVersion: seed.permissionVersion || 1 });
         modified = true;
       }
     }
@@ -350,12 +433,12 @@ export function getAllUsers(): UserProfile[] {
       modified = true;
     }
 
-    // Ensure DNO always exists
+    // Ensure DNO always exists (unless deleted)
     const dnoIndex = parsed.findIndex((u) => u.username.toLowerCase() === 'dno');
-    if (dnoIndex === -1) {
+    if (dnoIndex === -1 && !deletedSet.has('dno') && !deletedSet.has(DNO_USER.id.toLowerCase())) {
       parsed.push(DNO_USER);
       modified = true;
-    } else {
+    } else if (dnoIndex >= 0) {
       if (!Array.isArray(parsed[dnoIndex].allowedTabs)) {
         parsed[dnoIndex].allowedTabs = [...DNO_USER.allowedTabs];
         modified = true;
@@ -366,12 +449,12 @@ export function getAllUsers(): UserProfile[] {
       }
     }
 
-    // Ensure Default Supporting Staff user always exists
+    // Ensure Default Supporting Staff user always exists (unless deleted)
     const staffIndex = parsed.findIndex((u) => u.username.toLowerCase() === 'staff');
-    if (staffIndex === -1) {
+    if (staffIndex === -1 && !deletedSet.has('staff') && !deletedSet.has(DEFAULT_STAFF_USER.id.toLowerCase())) {
       parsed.push(DEFAULT_STAFF_USER);
       modified = true;
-    } else {
+    } else if (staffIndex >= 0) {
       if (!Array.isArray(parsed[staffIndex].allowedTabs)) {
         parsed[staffIndex].allowedTabs = [...DEFAULT_STAFF_USER.allowedTabs];
         modified = true;
@@ -427,11 +510,15 @@ export function initFirestoreDataSync() {
         if (!snapshot.empty) {
           const firestoreUsers: UserProfile[] = [];
           const seen = new Set<string>();
+          const deletedSet = getDeletedUserIdsLocal();
           snapshot.forEach((d) => {
             const data = d.data() as any;
             if (data) {
               const rawUid = data.id || data.uid || d.id;
               const rawUsername = (data.username || (data.email ? data.email.split('@')[0] : rawUid)).toLowerCase().trim();
+              if (deletedSet.has(rawUid.toLowerCase()) || deletedSet.has(rawUsername) || deletedSet.has(d.id.toLowerCase())) {
+                return;
+              }
               if (!seen.has(rawUsername)) {
                 seen.add(rawUsername);
                 seen.add(rawUid.toLowerCase());
@@ -452,16 +539,16 @@ export function initFirestoreDataSync() {
             setDoc(doc(db, 'users', SUPER_ADMIN_USER.id), sanitizeForFirestore(SUPER_ADMIN_USER), { merge: true }).catch(() => {});
           }
 
-          // Ensure DNO is present
+          // Ensure DNO is present (unless deleted)
           const hasDno = firestoreUsers.some((u) => u.username.toLowerCase() === 'dno' || u.id === DNO_USER.id);
-          if (!hasDno) {
+          if (!hasDno && !deletedSet.has('dno') && !deletedSet.has(DNO_USER.id.toLowerCase())) {
             firestoreUsers.push(DNO_USER);
             setDoc(doc(db, 'users', DNO_USER.id), sanitizeForFirestore(DNO_USER), { merge: true }).catch(() => {});
           }
 
-          // Ensure Default Supporting Staff is present
+          // Ensure Default Supporting Staff is present (unless deleted)
           const hasStaff = firestoreUsers.some((u) => u.username.toLowerCase() === 'staff' || u.id === DEFAULT_STAFF_USER.id);
-          if (!hasStaff) {
+          if (!hasStaff && !deletedSet.has('staff') && !deletedSet.has(DEFAULT_STAFF_USER.id.toLowerCase())) {
             firestoreUsers.push(DEFAULT_STAFF_USER);
             setDoc(doc(db, 'users', DEFAULT_STAFF_USER.id), sanitizeForFirestore(DEFAULT_STAFF_USER), { merge: true }).catch(() => {});
           }
@@ -683,6 +770,11 @@ export async function saveUserAsync(user: UserProfile): Promise<{ success: boole
     const cleanUsername = (user.username || user.email?.split('@')[0] || '').trim().toLowerCase();
     const userUid = user.id || (user as any).uid || `user_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
 
+    // Unmark from deleted set so user can be re-created/updated
+    unmarkUserDeletedLocal(cleanUsername);
+    if (user.id) unmarkUserDeletedLocal(user.id);
+    if ((user as any).uid) unmarkUserDeletedLocal((user as any).uid);
+
     const existingIndex = users.findIndex(
       (u) =>
         u.id === userUid ||
@@ -695,18 +787,34 @@ export async function saveUserAsync(user: UserProfile): Promise<{ success: boole
     const existingVersion = existingUser?.permissionVersion || user.permissionVersion || 0;
     const newVersion = existingVersion + 1;
 
+    // Respect explicitly provided allowedTabs and ensure facilitation_tools is included by default
+    const rawTabs: TabPermission[] = Array.isArray(user.allowedTabs)
+      ? [...user.allowedTabs]
+      : ['dashboard', 'facilitation_tools', 'visitors', 'candidates', 'students', 'tickets', 'notices_circulars', 'knowledge_base', 'settings', 'profile'];
+    if (!rawTabs.includes('facilitation_tools')) {
+      rawTabs.push('facilitation_tools');
+    }
+    const explicitTabs = rawTabs;
+
+    // Automatically calculate tools belonging to granted tabs
+    const autoFeatures = getFeaturesForTabs(explicitTabs);
+    const existingExplicitFeatures = Array.isArray(user.allowedFeatures) ? user.allowedFeatures : [];
+    const combinedFeatures = Array.from(new Set([...autoFeatures, ...existingExplicitFeatures]))
+      .filter((feat) => {
+        const parentTab = getParentTabForFeature(feat);
+        return explicitTabs.includes(parentTab) ||
+          (parentTab === 'candidates' && explicitTabs.includes('students')) ||
+          (parentTab === 'students' && explicitTabs.includes('candidates'));
+      });
+
     let cleanUser: UserProfile = {
       ...user,
       id: existingUser ? existingUser.id : userUid,
       uid: existingUser ? (existingUser.uid || existingUser.id) : userUid,
       username: cleanUsername,
       fullName: user.fullName?.trim() || cleanUsername,
-      allowedTabs: Array.isArray(user.allowedTabs) && user.allowedTabs.length > 0
-        ? Array.from(new Set([...user.allowedTabs, 'facilitation_tools']))
-        : ['dashboard', 'facilitation_tools', 'visitors', 'candidates', 'students', 'tickets', 'notices_circulars', 'knowledge_base', 'settings', 'profile'],
-      allowedFeatures: Array.isArray(user.allowedFeatures) && user.allowedFeatures.length > 0
-        ? Array.from(new Set([...user.allowedFeatures, 'whatsapp_tool', 'qr_upload_tool', 'ticket_generator_tool', 'img_to_pdf_tool', 'image_to_text_tool']))
-        : ['whatsapp_tool', 'qr_upload_tool', 'ticket_generator_tool', 'img_to_pdf_tool', 'image_to_text_tool', 'add_candidate', 'add_visitor', 'export_reports'],
+      allowedTabs: explicitTabs,
+      allowedFeatures: combinedFeatures,
       isActive: user.isActive !== false,
       canUseApiKey: user.canUseApiKey !== false,
       permissionVersion: newVersion,
@@ -765,18 +873,18 @@ export async function saveUserAsync(user: UserProfile): Promise<{ success: boole
       body: JSON.stringify({ users }),
     }).catch(() => {});
 
-    // 3. Save directly to Firestore cloud database with UID & lookup aliases
+    // 3. Save directly to Firestore cloud database with UID & lookup aliases (non-blocking)
     try {
       const sanitized = sanitizeForFirestore(cleanUser);
       // Primary document by UID
-      await setDoc(doc(db, 'users', cleanUser.id), sanitized, { merge: true });
+      setDoc(doc(db, 'users', cleanUser.id), sanitized, { merge: true }).catch(() => {});
       // Alias document by username for instant lookup
       if (cleanUser.username) {
-        await setDoc(doc(db, 'users', cleanUser.username.toLowerCase()), sanitized, { merge: true });
+        setDoc(doc(db, 'users', cleanUser.username.toLowerCase()), sanitized, { merge: true }).catch(() => {});
       }
       // Alias document by email if present
       if (cleanUser.email) {
-        await setDoc(doc(db, 'users', cleanUser.email.toLowerCase()), sanitized, { merge: true });
+        setDoc(doc(db, 'users', cleanUser.email.toLowerCase()), sanitized, { merge: true }).catch(() => {});
       }
     } catch {}
 
@@ -792,6 +900,9 @@ export function saveUser(user: UserProfile): { success: boolean; message: string
     const users = getAllUsers();
     const cleanUsername = (user.username || '').trim().toLowerCase();
     const cleanId = (user.id || (user as any).uid || '').trim();
+
+    unmarkUserDeletedLocal(cleanUsername);
+    if (cleanId) unmarkUserDeletedLocal(cleanId);
 
     const existingIndex = users.findIndex(
       (u) =>
@@ -813,18 +924,34 @@ export function saveUser(user: UserProfile): { success: boolean; message: string
     const existingVersion = existingUser?.permissionVersion || user.permissionVersion || 0;
     const newVersion = existingVersion + 1;
 
+    // Respect explicitly provided allowedTabs and ensure facilitation_tools is included by default
+    const rawTabs: TabPermission[] = Array.isArray(user.allowedTabs)
+      ? [...user.allowedTabs]
+      : ['dashboard', 'facilitation_tools', 'visitors', 'candidates', 'students', 'tickets', 'notices_circulars', 'knowledge_base', 'settings', 'profile'];
+    if (!rawTabs.includes('facilitation_tools')) {
+      rawTabs.push('facilitation_tools');
+    }
+    const explicitTabs = rawTabs;
+
+    // Automatically calculate tools belonging to granted tabs
+    const autoFeatures = getFeaturesForTabs(explicitTabs);
+    const existingExplicitFeatures = Array.isArray(user.allowedFeatures) ? user.allowedFeatures : [];
+    const combinedFeatures = Array.from(new Set([...autoFeatures, ...existingExplicitFeatures]))
+      .filter((feat) => {
+        const parentTab = getParentTabForFeature(feat);
+        return explicitTabs.includes(parentTab) ||
+          (parentTab === 'candidates' && explicitTabs.includes('students')) ||
+          (parentTab === 'students' && explicitTabs.includes('candidates'));
+      });
+
     const cleanUser: UserProfile = {
       ...user,
       id: cleanId || (existingIndex >= 0 ? users[existingIndex].id : `user_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`),
       uid: cleanId || (existingIndex >= 0 ? (users[existingIndex].uid || users[existingIndex].id) : undefined),
       username: cleanUsername,
       fullName: user.fullName?.trim() || cleanUsername,
-      allowedTabs: Array.isArray(user.allowedTabs) && user.allowedTabs.length > 0
-        ? Array.from(new Set([...user.allowedTabs, 'facilitation_tools']))
-        : ['dashboard', 'facilitation_tools', 'visitors', 'candidates', 'students', 'tickets', 'notices_circulars', 'knowledge_base', 'settings', 'profile'],
-      allowedFeatures: Array.isArray(user.allowedFeatures) && user.allowedFeatures.length > 0
-        ? Array.from(new Set([...user.allowedFeatures, 'whatsapp_tool', 'qr_upload_tool', 'ticket_generator_tool', 'img_to_pdf_tool', 'image_to_text_tool']))
-        : ['whatsapp_tool', 'qr_upload_tool', 'ticket_generator_tool', 'img_to_pdf_tool', 'image_to_text_tool', 'add_candidate', 'add_visitor', 'export_reports'],
+      allowedTabs: explicitTabs,
+      allowedFeatures: combinedFeatures,
       permissionVersion: newVersion,
     };
 
@@ -881,73 +1008,146 @@ export function saveUser(user: UserProfile): { success: boolean; message: string
   }
 }
 
-export async function deleteUserAsync(userId: string): Promise<{ success: boolean; message: string }> {
+export async function deleteUserAsync(userId: string, username?: string): Promise<{ success: boolean; message: string }> {
   try {
     if (
       userId === SUPER_ADMIN_USER.id ||
       userId === 'super_admin_shrinath' ||
-      userId === 'shrinath'
+      userId === 'shrinath' ||
+      username?.toLowerCase() === 'shrinath'
     ) {
       return { success: false, message: 'The Super Administrator profile cannot be deleted.' };
     }
 
-    // 1. Delete on persistent server
+    // 1. Locate target user in stored database BEFORE marking deleted
+    const existingUsers = getAllUsers();
+    const existingTarget = existingUsers.find(
+      (u) =>
+        u.id === userId ||
+        (u.uid && u.uid === userId) ||
+        u.username?.toLowerCase() === userId.toLowerCase() ||
+        (username && u.username?.toLowerCase() === username.toLowerCase())
+    );
+
+    const targetId = existingTarget?.id || userId;
+    const targetUid = existingTarget?.uid || targetId;
+    const targetUsername = existingTarget?.username || username || userId;
+    const targetEmail = existingTarget?.email || '';
+
+    // 2. Mark all identifiers in deleted set so seed users and Firestore never resurrect them
+    markUserDeletedLocal(targetId);
+    markUserDeletedLocal(targetUid);
+    markUserDeletedLocal(targetUsername);
+    if (targetEmail) markUserDeletedLocal(targetEmail);
+
+    // 3. Delete on persistent server
     try {
-      await fetch(`/api/users/${encodeURIComponent(userId)}`, {
+      const q = new URLSearchParams({ username: targetUsername });
+      await fetch(`/api/users/${encodeURIComponent(targetId)}?${q.toString()}`, {
         method: 'DELETE',
       });
     } catch (e) {
       console.warn('Server user delete notice:', e);
     }
 
-    // 2. Remove from local storage
-    const users = getAllUsers().filter((u) => u.id !== userId && u.username?.toLowerCase() !== userId.toLowerCase());
-    safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
-    notifyUserSubscribers(users);
+    // 4. Remove from local storage cache
+    const filteredUsers = existingUsers.filter(
+      (u) =>
+        u.id !== targetId &&
+        u.id !== targetUid &&
+        (u.uid ? u.uid !== targetUid : true) &&
+        u.username?.toLowerCase() !== targetUsername.toLowerCase()
+    );
+    safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(filteredUsers));
+    notifyUserSubscribers(filteredUsers);
 
-    // 3. Remove from Firestore cloud database
-    try {
-      await deleteDoc(doc(db, 'users', userId));
-    } catch (e) {
-      // ignore
-    }
-    try {
-      await deleteDoc(doc(db, 'users', userId.toLowerCase()));
-    } catch (e) {
-      // ignore
+    // 5. Remove from Firestore cloud database (non-blocking)
+    const firestoreKeys = Array.from(
+      new Set([targetId, targetUid, targetUsername.toLowerCase(), targetEmail.toLowerCase()].filter(Boolean))
+    );
+    for (const key of firestoreKeys) {
+      deleteDoc(doc(db, 'users', key)).catch(() => {});
     }
 
-    return { success: true, message: 'User profile deleted successfully.' };
+    // Broadcast deletion across open tabs
+    if (userBroadcastChannel) {
+      userBroadcastChannel.postMessage({
+        type: 'USER_DELETED',
+        userId: targetId,
+        username: targetUsername,
+      });
+    }
+
+    return { success: true, message: `User profile "${targetUsername}" deleted successfully.` };
   } catch (err) {
     console.error('Error deleting user:', err);
     return { success: false, message: 'Failed to delete user profile.' };
   }
 }
 
-export function deleteUser(userId: string): { success: boolean; message: string } {
+export function deleteUser(userId: string, username?: string): { success: boolean; message: string } {
   try {
     if (
       userId === SUPER_ADMIN_USER.id ||
       userId === 'super_admin_shrinath' ||
-      userId === 'shrinath'
+      userId === 'shrinath' ||
+      username?.toLowerCase() === 'shrinath'
     ) {
       return { success: false, message: 'The Super Administrator profile cannot be deleted.' };
     }
 
+    const existingUsers = getAllUsers();
+    const existingTarget = existingUsers.find(
+      (u) =>
+        u.id === userId ||
+        (u.uid && u.uid === userId) ||
+        u.username?.toLowerCase() === userId.toLowerCase() ||
+        (username && u.username?.toLowerCase() === username.toLowerCase())
+    );
+
+    const targetId = existingTarget?.id || userId;
+    const targetUid = existingTarget?.uid || targetId;
+    const targetUsername = existingTarget?.username || username || userId;
+    const targetEmail = existingTarget?.email || '';
+
+    markUserDeletedLocal(targetId);
+    markUserDeletedLocal(targetUid);
+    markUserDeletedLocal(targetUsername);
+    if (targetEmail) markUserDeletedLocal(targetEmail);
+
     // Background delete on server
-    fetch(`/api/users/${encodeURIComponent(userId)}`, {
+    const q = new URLSearchParams({ username: targetUsername });
+    fetch(`/api/users/${encodeURIComponent(targetId)}?${q.toString()}`, {
       method: 'DELETE',
     }).catch(() => {});
 
-    const users = getAllUsers().filter((u) => u.id !== userId && u.username?.toLowerCase() !== userId.toLowerCase());
+    const users = existingUsers.filter(
+      (u) =>
+        u.id !== targetId &&
+        u.id !== targetUid &&
+        (u.uid ? u.uid !== targetUid : true) &&
+        u.username?.toLowerCase() !== targetUsername.toLowerCase()
+    );
     safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
     notifyUserSubscribers(users);
 
     // Remove from Firestore cloud database
-    deleteDoc(doc(db, 'users', userId)).catch(() => {});
-    deleteDoc(doc(db, 'users', userId.toLowerCase())).catch(() => {});
+    const firestoreKeys = Array.from(
+      new Set([targetId, targetUid, targetUsername.toLowerCase(), targetEmail.toLowerCase()].filter(Boolean))
+    );
+    for (const key of firestoreKeys) {
+      deleteDoc(doc(db, 'users', key)).catch(() => {});
+    }
 
-    return { success: true, message: 'User profile deleted successfully.' };
+    if (userBroadcastChannel) {
+      userBroadcastChannel.postMessage({
+        type: 'USER_DELETED',
+        userId: targetId,
+        username: targetUsername,
+      });
+    }
+
+    return { success: true, message: `User profile "${targetUsername}" deleted successfully.` };
   } catch (err) {
     console.error('Error deleting user:', err);
     return { success: false, message: 'Failed to delete user profile.' };
@@ -1155,7 +1355,34 @@ export async function authenticateWithResultAsync(
     return { user: normalized };
   };
 
-  // 0. Check local storage database FIRST (contains user permissions saved by Super Admin)
+  // 1. Query Authoritative Backend Server API FIRST!
+  // This ensures permissions granted or revoked by Super Admin are immediately loaded on login.
+  try {
+    const resp = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: cleanIdentifier, password: trimmedPass }),
+    });
+
+    if (resp.ok) {
+      const data = await resp.json().catch(() => null);
+      if (data?.success && data?.user) {
+        return handleSuccess(data.user);
+      }
+    } else {
+      const errData = await resp.json().catch(() => null);
+      if (resp.status === 403 || errData?.message?.includes('disabled')) {
+        return { user: null, error: errData?.message || 'This account has been disabled. Please contact Super Administrator or DNO.' };
+      }
+      if (resp.status === 401 && errData?.message?.includes('password')) {
+        return { user: null, error: 'Invalid password. Please enter the correct password provided by Super Administrator or DNO.' };
+      }
+    }
+  } catch (err) {
+    console.warn('[authService] Server auth unreachable, checking offline cache fallbacks:', err);
+  }
+
+  // 2. Offline Fallback: Check local storage database if server is unreachable
   const localUsers = getAllUsers();
   const localMatched = matchUserLocally(localUsers, cleanIdentifier);
   if (localMatched && isPasswordMatch(localMatched, trimmedPass)) {
@@ -1485,17 +1712,58 @@ export function authenticate(username: string, pass: string): UserProfile | null
   return null;
 }
 
+export async function refreshUserPermissionsFromBackend(user: UserProfile): Promise<UserProfile | null> {
+  if (!user) return null;
+  const identifier = user.username || user.id;
+  if (!identifier) return null;
+
+  try {
+    const res = await fetch(`/api/users/lookup/${encodeURIComponent(identifier)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.success && data?.user) {
+        const backendUser = data.user as UserProfile;
+        const curVer = user.permissionVersion || 0;
+        const backendVer = backendUser.permissionVersion || 0;
+        const tabsChanged = JSON.stringify(backendUser.allowedTabs) !== JSON.stringify(user.allowedTabs);
+        const featuresChanged = JSON.stringify(backendUser.allowedFeatures) !== JSON.stringify(user.allowedFeatures);
+        const statusChanged = backendUser.isActive !== user.isActive;
+
+        if (backendVer > curVer || tabsChanged || featuresChanged || statusChanged) {
+          const merged: UserProfile = {
+            ...user,
+            ...backendUser,
+            allowedTabs: backendUser.allowedTabs,
+            allowedFeatures: backendUser.allowedFeatures,
+            isActive: backendUser.isActive,
+            permissionVersion: Math.max(backendVer, curVer),
+          };
+          setCurrentUser(merged);
+          const all = getAllUsers();
+          const idx = all.findIndex((u) => u.id === merged.id || u.username.toLowerCase() === merged.username.toLowerCase());
+          if (idx >= 0) {
+            all[idx] = { ...all[idx], ...merged };
+          } else {
+            all.push(merged);
+          }
+          safeStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(all));
+          notifyUserSubscribers(all);
+          return merged;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[authService] refreshUserPermissionsFromBackend notice:', e);
+  }
+  return null;
+}
+
 export async function findUserByUsername(username: string): Promise<UserProfile | null> {
   const clean = String(username || '').trim();
   const trimmed = clean.toLowerCase();
   if (!trimmed) return null;
 
-  // 1. Check local storage database FIRST (contains permissions configured by Super Admin)
-  const localUsers = getAllUsers();
-  const localFound = matchUserLocally(localUsers, clean);
-  if (localFound) return localFound;
-
-  // 2. Query persistent server API for dynamically updated user
+  // 1. Query persistent server API first for authoritative dynamically updated user
   try {
     const res = await fetch(`/api/users/lookup/${encodeURIComponent(clean)}`);
     if (res.ok) {
@@ -1510,6 +1778,11 @@ export async function findUserByUsername(username: string): Promise<UserProfile 
       }
     }
   } catch {}
+
+  // 2. Fall back to local storage cache if offline
+  const localUsers = getAllUsers();
+  const localFound = matchUserLocally(localUsers, clean);
+  if (localFound) return localFound;
 
   // 3. Check official portal seed baseline
   const official = matchUserLocally(OFFICIAL_PORTAL_USERS, clean);

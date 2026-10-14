@@ -1,8 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 
 const CANDIDATE_VISION_MODELS = [
-  "gemini-flash-latest",
   "gemini-3.1-flash-lite",
+  "gemini-flash-latest",
   "gemini-4-argon",
 ];
 

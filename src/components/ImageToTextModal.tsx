@@ -626,19 +626,7 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
           resultPages = clientData.pages || [];
         } else {
           // No client key and server failed
-          if (!isAuthorizedForMasterKey) {
-            throw new Error(
-              isDNO
-                ? 'Gemini Vision API access is not granted to your account by the District Nodal Officer (DNO). Please request permission from DNO in User Management, or click "Configure API Key" to enter a personal key.'
-                : 'Gemini Vision API access is not granted to your account by the District Nodal Officer (DNO). Please contact the DNO to enable access.'
-            );
-          } else {
-            throw new Error(
-              isDNO
-                ? 'The central Master Gemini API Key is not configured yet. The District Nodal Officer (DNO) can set it in User Management, or you can click "Configure API Key" to enter a key directly.'
-                : 'The central Master Gemini API Key is not configured yet. Please contact the District Nodal Officer (DNO) to set it up.'
-            );
-          }
+          throw new Error("We couldn't complete your request. Please try again.");
         }
       }
 
@@ -696,7 +684,9 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
         }
       } catch {
         if (raw.includes('503') || raw.includes('high demand') || raw.includes('UNAVAILABLE')) {
-          clean = 'The AI model is experiencing a temporary spike in demand on Google servers. Please click Retry.';
+          clean = 'The service is temporarily experiencing high demand. Please click Retry.';
+        } else if (raw.toLowerCase().includes('api key') || raw.toLowerCase().includes('quota') || raw.toLowerCase().includes('gemini')) {
+          clean = "We couldn't complete your request. Please try again shortly.";
         } else if (raw.trim()) {
           clean = raw;
         }
@@ -759,19 +749,7 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
           englishTranslation = await translateTextClientSide(effectiveKey, extractedText);
           translationSuccess = true;
         } else {
-          if (!isAuthorizedForMasterKey) {
-            throw new Error(
-              isDNO
-                ? 'Gemini Vision API access is not granted to your account by the District Nodal Officer (DNO). Please request permission from DNO in User Management, or click "Configure API Key" to enter a personal key.'
-                : 'Gemini Vision API access is not granted to your account by the District Nodal Officer (DNO). Please contact the DNO to enable access.'
-            );
-          } else {
-            throw new Error(
-              isDNO
-                ? 'Translation service unreachable. Please click "Configure API Key" to provide your Gemini API key or ask the DNO to set the Master Key in User Management.'
-                : 'Translation service is currently unreachable. Please try again or contact the District Nodal Officer (DNO).'
-            );
-          }
+          throw new Error("Translation is temporarily unavailable. Please try again shortly.");
         }
       }
 
@@ -1123,56 +1101,6 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {isDNO && (
-              <>
-                {isAuthorizedForMasterKey && masterApiKey ? (
-                  <div
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-800"
-                    title="DNO Central Master Key active. No manual key entry required."
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    <span className="hidden sm:inline">DNO Master Key Active</span>
-                  </div>
-                ) : !isAuthorizedForMasterKey ? (
-                  <div
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-800"
-                    title="Access restricted: DNO has not enabled Gemini API Key access for your account."
-                  >
-                    <Lock className="w-3.5 h-3.5 text-amber-600" />
-                    <span className="hidden sm:inline">API Access Restricted</span>
-                  </div>
-                ) : null}
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTempApiKey(apiKey);
-                    setShowApiKeyModal(true);
-                  }}
-                  className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-colors cursor-pointer ${
-                    isAuthorizedForMasterKey && masterApiKey
-                      ? 'border-indigo-200 text-indigo-700 bg-indigo-50/60 hover:bg-indigo-100/70'
-                      : apiKey
-                      ? 'border-blue-200 text-blue-700 bg-blue-50/60 hover:bg-blue-100/70'
-                      : 'border-[#D9E1EA] text-[#4B5563] hover:text-[#0056A6] hover:bg-blue-50'
-                  }`}
-                  title="Configure Gemini API Key"
-                >
-                  <Key className="w-3.5 h-3.5 text-amber-600" />
-                  <span className="hidden sm:inline">
-                    {isAuthorizedForMasterKey && masterApiKey
-                      ? 'API Key (DNO)'
-                      : apiKey
-                      ? 'API Key Active'
-                      : 'API Key'}
-                  </span>
-                  {(isAuthorizedForMasterKey && masterApiKey) || apiKey ? (
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="Key Ready" />
-                  ) : null}
-                </button>
-              </>
-            )}
-
             {(pages.length > 0 || extractedText.length > 0) && (
               <button
                 type="button"
@@ -1222,19 +1150,6 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {isDNO && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTempApiKey(apiKey);
-                    setShowApiKeyModal(true);
-                  }}
-                  className="px-2.5 py-1 bg-[#0056A6] hover:bg-[#004080] text-white rounded-lg font-bold text-[11px] shadow-xs cursor-pointer flex items-center gap-1 transition-colors"
-                >
-                  <Key className="w-3 h-3" />
-                  <span>Configure API Key</span>
-                </button>
-              )}
               <button
                 type="button"
                 onClick={() => handleExtractText('all')}
@@ -2038,138 +1953,7 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
         </div>
       </div>
 
-      {/* API Key Configuration Modal Dialog */}
-      {showApiKeyModal && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl border border-[#D9E1EA] max-w-md w-full p-5 sm:p-6 relative animate-scale-in">
-            <button
-              type="button"
-              onClick={() => {
-                setShowApiKeyModal(false);
-                setKeySavedMessage(null);
-              }}
-              className="absolute top-4 right-4 p-1 rounded-lg text-[#6B7280] hover:text-[#1F2937] hover:bg-[#F3F4F6] transition-colors cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
 
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shrink-0">
-                <Key className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-[#1F2937]">Google Gemini API Key</h3>
-                <p className="text-xs text-[#6B7280]">Required for Marathi, Hindi & English handwriting extraction</p>
-              </div>
-            </div>
-
-            {/* Status regarding DNO Central Key & Permissions */}
-            {isAuthorizedForMasterKey && masterApiKey ? (
-              <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 leading-relaxed">
-                <div className="flex items-center gap-1.5 font-bold text-emerald-800 mb-1">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>DNO Central Master Key Active</span>
-                </div>
-                <p className="text-[11px] text-emerald-800/90">
-                  The District Nodal Officer (DNO) has configured a central Gemini Vision key and authorized your account. You can use the Image to Text tool without needing to enter your own key.
-                </p>
-              </div>
-            ) : !isAuthorizedForMasterKey ? (
-              <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 leading-relaxed">
-                <div className="flex items-center gap-1.5 font-bold text-amber-800 mb-1">
-                  <Lock className="w-4 h-4 text-amber-600" />
-                  <span>DNO Key Permission Not Granted</span>
-                </div>
-                <p className="text-[11px] text-amber-800/90">
-                  The District Nodal Officer (DNO) can grant your account access in the <b>User Management</b> tab. Alternatively, you can enter your personal Gemini API key below.
-                </p>
-              </div>
-            ) : isAuthorizedForMasterKey && !masterApiKey ? (
-              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 leading-relaxed">
-                <div className="flex items-center gap-1.5 font-bold text-blue-800 mb-1">
-                  <Key className="w-4 h-4 text-blue-600" />
-                  <span>DNO Central Key Not Configured</span>
-                </div>
-                <p className="text-[11px] text-blue-800/90">
-                  You have permission to use the central key, but the DNO has not yet saved a Master Gemini API Key in User Management. You can ask the DNO to add it, or provide a personal key below.
-                </p>
-              </div>
-            ) : null}
-
-            <p className="text-xs text-[#4B5563] leading-relaxed mb-3">
-              Optional personal override: You can enter a personal Gemini API Key below if you prefer to use your own quota instead of the shared DNO key.
-            </p>
-
-            <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-[#0056A6] flex items-center justify-between gap-2">
-              <span>Need a free Gemini API Key?</span>
-              <a
-                href="https://aistudio.google.com/app/apikey"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-bold underline hover:text-[#004080] inline-flex items-center gap-1 shrink-0"
-              >
-                <span>Get Key at AI Studio</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            </div>
-
-            <div className="mb-4">
-              <label className="block text-xs font-semibold text-[#374151] mb-1.5">
-                Gemini API Key
-              </label>
-              <input
-                type="text"
-                value={tempApiKey}
-                onChange={(e) => setTempApiKey(e.target.value)}
-                placeholder="AIzaSy..."
-                className="w-full text-xs font-mono px-3 py-2.5 rounded-xl border border-[#D9E1EA] focus:border-[#0056A6] focus:ring-2 focus:ring-blue-100 outline-none transition-all"
-              />
-            </div>
-
-            {keySavedMessage && (
-              <div className="mb-4 px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium flex items-center gap-1.5">
-                <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{keySavedMessage}</span>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#E5E7EB]">
-              {apiKey ? (
-                <button
-                  type="button"
-                  onClick={handleRemoveApiKey}
-                  className="px-3 py-2 text-xs font-semibold text-red-600 hover:text-red-800 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
-                >
-                  Remove Key
-                </button>
-              ) : (
-                <div />
-              )}
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowApiKeyModal(false);
-                    setKeySavedMessage(null);
-                  }}
-                  className="px-3.5 py-2 text-xs font-semibold text-[#4B5563] hover:bg-[#F3F4F6] rounded-xl transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSaveApiKey(tempApiKey)}
-                  disabled={!tempApiKey.trim()}
-                  className="px-4 py-2 text-xs font-bold text-white bg-[#0056A6] hover:bg-[#004080] disabled:bg-gray-300 rounded-xl transition-colors cursor-pointer shadow-xs"
-                >
-                  Save & Use Key
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
       {/* Software Vault Image Picker Modal */}
       {isVaultPickerOpen && (
         <div

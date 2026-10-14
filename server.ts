@@ -8,16 +8,30 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 function getGeminiClient(customApiKey?: string): GoogleGenAI {
-  const apiKey =
-    (customApiKey && customApiKey.trim()) ||
-    process.env.GEMINI_API_KEY ||
-    process.env.VITE_GEMINI_API_KEY ||
-    process.env.GOOGLE_API_KEY;
+  let settingsKey = "";
+  try {
+    const sPath = path.join(process.cwd(), "data", "settings.json");
+    if (fs.existsSync(sPath)) {
+      const parsed = JSON.parse(fs.readFileSync(sPath, "utf-8"));
+      if (parsed?.geminiApiKey) settingsKey = String(parsed.geminiApiKey).trim();
+    }
+  } catch {}
 
-  if (!apiKey) {
-    throw new Error(
-      "GEMINI_API_KEY environment variable is not configured. District Nodal Officer (DNO) can set Master Gemini API Key in User Management, or set GEMINI_API_KEY in environment variables."
-    );
+  const envKey = (process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "").trim();
+
+  let apiKey = envKey;
+  if (customApiKey && customApiKey.trim() && customApiKey.trim() !== "MY_GEMINI_API_KEY" && customApiKey.trim().length >= 20) {
+    apiKey = customApiKey.trim();
+  } else if (settingsKey && settingsKey !== "MY_GEMINI_API_KEY" && settingsKey.length >= 20) {
+    apiKey = settingsKey;
+  }
+
+  if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
+    if (envKey && envKey !== "MY_GEMINI_API_KEY") {
+      apiKey = envKey;
+    } else {
+      throw new Error("Central Gemini API service is temporarily unavailable.");
+    }
   }
 
   return new GoogleGenAI({
@@ -137,8 +151,46 @@ async function startServer() {
   }
 
   const USERS_FILE = path.join(DATA_DIR, "users.json");
+  const DELETED_USERS_FILE = path.join(DATA_DIR, "deleted_users.json");
   const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
   const VAULT_FILE = path.join(DATA_DIR, "vault.json");
+
+  function getDeletedUserIds(): Set<string> {
+    try {
+      if (fs.existsSync(DELETED_USERS_FILE)) {
+        const raw = fs.readFileSync(DELETED_USERS_FILE, "utf-8");
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          return new Set(list.map((id: string) => String(id).toLowerCase().trim()));
+        }
+      }
+    } catch {}
+    return new Set<string>();
+  }
+
+  function addDeletedUserId(id: string) {
+    try {
+      const set = getDeletedUserIds();
+      set.add(String(id).toLowerCase().trim());
+      fs.writeFileSync(DELETED_USERS_FILE, JSON.stringify(Array.from(set), null, 2), "utf-8");
+    } catch (e) {
+      console.error("Failed to write deleted user:", e);
+    }
+  }
+
+  function removeDeletedUserId(id: string) {
+    try {
+      const clean = String(id || "").toLowerCase().trim();
+      if (!clean) return;
+      const set = getDeletedUserIds();
+      if (set.has(clean)) {
+        set.delete(clean);
+        fs.writeFileSync(DELETED_USERS_FILE, JSON.stringify(Array.from(set), null, 2), "utf-8");
+      }
+    } catch (e) {
+      console.error("Failed to remove deleted user ID:", e);
+    }
+  }
 
   function getStoredVaultFiles(): QrUploadedFile[] {
     try {
@@ -203,7 +255,7 @@ async function startServer() {
         designation: "Super Administrator",
         role: "super_admin",
         district: "State-wide",
-        allowedTabs: ["dashboard", "user_management", "profile", "students", "visitors", "tickets", "settings", "google_sheets"],
+        allowedTabs: ["dashboard", "user_management", "profile", "facilitation_tools", "students", "visitors", "tickets", "settings", "google_sheets"],
         allowedFeatures: ["whatsapp_tool", "qr_upload_tool", "ticket_generator_tool", "img_to_pdf_tool", "image_to_text_tool", "add_candidate", "add_visitor", "export_reports"],
         canUseApiKey: true,
         isActive: true,
@@ -219,7 +271,7 @@ async function startServer() {
         designation: "District Nodal Officer (CET Facilitation Center, Washim)",
         role: "dno",
         district: "Washim",
-        allowedTabs: ["dashboard", "visitors", "tickets", "students", "settings", "profile", "user_management", "google_sheets"],
+        allowedTabs: ["dashboard", "facilitation_tools", "visitors", "tickets", "students", "settings", "profile", "user_management", "google_sheets"],
         allowedFeatures: ["whatsapp_tool", "qr_upload_tool", "ticket_generator_tool", "img_to_pdf_tool", "image_to_text_tool", "add_candidate", "add_visitor", "export_reports"],
         canUseApiKey: true,
         isActive: true,
@@ -235,8 +287,8 @@ async function startServer() {
         designation: "Supporting Staff (Reception & Verification Desk)",
         role: "supporting_staff",
         district: "Washim",
-        allowedTabs: ["dashboard", "visitors", "students", "profile", "tickets"],
-        allowedFeatures: ["whatsapp_tool", "qr_upload_tool", "ticket_generator_tool", "add_candidate", "add_visitor", "export_reports"],
+        allowedTabs: ["dashboard", "facilitation_tools", "visitors", "students", "profile", "tickets"],
+        allowedFeatures: ["whatsapp_tool", "qr_upload_tool", "ticket_generator_tool", "img_to_pdf_tool", "image_to_text_tool", "add_candidate", "add_visitor", "export_reports"],
         canUseApiKey: true,
         isActive: true,
         createdAt: "2026-08-25T00:00:00.000Z",
@@ -251,8 +303,8 @@ async function startServer() {
         designation: "Counsellor",
         role: "counsellor",
         district: "Washim",
-        allowedTabs: ["dashboard", "students", "profile", "tickets"],
-        allowedFeatures: ["whatsapp_tool", "ticket_generator_tool", "add_candidate", "qr_upload_tool", "add_visitor", "img_to_pdf_tool", "image_to_text_tool"],
+        allowedTabs: ["dashboard", "facilitation_tools", "students", "profile", "tickets"],
+        allowedFeatures: ["whatsapp_tool", "qr_upload_tool", "ticket_generator_tool", "img_to_pdf_tool", "image_to_text_tool", "add_candidate", "add_visitor"],
         canUseApiKey: true,
         isActive: true,
         createdAt: "2026-09-02T07:14:11.111Z",
@@ -267,8 +319,8 @@ async function startServer() {
         designation: "Supporting Staff",
         role: "supporting_staff",
         district: "Washim",
-        allowedTabs: ["visitors", "dashboard", "tickets", "students", "profile"],
-        allowedFeatures: ["add_visitor", "export_reports", "whatsapp_tool", "ticket_generator_tool", "add_candidate", "qr_upload_tool", "img_to_pdf_tool", "image_to_text_tool"],
+        allowedTabs: ["dashboard", "facilitation_tools", "visitors", "tickets", "students", "profile"],
+        allowedFeatures: ["whatsapp_tool", "qr_upload_tool", "ticket_generator_tool", "img_to_pdf_tool", "image_to_text_tool", "add_candidate", "add_visitor", "export_reports"],
         canUseApiKey: true,
         isActive: true,
         createdAt: "2026-09-02T08:43:25.376Z",
@@ -283,8 +335,8 @@ async function startServer() {
         designation: "Student Guidance Counsellor",
         role: "counsellor",
         district: "Washim",
-        allowedTabs: ["dashboard", "tickets", "students", "profile"],
-        allowedFeatures: ["whatsapp_tool", "ticket_generator_tool", "add_candidate", "add_visitor", "qr_upload_tool", "img_to_pdf_tool", "image_to_text_tool"],
+        allowedTabs: ["dashboard", "facilitation_tools", "tickets", "students", "profile"],
+        allowedFeatures: ["whatsapp_tool", "qr_upload_tool", "ticket_generator_tool", "img_to_pdf_tool", "image_to_text_tool", "add_candidate", "add_visitor"],
         canUseApiKey: true,
         isActive: true,
         createdAt: "2026-09-02T09:22:50.139Z",
@@ -299,7 +351,7 @@ async function startServer() {
         designation: "District Nodal Officer (DNO)",
         role: "dno",
         district: "Hingoli",
-        allowedTabs: ["dashboard", "visitors", "tickets", "students", "user_management", "settings", "profile", "google_sheets"],
+        allowedTabs: ["dashboard", "facilitation_tools", "visitors", "tickets", "students", "user_management", "settings", "profile", "google_sheets"],
         allowedFeatures: ["whatsapp_tool", "qr_upload_tool", "ticket_generator_tool", "img_to_pdf_tool", "image_to_text_tool", "add_candidate", "add_visitor", "export_reports"],
         canUseApiKey: true,
         isActive: true,
@@ -315,8 +367,8 @@ async function startServer() {
         designation: "Counsellor",
         role: "counsellor",
         district: "Hingoli",
-        allowedTabs: ["dashboard", "tickets", "students", "profile"],
-        allowedFeatures: ["whatsapp_tool", "ticket_generator_tool", "add_visitor", "qr_upload_tool", "img_to_pdf_tool", "image_to_text_tool"],
+        allowedTabs: ["dashboard", "facilitation_tools", "tickets", "students", "profile"],
+        allowedFeatures: ["whatsapp_tool", "qr_upload_tool", "ticket_generator_tool", "img_to_pdf_tool", "image_to_text_tool", "add_visitor"],
         canUseApiKey: true,
         isActive: true,
         createdAt: "2026-09-21T11:30:44.776Z",
@@ -335,14 +387,32 @@ async function startServer() {
         const list = JSON.parse(raw);
         if (Array.isArray(list) && list.length > 0) {
           let changed = false;
+          const deletedSet = getDeletedUserIds();
 
-          // Guarantee all official portal accounts created by Super Admin & DNO exist
+          // Filter out any users that have been marked deleted
+          const filtered = list.filter((u: any) => {
+            const uId = String(u.id || "").toLowerCase().trim();
+            const uName = String(u.username || "").toLowerCase().trim();
+            return !deletedSet.has(uId) && !deletedSet.has(uName);
+          });
+          if (filtered.length !== list.length) {
+            list.length = 0;
+            list.push(...filtered);
+            changed = true;
+          }
+
+          // Guarantee all official portal accounts created by Super Admin & DNO exist (unless deleted)
           for (const seed of DEFAULT_INITIAL_USERS) {
+            const sId = String(seed.id || "").toLowerCase().trim();
+            const sName = String(seed.username || "").toLowerCase().trim();
+            if (deletedSet.has(sId) || deletedSet.has(sName)) {
+              continue; // Do NOT resurrect deleted users
+            }
             const idx = list.findIndex(
-              (u: any) => u.username?.toLowerCase() === seed.username.toLowerCase() || u.id === seed.id
+              (u: any) => u.username?.toLowerCase() === sName || u.id?.toLowerCase() === sId
             );
             if (idx === -1) {
-              list.push({ ...seed });
+              list.push({ ...seed, permissionVersion: seed.permissionVersion || 1 });
               changed = true;
             }
           }
@@ -377,7 +447,14 @@ async function startServer() {
     }
 
     try {
-      fs.writeFileSync(USERS_FILE, JSON.stringify(DEFAULT_INITIAL_USERS, null, 2), "utf-8");
+      const deletedSet = getDeletedUserIds();
+      const initialNonDeleted = DEFAULT_INITIAL_USERS.filter((seed) => {
+        const sId = String(seed.id || "").toLowerCase().trim();
+        const sName = String(seed.username || "").toLowerCase().trim();
+        return !deletedSet.has(sId) && !deletedSet.has(sName);
+      });
+      fs.writeFileSync(USERS_FILE, JSON.stringify(initialNonDeleted, null, 2), "utf-8");
+      return [...initialNonDeleted];
     } catch (e) {
       console.error("Error seeding users file:", e);
     }
@@ -508,6 +585,11 @@ async function startServer() {
     }
 
     const cleanUsername = String(user.username).trim().toLowerCase();
+    // Unmark user from deleted list if created or updated
+    removeDeletedUserId(cleanUsername);
+    if (user.id) removeDeletedUserId(user.id);
+    if (user.uid) removeDeletedUserId(user.uid);
+
     const cleanPassword = user.password ? String(user.password).trim() : "";
     const users = getStoredUsers();
 
@@ -536,6 +618,45 @@ async function startServer() {
     const clientVersion = user.permissionVersion || 0;
     const newVersion = Math.max(existingVersion + 1, clientVersion > existingVersion ? clientVersion : existingVersion + 1);
 
+    // Map tools to their tabs
+    const TAB_TO_FEATURES: Record<string, string[]> = {
+      facilitation_tools: ["whatsapp_tool", "qr_upload_tool", "ticket_generator_tool", "img_to_pdf_tool", "image_to_text_tool"],
+      candidates: ["add_candidate"],
+      students: ["add_candidate"],
+      visitors: ["add_visitor"],
+      reports: ["export_reports"],
+    };
+
+    const requestedTabs: string[] = Array.isArray(user.allowedTabs) ? [...user.allowedTabs] : ["dashboard", "facilitation_tools", "profile"];
+    // By default give facilitation tools to all users
+    if (!requestedTabs.includes("facilitation_tools")) {
+      requestedTabs.push("facilitation_tools");
+    }
+    
+    // Automatically grant all tools belonging to granted tabs
+    const toolSet = new Set<string>();
+    for (const t of requestedTabs) {
+      const tools = TAB_TO_FEATURES[t] || [];
+      for (const tl of tools) {
+        toolSet.add(tl);
+      }
+    }
+    // Also include any custom tools granted if their parent tab is enabled
+    if (Array.isArray(user.allowedFeatures)) {
+      for (const f of user.allowedFeatures) {
+        let parentTab = "dashboard";
+        for (const [tabKey, tabTools] of Object.entries(TAB_TO_FEATURES)) {
+          if (tabTools.includes(f)) {
+            parentTab = tabKey;
+            break;
+          }
+        }
+        if (requestedTabs.includes(parentTab) || parentTab === "dashboard") {
+          toolSet.add(f);
+        }
+      }
+    }
+
     const cleanUser = {
       ...user,
       id: user.id || (existingUser ? existingUser.id : `user_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`),
@@ -547,8 +668,8 @@ async function startServer() {
       district: user.district || (existingUser ? existingUser.district : "Washim"),
       phone: user.phone || (existingUser ? existingUser.phone : ""),
       email: user.email || (existingUser ? existingUser.email : ""),
-      allowedTabs: Array.isArray(user.allowedTabs) ? user.allowedTabs : ["dashboard", "profile"],
-      allowedFeatures: Array.isArray(user.allowedFeatures) ? user.allowedFeatures : [],
+      allowedTabs: requestedTabs,
+      allowedFeatures: Array.from(toolSet),
       canUseApiKey: user.canUseApiKey !== false,
       isActive: user.isActive !== false,
       createdAt: user.createdAt || (existingUser ? existingUser.createdAt : new Date().toISOString()),
@@ -570,13 +691,15 @@ async function startServer() {
   // DELETE user by ID or username
   app.delete("/api/users/:id", (req, res) => {
     const rawId = String(req.params.id || "").trim();
-    if (!rawId) {
-      return res.status(400).json({ success: false, message: "User ID is required." });
+    const rawUsername = String(req.query.username || req.body?.username || "").trim();
+    if (!rawId && !rawUsername) {
+      return res.status(400).json({ success: false, message: "User ID or username is required." });
     }
 
     if (
       rawId === "super_admin_shrinath" ||
-      rawId.toLowerCase() === "shrinath"
+      rawId.toLowerCase() === "shrinath" ||
+      rawUsername.toLowerCase() === "shrinath"
     ) {
       return res.status(403).json({
         success: false,
@@ -585,24 +708,33 @@ async function startServer() {
     }
 
     const users = getStoredUsers();
-    const targetIndex = users.findIndex(
-      (u: any) => u.id === rawId || u.username?.toLowerCase() === rawId.toLowerCase()
+    const cleanId = rawId.toLowerCase();
+    const cleanUsername = rawUsername.toLowerCase();
+
+    // Identify all users that match id, uid, or username
+    const matches = users.filter(
+      (u: any) =>
+        (cleanId && (u.id?.toLowerCase() === cleanId || u.uid?.toLowerCase() === cleanId || u.username?.toLowerCase() === cleanId)) ||
+        (cleanUsername && (u.username?.toLowerCase() === cleanUsername || u.id?.toLowerCase() === cleanUsername))
     );
 
-    if (targetIndex !== -1) {
-      const deletedUser = users[targetIndex];
-      users.splice(targetIndex, 1);
-      saveStoredUsers(users);
-      return res.json({
-        success: true,
-        message: `User profile "${deletedUser.username}" deleted successfully.`,
-      });
+    for (const u of matches) {
+      if (u.id) addDeletedUserId(u.id);
+      if (u.uid) addDeletedUserId(u.uid);
+      if (u.username) addDeletedUserId(u.username);
+      if (u.email) addDeletedUserId(u.email);
     }
+    if (rawId) addDeletedUserId(rawId);
+    if (rawUsername) addDeletedUserId(rawUsername);
 
-    // Always succeed so client and cloud cleanup can proceed without failure
+    const remainingUsers = users.filter((u: any) => !matches.includes(u));
+    saveStoredUsers(remainingUsers);
+
     return res.json({
       success: true,
-      message: "User profile removed successfully.",
+      message: matches.length > 0
+        ? `User profile "${matches[0].username || rawUsername || rawId}" deleted successfully.`
+        : "User profile removed successfully.",
     });
   });
 
@@ -610,12 +742,20 @@ async function startServer() {
   app.post("/api/users/sync", (req, res) => {
     const clientUsers = req.body?.users;
     const serverUsers = getStoredUsers();
+    const deletedSet = getDeletedUserIds();
 
     if (Array.isArray(clientUsers)) {
       let changed = false;
       for (const cu of clientUsers) {
         if (!cu || !cu.username) continue;
         const cUsername = String(cu.username).trim().toLowerCase();
+        const cId = String(cu.id || "").trim().toLowerCase();
+        
+        // Skip deleted users completely
+        if (deletedSet.has(cUsername) || (cId && deletedSet.has(cId))) {
+          continue;
+        }
+
         const idx = serverUsers.findIndex(
           (su: any) => su.id === cu.id || su.username?.toLowerCase() === cUsername
         );
@@ -625,40 +765,27 @@ async function startServer() {
             ...cu,
             username: cUsername,
             isActive: cu.isActive !== false,
+            permissionVersion: cu.permissionVersion || 1,
           });
           changed = true;
         } else {
-          // Keep existing user and update permissions & attributes from client
+          // Keep existing user and only accept client permissions if client has STRICTLY HIGHER permissionVersion!
           const existing = serverUsers[idx];
-          const updatedTabs = Array.isArray(cu.allowedTabs) ? cu.allowedTabs : existing.allowedTabs;
-          const updatedFeatures = Array.isArray(cu.allowedFeatures) ? cu.allowedFeatures : existing.allowedFeatures;
-          const updatedPassword = cu.password || existing.password;
-          const updatedRole = cu.role || existing.role;
-          const updatedFullName = cu.fullName || existing.fullName;
-          const updatedDistrict = cu.district || existing.district;
-          const updatedIsActive = cu.isActive !== undefined ? cu.isActive : existing.isActive;
+          const existingVer = existing.permissionVersion || 0;
+          const clientVer = cu.permissionVersion || 0;
 
-          // Check if any attribute changed
-          const tabsChanged = JSON.stringify(updatedTabs) !== JSON.stringify(existing.allowedTabs);
-          const featuresChanged = JSON.stringify(updatedFeatures) !== JSON.stringify(existing.allowedFeatures);
-          const otherChanged =
-            updatedPassword !== existing.password ||
-            updatedRole !== existing.role ||
-            updatedFullName !== existing.fullName ||
-            updatedDistrict !== existing.district ||
-            updatedIsActive !== existing.isActive;
-
-          if (tabsChanged || featuresChanged || otherChanged) {
+          if (clientVer > existingVer) {
             serverUsers[idx] = {
               ...existing,
               ...cu,
-              allowedTabs: updatedTabs,
-              allowedFeatures: updatedFeatures,
-              password: updatedPassword,
-              role: updatedRole,
-              fullName: updatedFullName,
-              district: updatedDistrict,
-              isActive: updatedIsActive,
+              allowedTabs: Array.isArray(cu.allowedTabs) ? cu.allowedTabs : existing.allowedTabs,
+              allowedFeatures: Array.isArray(cu.allowedFeatures) ? cu.allowedFeatures : existing.allowedFeatures,
+              permissionVersion: clientVer,
+              password: cu.password || existing.password,
+              role: cu.role || existing.role,
+              fullName: cu.fullName || existing.fullName,
+              district: cu.district || existing.district,
+              isActive: cu.isActive !== undefined ? cu.isActive : existing.isActive,
             };
             changed = true;
           }
@@ -1514,12 +1641,13 @@ Query: <value>`;
 
       const results: Array<{ pageIndex: number; name?: string; text: string }> = [];
 
-      // Multi-model resilience: prioritize Google's recommended gemini-flash-latest and immediately
+      // Multi-model resilience: prioritize gemini-3.1-flash-lite and automatically
       // fallback across companion vision models if any individual model encounters temporary demand spikes (503/429/UNAVAILABLE).
       const candidateModels = [
-        "gemini-flash-latest",
         "gemini-3.1-flash-lite",
+        "gemini-flash-latest",
         "gemini-4-argon",
+        "gemini-3.8-flash",
       ];
 
       for (let i = 0; i < imageList.length; i++) {
@@ -1618,29 +1746,9 @@ Do not extract any other text. Follow the system instructions strictly.`
       });
     } catch (err: any) {
       console.error("[IMAGE-TO-TEXT ERROR]", err);
-      const rawMsg = String(err?.message || '');
-      let cleanMessage = "Failed to process image with vision AI.";
-
-      if (rawMsg.includes('GEMINI_API_KEY') || rawMsg.includes('API key')) {
-        cleanMessage = "Gemini API key is not configured. Please verify GEMINI_API_KEY in the environment.";
-      } else if (rawMsg.includes('503') || rawMsg.includes('UNAVAILABLE') || rawMsg.includes('high demand')) {
-        cleanMessage = "The AI vision model is currently experiencing temporary high demand on Google servers. Please retry in a few moments.";
-      } else if (rawMsg.includes('429') || rawMsg.includes('RESOURCE_EXHAUSTED')) {
-        cleanMessage = "Rate limit temporarily reached. Please wait a moment and click Retry.";
-      } else {
-        try {
-          const parsed = JSON.parse(rawMsg);
-          if (parsed?.error?.message) {
-            cleanMessage = parsed.error.message;
-          }
-        } catch {
-          if (rawMsg.trim()) cleanMessage = rawMsg;
-        }
-      }
-
       return res.status(503).json({
         success: false,
-        error: cleanMessage,
+        error: "We couldn't complete your request. Please try again.",
       });
     }
   });
@@ -1661,8 +1769,8 @@ Do not extract any other text. Follow the system instructions strictly.`
       const ai = getGeminiClient(customKey);
 
       const candidateModels = [
-        "gemini-flash-latest",
         "gemini-3.1-flash-lite",
+        "gemini-flash-latest",
         "gemini-4-argon",
       ];
 
@@ -1762,8 +1870,8 @@ CRITICAL DIRECTIVES:
       const ai = getGeminiClient(customKey);
 
       const candidateModels = [
-        "gemini-flash-latest",
         "gemini-3.1-flash-lite",
+        "gemini-flash-latest",
         "gemini-4-argon",
       ];
 
