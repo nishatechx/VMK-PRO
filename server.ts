@@ -1548,7 +1548,7 @@ async function startServer() {
       }
 
       const customKey = req.body?.apiKey || (req.headers['x-gemini-api-key'] as string);
-      const ai = getGeminiClient(customKey);
+      let ai = getGeminiClient(customKey);
       const isTicketMode = req.body?.mode === 'ticket_fields';
 
       const defaultSystemInstruction = `You are a world-class AI vision system specialized in accurate, faithful transcription of both handwritten and printed text from images.

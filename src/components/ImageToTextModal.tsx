@@ -565,7 +565,19 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
         );
       }, 3000);
 
-      const effectiveKey = getEffectiveApiKey();
+      let effectiveKey = masterApiKey;
+      if (!effectiveKey) {
+        try {
+          effectiveKey = await getMasterApiKey();
+        } catch {}
+      }
+      if (!effectiveKey) {
+        effectiveKey =
+          apiKey.trim() ||
+          safeStorage.getItem('vmk_gemini_api_key')?.trim() ||
+          (import.meta as any).env?.VITE_GEMINI_API_KEY?.trim() ||
+          '';
+      }
 
       const payload = {
         images: optimizedImages,
