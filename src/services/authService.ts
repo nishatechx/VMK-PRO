@@ -701,8 +701,12 @@ export async function saveUserAsync(user: UserProfile): Promise<{ success: boole
       uid: existingUser ? (existingUser.uid || existingUser.id) : userUid,
       username: cleanUsername,
       fullName: user.fullName?.trim() || cleanUsername,
-      allowedTabs: Array.isArray(user.allowedTabs) ? [...user.allowedTabs] : ['dashboard', 'profile'],
-      allowedFeatures: Array.isArray(user.allowedFeatures) ? [...user.allowedFeatures] : [],
+      allowedTabs: Array.isArray(user.allowedTabs) && user.allowedTabs.length > 0
+        ? Array.from(new Set([...user.allowedTabs, 'facilitation_tools']))
+        : ['dashboard', 'facilitation_tools', 'visitors', 'candidates', 'students', 'tickets', 'notices_circulars', 'knowledge_base', 'settings', 'profile'],
+      allowedFeatures: Array.isArray(user.allowedFeatures) && user.allowedFeatures.length > 0
+        ? Array.from(new Set([...user.allowedFeatures, 'whatsapp_tool', 'qr_upload_tool', 'ticket_generator_tool', 'img_to_pdf_tool', 'image_to_text_tool']))
+        : ['whatsapp_tool', 'qr_upload_tool', 'ticket_generator_tool', 'img_to_pdf_tool', 'image_to_text_tool', 'add_candidate', 'add_visitor', 'export_reports'],
       isActive: user.isActive !== false,
       canUseApiKey: user.canUseApiKey !== false,
       permissionVersion: newVersion,
@@ -815,8 +819,12 @@ export function saveUser(user: UserProfile): { success: boolean; message: string
       uid: cleanId || (existingIndex >= 0 ? (users[existingIndex].uid || users[existingIndex].id) : undefined),
       username: cleanUsername,
       fullName: user.fullName?.trim() || cleanUsername,
-      allowedTabs: Array.isArray(user.allowedTabs) ? [...user.allowedTabs] : ['dashboard', 'profile'],
-      allowedFeatures: Array.isArray(user.allowedFeatures) ? [...user.allowedFeatures] : [],
+      allowedTabs: Array.isArray(user.allowedTabs) && user.allowedTabs.length > 0
+        ? Array.from(new Set([...user.allowedTabs, 'facilitation_tools']))
+        : ['dashboard', 'facilitation_tools', 'visitors', 'candidates', 'students', 'tickets', 'notices_circulars', 'knowledge_base', 'settings', 'profile'],
+      allowedFeatures: Array.isArray(user.allowedFeatures) && user.allowedFeatures.length > 0
+        ? Array.from(new Set([...user.allowedFeatures, 'whatsapp_tool', 'qr_upload_tool', 'ticket_generator_tool', 'img_to_pdf_tool', 'image_to_text_tool']))
+        : ['whatsapp_tool', 'qr_upload_tool', 'ticket_generator_tool', 'img_to_pdf_tool', 'image_to_text_tool', 'add_candidate', 'add_visitor', 'export_reports'],
       permissionVersion: newVersion,
     };
 
