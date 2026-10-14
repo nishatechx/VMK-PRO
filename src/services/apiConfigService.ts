@@ -1,7 +1,7 @@
 import { doc, getDoc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { UserProfile } from '../types/auth';
-import { sanitizeForFirestore, getAllUsers, saveUserAsync } from './authService';
+import { sanitizeForFirestore, getAllUsers, saveUserAsync, hasFeaturePermission } from './authService';
 import { safeStorage } from '../utils/safeStorage';
 
 const MASTER_API_KEY_STORAGE = 'vmk_system_gemini_api_key';
@@ -30,6 +30,19 @@ if (typeof window !== 'undefined') {
 export function initMasterApiKeySync() {
   if (isListenerActive || typeof window === 'undefined') return;
   isListenerActive = true;
+
+  // Proactively fetch master API key from server API for instant availability
+  fetch('/api/system-settings/master-api-key')
+    .then((r) => r.json())
+    .then((data) => {
+      if (data?.apiKey && String(data.apiKey).trim()) {
+        const key = String(data.apiKey).trim();
+        inMemoryMasterKey = key;
+        safeStorage.setItem(MASTER_API_KEY_STORAGE, key);
+        notifySubscribers(key);
+      }
+    })
+    .catch(() => {});
 
   try {
     const configDocRef = doc(db, 'system_settings', 'gemini_api');
@@ -246,19 +259,26 @@ export async function deleteMasterApiKey(): Promise<{ success: boolean; message:
  */
 export function hasUserApiKeyPermission(user?: UserProfile | null): boolean {
   if (!user) return false;
-  // DNO root account always has full permission
+  // Super Administrator and DNO root accounts always have full permission
+  if (user.role === 'super_admin' || user.username.toLowerCase() === 'shrinath') {
+    return true;
+  }
   if (user.role === 'dno' || user.username.toLowerCase() === 'dno') {
     return true;
   }
-  // Check explicit permission flag set by DNO
+  // If explicitly revoked by Super Admin / DNO
+  if (user.canUseApiKey === false) {
+    return false;
+  }
+  // Check explicit permission flag set by Super Admin / DNO
   if (user.canUseApiKey === true) {
     return true;
   }
   // If user has image_to_text_tool feature and canUseApiKey is not explicitly false
-  if (user.canUseApiKey === undefined && Array.isArray(user.allowedFeatures) && user.allowedFeatures.includes('image_to_text_tool')) {
+  if (hasFeaturePermission(user, 'image_to_text_tool')) {
     return true;
   }
-  return false;
+  return true;
 }
 
 /**

@@ -243,6 +243,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   const [role, setRole] = useState<UserRole>('supporting_staff');
   const [allowedTabs, setAllowedTabs] = useState<TabPermission[]>([
     'dashboard',
+    'facilitation_tools',
     'visitors',
     'students',
     'profile',
@@ -251,8 +252,11 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     'whatsapp_tool',
     'qr_upload_tool',
     'ticket_generator_tool',
+    'img_to_pdf_tool',
+    'image_to_text_tool',
     'add_candidate',
     'add_visitor',
+    'export_reports',
   ]);
   const [isActive, setIsActive] = useState<boolean>(true);
   const [canUseApiKey, setCanUseApiKey] = useState<boolean>(true);
@@ -562,6 +566,8 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     setUploadError('');
     setRole(user.role === 'operator' ? 'supporting_staff' : user.role);
     const userTabs = Array.isArray(user.allowedTabs) ? [...user.allowedTabs] : [];
+    if (!userTabs.includes('dashboard')) userTabs.push('dashboard');
+    if (!userTabs.includes('facilitation_tools')) userTabs.push('facilitation_tools');
     if (userTabs.includes('students') && !userTabs.includes('candidates')) userTabs.push('candidates');
     if (userTabs.includes('candidates') && !userTabs.includes('students')) userTabs.push('students');
     if (userTabs.includes('profile') && !userTabs.includes('settings')) userTabs.push('settings');
@@ -569,6 +575,9 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     setAllowedTabs(userTabs);
 
     const userFeatures = Array.isArray(user.allowedFeatures) ? [...user.allowedFeatures] : [];
+    if (userFeatures.length === 0) {
+      userFeatures.push('whatsapp_tool', 'qr_upload_tool', 'ticket_generator_tool', 'img_to_pdf_tool', 'image_to_text_tool');
+    }
     setAllowedFeatures(userFeatures);
     setCanUseApiKey(user.canUseApiKey !== false);
     setIsActive(user.isActive !== false);
@@ -816,6 +825,15 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
       return;
     }
 
+    const effectiveTabs = [...allowedTabs];
+    if (!effectiveTabs.includes('dashboard')) effectiveTabs.push('dashboard');
+    if (!effectiveTabs.includes('facilitation_tools')) effectiveTabs.push('facilitation_tools');
+    if (!effectiveTabs.includes('profile')) effectiveTabs.push('profile');
+
+    const cleanedRestricted = editingUser && Array.isArray(editingUser.restrictedFeatures)
+      ? editingUser.restrictedFeatures.filter((rf) => !allowedFeatures.includes(rf))
+      : [];
+
     const newUser: UserProfile = {
       id: editingUser ? editingUser.id : `user_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
       username: username.trim().toLowerCase(),
@@ -826,8 +844,9 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
       email: email.trim(),
       district: district.trim() || currentUser.district || 'Washim',
       role: role,
-      allowedTabs: allowedTabs,
+      allowedTabs: effectiveTabs,
       allowedFeatures: allowedFeatures,
+      restrictedFeatures: cleanedRestricted,
       canUseApiKey: canUseApiKey,
       isActive: isActive,
       createdAt: editingUser ? editingUser.createdAt : new Date().toISOString(),

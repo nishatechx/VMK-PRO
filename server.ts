@@ -126,7 +126,7 @@ async function startServer() {
   app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-gemini-api-key');
     if (req.method === 'OPTIONS') {
       return res.sendStatus(200);
     }
@@ -641,19 +641,10 @@ async function startServer() {
         toolSet.add(tl);
       }
     }
-    // Also include any custom tools granted if their parent tab is enabled
+    // Also include any custom tools explicitly granted by Super Admin
     if (Array.isArray(user.allowedFeatures)) {
       for (const f of user.allowedFeatures) {
-        let parentTab = "dashboard";
-        for (const [tabKey, tabTools] of Object.entries(TAB_TO_FEATURES)) {
-          if (tabTools.includes(f)) {
-            parentTab = tabKey;
-            break;
-          }
-        }
-        if (requestedTabs.includes(parentTab) || parentTab === "dashboard") {
-          toolSet.add(f);
-        }
+        toolSet.add(f);
       }
     }
 
@@ -1641,13 +1632,12 @@ Query: <value>`;
 
       const results: Array<{ pageIndex: number; name?: string; text: string }> = [];
 
-      // Multi-model resilience: prioritize gemini-3.1-flash-lite and automatically
-      // fallback across companion vision models if any individual model encounters temporary demand spikes (503/429/UNAVAILABLE).
+      // Multi-model resilience: verified responsive Gemini multimodal vision models
       const candidateModels = [
         "gemini-3.1-flash-lite",
-        "gemini-flash-latest",
-        "gemini-4-argon",
-        "gemini-3.8-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.5-flash",
+        "gemini-flash-lite-latest",
       ];
 
       for (let i = 0; i < imageList.length; i++) {
@@ -1705,8 +1695,13 @@ Do not extract any other text. Follow the system instructions strictly.`
           } catch (err: any) {
             lastModelError = err;
             const errMsg = String(err?.message || err || '');
-            console.warn(`[IMAGE-TO-TEXT] Model '${model}' encountered error: ${errMsg}. Failing over to next candidate model...`);
-            // Immediate fallback to next candidate model in the resilience pool
+            console.warn(`[IMAGE-TO-TEXT] Model '${model}' encountered error: ${errMsg}. Failing over...`);
+            // If customKey failed due to authentication/API key, immediately switch to central server key
+            if (customKey && (errMsg.includes('API_KEY') || errMsg.includes('PERMISSION') || errMsg.includes('403') || errMsg.includes('400'))) {
+              try {
+                ai = getGeminiClient();
+              } catch {}
+            }
             continue;
           }
         }

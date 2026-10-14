@@ -342,18 +342,28 @@ export function hasFeaturePermission(user: UserProfile | null | undefined, featu
     return true;
   }
 
-  const parentTab = getParentTabForFeature(feature);
-  // 1. If user does not have permission to the parent tab, they cannot access the feature
-  if (!hasTabPermission(user, parentTab)) {
-    return false;
-  }
-
-  // 2. Check if Super Admin has explicitly restricted this individual tool
+  // 1. Explicit restriction set by Super Admin always takes precedence
   if (Array.isArray(user.restrictedFeatures) && user.restrictedFeatures.includes(feature)) {
     return false;
   }
 
-  // 3. Tab access grants access to all tools within that tab by default
+  // 2. Explicit permission granted by Super Admin in allowedFeatures takes precedence
+  if (Array.isArray(user.allowedFeatures) && user.allowedFeatures.includes(feature)) {
+    return true;
+  }
+
+  // 3. For facilitation tools (e.g. image_to_text_tool, img_to_pdf_tool, etc.), all staff have access by default unless restricted
+  const parentTab = getParentTabForFeature(feature);
+  if (parentTab === 'facilitation_tools') {
+    return true;
+  }
+
+  // 4. If user does not have permission to the parent tab, they cannot access the feature
+  if (!hasTabPermission(user, parentTab)) {
+    return false;
+  }
+
+  // 5. Tab access grants access to all tools within that tab by default
   return true;
 }
 
@@ -803,9 +813,14 @@ export async function saveUserAsync(user: UserProfile): Promise<{ success: boole
       .filter((feat) => {
         const parentTab = getParentTabForFeature(feat);
         return explicitTabs.includes(parentTab) ||
+          parentTab === 'facilitation_tools' ||
           (parentTab === 'candidates' && explicitTabs.includes('students')) ||
           (parentTab === 'students' && explicitTabs.includes('candidates'));
       });
+
+    const cleanedRestricted = Array.isArray(user.restrictedFeatures)
+      ? user.restrictedFeatures.filter((rf) => !combinedFeatures.includes(rf))
+      : [];
 
     let cleanUser: UserProfile = {
       ...user,
@@ -815,6 +830,7 @@ export async function saveUserAsync(user: UserProfile): Promise<{ success: boole
       fullName: user.fullName?.trim() || cleanUsername,
       allowedTabs: explicitTabs,
       allowedFeatures: combinedFeatures,
+      restrictedFeatures: cleanedRestricted,
       isActive: user.isActive !== false,
       canUseApiKey: user.canUseApiKey !== false,
       permissionVersion: newVersion,
@@ -940,9 +956,14 @@ export function saveUser(user: UserProfile): { success: boolean; message: string
       .filter((feat) => {
         const parentTab = getParentTabForFeature(feat);
         return explicitTabs.includes(parentTab) ||
+          parentTab === 'facilitation_tools' ||
           (parentTab === 'candidates' && explicitTabs.includes('students')) ||
           (parentTab === 'students' && explicitTabs.includes('candidates'));
       });
+
+    const cleanedRestricted = Array.isArray(user.restrictedFeatures)
+      ? user.restrictedFeatures.filter((rf) => !combinedFeatures.includes(rf))
+      : [];
 
     const cleanUser: UserProfile = {
       ...user,
@@ -952,6 +973,7 @@ export function saveUser(user: UserProfile): { success: boolean; message: string
       fullName: user.fullName?.trim() || cleanUsername,
       allowedTabs: explicitTabs,
       allowedFeatures: combinedFeatures,
+      restrictedFeatures: cleanedRestricted,
       permissionVersion: newVersion,
     };
 

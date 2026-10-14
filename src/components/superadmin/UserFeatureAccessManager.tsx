@@ -58,17 +58,22 @@ export const UserFeatureAccessManager: React.FC<UserFeatureAccessManagerProps> =
   const handleToggleFeature = async (user: UserProfile, featureId: FeaturePermission) => {
     setSavingUserId(user.id);
     const restricted = Array.isArray(user.restrictedFeatures) ? [...user.restrictedFeatures] : [];
+    const allowed = Array.isArray(user.allowedFeatures) ? [...user.allowedFeatures] : [];
     const currentlyHasAccess = hasFeaturePermission(user, featureId);
     let updatedRestricted: FeaturePermission[];
+    let updatedAllowed: FeaturePermission[];
 
     if (currentlyHasAccess) {
       updatedRestricted = restricted.includes(featureId) ? restricted : [...restricted, featureId];
+      updatedAllowed = allowed.filter((f) => f !== featureId);
     } else {
       updatedRestricted = restricted.filter((f) => f !== featureId);
+      updatedAllowed = allowed.includes(featureId) ? allowed : [...allowed, featureId];
     }
 
     const updatedUser: UserProfile = {
       ...user,
+      allowedFeatures: updatedAllowed,
       restrictedFeatures: updatedRestricted,
     };
 
@@ -97,11 +102,13 @@ export const UserFeatureAccessManager: React.FC<UserFeatureAccessManagerProps> =
   ) => {
     setSavingUserId(user.id);
     let targetRestricted: FeaturePermission[] = [];
+    let targetAllowed: FeaturePermission[] = [];
     const allFeatureIds = AVAILABLE_FEATURES.map((f) => f.id);
 
     switch (preset) {
       case 'all':
         targetRestricted = [];
+        targetAllowed = [...allFeatureIds];
         break;
       case 'scrutiny': {
         const scrutinyAllowed: FeaturePermission[] = [
@@ -113,20 +120,24 @@ export const UserFeatureAccessManager: React.FC<UserFeatureAccessManagerProps> =
           'export_reports',
         ];
         targetRestricted = allFeatureIds.filter((f) => !scrutinyAllowed.includes(f));
+        targetAllowed = scrutinyAllowed;
         break;
       }
       case 'reception': {
         const receptionAllowed: FeaturePermission[] = ['whatsapp_tool', 'add_visitor', 'qr_upload_tool'];
         targetRestricted = allFeatureIds.filter((f) => !receptionAllowed.includes(f));
+        targetAllowed = receptionAllowed;
         break;
       }
       case 'clear':
         targetRestricted = [...allFeatureIds];
+        targetAllowed = [];
         break;
     }
 
     const updatedUser: UserProfile = {
       ...user,
+      allowedFeatures: targetAllowed,
       restrictedFeatures: targetRestricted,
     };
 
