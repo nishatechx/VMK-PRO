@@ -74,6 +74,7 @@ export interface UserProfile {
   phone?: string;
   email?: string;
   profilePicture?: string;
+  permissionVersion?: number; // Tracks version of permission changes for instant sync & cache invalidation
 }
 
 export interface StudentRecord {

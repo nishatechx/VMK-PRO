@@ -32,9 +32,12 @@ import {
   Download,
   Power,
   Wrench,
+  Activity,
 } from 'lucide-react';
 import { UserProfile, TabPermission, FeaturePermission, UserRole } from '../../types/auth';
 import { MAHARASHTRA_DISTRICTS } from '../../constants/districts';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 import {
   getAllUsers,
   subscribeToUsers,
@@ -77,6 +80,60 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [viewSection, setViewSection] = useState<'profiles' | 'tab_permissions' | 'feature_permissions' | 'bulk_tools'>('profiles');
+  const [diagnosticTarget, setDiagnosticTarget] = useState<UserProfile | null>(null);
+  const [diagnosticData, setDiagnosticData] = useState<{
+    local: UserProfile | null;
+    server: UserProfile | null;
+    firestore: UserProfile | null;
+    latencyMs: number;
+    isChecking: boolean;
+  } | null>(null);
+
+  const openDiagnosticModal = async (u: UserProfile) => {
+    setDiagnosticTarget(u);
+    setDiagnosticData({
+      local: u,
+      server: null,
+      firestore: null,
+      latencyMs: 0,
+      isChecking: true,
+    });
+
+    const t0 = performance.now();
+    let serverUser: UserProfile | null = null;
+    let firestoreUser: UserProfile | null = null;
+
+    try {
+      const res = await fetch(`/api/users/lookup/${encodeURIComponent(u.username)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.success && data?.user) {
+          serverUser = data.user;
+        }
+      }
+    } catch {}
+
+    try {
+      const docSnap1 = await getDoc(doc(db, 'users', u.id));
+      if (docSnap1.exists()) {
+        firestoreUser = docSnap1.data() as UserProfile;
+      } else if (u.username) {
+        const docSnap2 = await getDoc(doc(db, 'users', u.username.toLowerCase()));
+        if (docSnap2.exists()) {
+          firestoreUser = docSnap2.data() as UserProfile;
+        }
+      }
+    } catch {}
+
+    const latencyMs = Math.round(performance.now() - t0);
+    setDiagnosticData({
+      local: u,
+      server: serverUser,
+      firestore: firestoreUser,
+      latencyMs,
+      isChecking: false,
+    });
+  };
 
   const isSuperAdmin = currentUser?.role === 'super_admin' || currentUser?.username?.toLowerCase() === 'shrinath';
   const isDno = !isSuperAdmin && (currentUser?.role === 'dno' || currentUser?.username?.toLowerCase() === 'dno');
@@ -1397,6 +1454,15 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
 
                         <button
                           type="button"
+                          onClick={() => openDiagnosticModal(u)}
+                          title={`Diagnose Permissions for @${u.username}`}
+                          className="p-1.5 rounded-lg text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 transition-colors cursor-pointer"
+                        >
+                          <Activity className="w-3.5 h-3.5" />
+                        </button>
+
+                        <button
+                          type="button"
                           onClick={() => handleOpenResetPassword(u)}
                           title={`Reset Password for @${u.username}`}
                           className="p-1.5 rounded-lg text-slate-600 hover:text-amber-600 hover:bg-amber-50 border border-slate-200 hover:border-amber-300 transition-colors cursor-pointer"
@@ -2260,6 +2326,143 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Permission Diagnostic Modal */}
+      {diagnosticTarget && diagnosticData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-2xs">
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 max-w-2xl w-full shadow-2xl text-slate-900 space-y-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                  <Activity className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900">Permission Diagnostic & Verification Inspector</h3>
+                  <p className="text-xs text-slate-500">Inspecting effective permissions vs database source for @{diagnosticTarget.username}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDiagnosticTarget(null)}
+                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {diagnosticData.isChecking ? (
+              <div className="py-12 flex flex-col items-center justify-center gap-3 text-slate-500">
+                <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                <span className="text-xs font-medium">Verifying permissions across Local Storage, Server API, and Firestore Cloud DB...</span>
+              </div>
+            ) : (
+              <div className="space-y-4 text-xs">
+                {/* Latency & Sync Status Banner */}
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="font-semibold text-slate-700">Diagnostic Check Complete ({diagnosticData.latencyMs} ms)</span>
+                  </div>
+                  <span className="text-[11px] font-mono text-slate-500">
+                    Version: v{diagnosticData.local?.permissionVersion || 1}
+                  </span>
+                </div>
+
+                {/* Sources Comparison Table */}
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="bg-slate-100 text-slate-700 border-b border-slate-200 font-bold">
+                        <th className="p-3">Source Channel</th>
+                        <th className="p-3">Status</th>
+                        <th className="p-3">Version</th>
+                        <th className="p-3">Allowed Tabs</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      <tr>
+                        <td className="p-3 font-semibold text-slate-800">1. Local Storage Cache</td>
+                        <td className="p-3 text-emerald-600 font-semibold">Active</td>
+                        <td className="p-3 font-mono">v{diagnosticData.local?.permissionVersion || 1}</td>
+                        <td className="p-3">{diagnosticData.local?.allowedTabs?.length || 0} tabs</td>
+                      </tr>
+                      <tr>
+                        <td className="p-3 font-semibold text-slate-800">2. Server API Route (/api/users)</td>
+                        <td className="p-3">
+                          {diagnosticData.server ? <span className="text-emerald-600 font-semibold">Synchronized</span> : <span className="text-amber-600 font-semibold">Local Fallback</span>}
+                        </td>
+                        <td className="p-3 font-mono">v{diagnosticData.server?.permissionVersion || 'N/A'}</td>
+                        <td className="p-3">{diagnosticData.server?.allowedTabs?.length || 'N/A'} tabs</td>
+                      </tr>
+                      <tr>
+                        <td className="p-3 font-semibold text-slate-800">3. Firestore Cloud Database</td>
+                        <td className="p-3">
+                          {diagnosticData.firestore ? <span className="text-emerald-600 font-semibold">Connected</span> : <span className="text-amber-600 font-semibold">Sync Pending</span>}
+                        </td>
+                        <td className="p-3 font-mono">v{diagnosticData.firestore?.permissionVersion || 'N/A'}</td>
+                        <td className="p-3">{diagnosticData.firestore?.allowedTabs?.length || 'N/A'} tabs</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Effective Permissions Breakdown */}
+                <div className="p-3.5 bg-blue-50/60 rounded-xl border border-blue-200 space-y-2 text-slate-800">
+                  <span className="font-bold text-blue-900 block">Effective Permission Summary for @{diagnosticTarget.username}</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                    <div>
+                      <span className="font-semibold text-slate-700 block mb-1">Allowed Tabs ({diagnosticData.local?.allowedTabs?.length || 0}):</span>
+                      <div className="flex flex-wrap gap-1">
+                        {diagnosticData.local?.allowedTabs?.map((t) => (
+                          <span key={t} className="px-1.5 py-0.5 rounded bg-white text-blue-800 border border-blue-200 font-medium">
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="font-semibold text-slate-700 block mb-1">Allowed Tools ({diagnosticData.local?.allowedFeatures?.length || 0}):</span>
+                      <div className="flex flex-wrap gap-1">
+                        {diagnosticData.local?.allowedFeatures?.map((f) => (
+                          <span key={f} className="px-1.5 py-0.5 rounded bg-white text-emerald-800 border border-emerald-200 font-medium">
+                            {f}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (diagnosticTarget) {
+                        await saveUserAsync(diagnosticTarget);
+                        alert(`Force-synced permissions and broadcasted update for @${diagnosticTarget.username}`);
+                        setDiagnosticTarget(null);
+                        refreshUsersList();
+                      }
+                    }}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Force Re-Sync & Broadcast</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDiagnosticTarget(null)}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-semibold cursor-pointer"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

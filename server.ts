@@ -532,6 +532,9 @@ async function startServer() {
     }
 
     const existingUser = existingIndex >= 0 ? users[existingIndex] : null;
+    const existingVersion = existingUser ? (existingUser.permissionVersion || 0) : 0;
+    const clientVersion = user.permissionVersion || 0;
+    const newVersion = Math.max(existingVersion + 1, clientVersion > existingVersion ? clientVersion : existingVersion + 1);
 
     const cleanUser = {
       ...user,
@@ -549,6 +552,7 @@ async function startServer() {
       canUseApiKey: user.canUseApiKey !== false,
       isActive: user.isActive !== false,
       createdAt: user.createdAt || (existingUser ? existingUser.createdAt : new Date().toISOString()),
+      permissionVersion: newVersion,
       ...(user.profilePicture ? { profilePicture: user.profilePicture } : {}),
       ...(user.lastLogin ? { lastLogin: user.lastLogin } : {}),
     };

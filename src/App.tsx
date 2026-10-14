@@ -270,12 +270,28 @@ export default function App() {
           (u) => u.id === cur.id || u.username.toLowerCase() === cur.username.toLowerCase()
         );
         if (fresh) {
-          setCurUser(fresh);
+          const curVer = cur.permissionVersion || 0;
+          const freshVer = fresh.permissionVersion || 0;
+          if (
+            freshVer > curVer ||
+            JSON.stringify(fresh.allowedTabs) !== JSON.stringify(cur.allowedTabs) ||
+            JSON.stringify(fresh.allowedFeatures) !== JSON.stringify(cur.allowedFeatures)
+          ) {
+            setCurrentUser(fresh);
+            setCurUser(fresh);
+          }
         }
       }
     });
 
-    return () => unsubscribe();
+    const syncInterval = setInterval(() => {
+      syncUsersFromServer().catch(() => {});
+    }, 15000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(syncInterval);
+    };
   }, []);
 
   // Handle Mobile QR scanning view

@@ -669,6 +669,8 @@ export async function saveUserAsync(user: UserProfile): Promise<{ success: boole
     );
 
     const existingUser = existingIndex >= 0 ? users[existingIndex] : null;
+    const existingVersion = existingUser?.permissionVersion || user.permissionVersion || 0;
+    const newVersion = existingVersion + 1;
 
     let cleanUser: UserProfile = {
       ...user,
@@ -680,6 +682,7 @@ export async function saveUserAsync(user: UserProfile): Promise<{ success: boole
       allowedFeatures: Array.isArray(user.allowedFeatures) ? [...user.allowedFeatures] : [],
       isActive: user.isActive !== false,
       canUseApiKey: user.canUseApiKey !== false,
+      permissionVersion: newVersion,
     };
 
     // 1. Immediately persist locally to ensure zero-lag instant UI responsiveness
@@ -779,6 +782,10 @@ export function saveUser(user: UserProfile): { success: boolean; message: string
       }
     }
 
+    const existingUser = existingIndex >= 0 ? users[existingIndex] : null;
+    const existingVersion = existingUser?.permissionVersion || user.permissionVersion || 0;
+    const newVersion = existingVersion + 1;
+
     const cleanUser: UserProfile = {
       ...user,
       id: cleanId || (existingIndex >= 0 ? users[existingIndex].id : `user_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`),
@@ -787,6 +794,7 @@ export function saveUser(user: UserProfile): { success: boolean; message: string
       fullName: user.fullName?.trim() || cleanUsername,
       allowedTabs: Array.isArray(user.allowedTabs) ? [...user.allowedTabs] : ['dashboard', 'profile'],
       allowedFeatures: Array.isArray(user.allowedFeatures) ? [...user.allowedFeatures] : [],
+      permissionVersion: newVersion,
     };
 
     if (existingIndex >= 0) {
