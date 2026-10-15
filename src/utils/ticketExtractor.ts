@@ -1,19 +1,45 @@
 /**
- * Extracts student / candidate grievance & admission details from OCR text
- * for populating the SAC Ticket Generator (TG) modal.
+ * Extracts student / candidate grievance & admission details from handwritten or printed SAC forms
+ * for populating the SAC Ticket Generator (TG) modal and displaying extracted field cards.
  * 
- * Strict field-to-field mapping:
- * 1. Candidate Name -> TG 'Candidate Name' field
- * 2. Mobile Number -> TG 'Mobile Number' field
- * 3. Email Address -> TG 'Email Address' field
- * 4. DOB (Date of Birth) -> TG 'DOB' field (normalized YYYY-MM-DD)
- * 5. CET Application Number -> TG 'CET Application Number' field
- * 6. Course Name -> TG 'Course Name' dropdown
- * 7. Query: -> TG 'Query / Grievance Details' textarea
+ * Canonical 8 Fields:
+ * 1. Candidate Name (As in CET / Form)
+ * 2. CET Application Number (digits/string from CET row)
+ * 3. CAP Application Number (state CAP ID with prefixes like EN, MB, MC, PH, AR, DS, etc.)
+ * 4. Date of Birth (DOB) (normalized YYYY-MM-DD when unambiguous)
+ * 5. Mobile Number (10-digit phone number as string)
+ * 6. Email ID (complete email address preserved)
+ * 7. Course Name (degree / program applied)
+ * 8. Query / Grievance Details (complete handwritten grievance text)
  */
 
 import { ALL_COURSES, DEFAULT_COURSE } from '../data/courses';
-import { convertQueryToThirdPersonFallback, detectFirstPersonLanguage } from './queryRewriter';
+
+export type ExtractionConfidenceLevel = 'high' | 'medium' | 'low';
+
+export interface FieldConfidenceMap {
+  candidateName: ExtractionConfidenceLevel;
+  cetApplicationNumber: ExtractionConfidenceLevel;
+  capApplicationNumber: ExtractionConfidenceLevel;
+  dob: ExtractionConfidenceLevel;
+  mobileNumber: ExtractionConfidenceLevel;
+  emailId: ExtractionConfidenceLevel;
+  courseName: ExtractionConfidenceLevel;
+  queryGrievanceDetails: ExtractionConfidenceLevel;
+}
+
+export interface CanonicalTicketFields {
+  candidateName: string;
+  cetApplicationNumber: string;
+  capApplicationNumber: string;
+  dob: string;
+  mobileNumber: string;
+  emailId: string;
+  courseName: string;
+  queryGrievanceDetails: string;
+  confidence: FieldConfidenceMap;
+  needsReview: string[];
+}
 
 export interface CapturedTicketDetails {
   candidateName?: string;
@@ -24,6 +50,9 @@ export interface CapturedTicketDetails {
   course?: string;
   query?: string;
   capId?: string;
+  confidence?: Partial<FieldConfidenceMap>;
+  needsReview?: string[];
+  canonical?: CanonicalTicketFields;
 }
 
 const MONTH_NAME_MAP: Record<string, string> = {
@@ -43,6 +72,7 @@ const MONTH_NAME_MAP: Record<string, string> = {
 
 /**
  * Normalizes date string into YYYY-MM-DD format for HTML <input type="date">
+ * Returns undefined if date format is ambiguous or invalid.
  */
 export function normalizeDateToYMD(dateStr: string): string | undefined {
   if (!dateStr) return undefined;
@@ -259,7 +289,7 @@ export function cleanAppId(val: string): string {
     return digitsMatch[1];
   }
 
-  // Extract contiguous alphanumeric token of 6 to 16 chars
+  // Contiguous alphanumeric token of 6 to 16 chars
   const tokenMatch = clean.match(/([A-Za-z0-9]{6,16})/);
   if (tokenMatch && !/^(candidate|applicant|student|course|status|number|application|details|none|notavailable|available|notfound|unclear|present)$/i.test(tokenMatch[1])) {
     return tokenMatch[1].toUpperCase();
@@ -268,18 +298,8 @@ export function cleanAppId(val: string): string {
 }
 
 /**
- * Extracts ONLY the 8 required ticket details from extracted OCR / document text.
- * Strictly maps:
- * 1. Candidate Name -> details.candidateName
- * 2. CET Application Number -> details.cetNo
- * 3. CAP Application Number -> details.capId
- * 4. Date of Birth (DOB) -> details.dob
- * 5. Mobile Number -> details.mobile
- * 6. Email ID -> details.email
- * 7. Course Name -> details.course
- * 8. Query / Grievance Details -> details.query
+ * Sanitizes candidate names, removing labels, ticket numbers, digits, and noise.
  */
-// Helper to cleanly sanitize extracted candidate names
 export function cleanCandidateName(raw: string): string {
   if (!raw) return '';
   let clean = raw.trim();
@@ -298,15 +318,258 @@ export function cleanCandidateName(raw: string): string {
   clean = clean.replace(/\s+(?:Mobile(?:\s*No)?|Phone|Email(?:\s*ID)?|DOB|Date\s*of\s*Birth|CET|CAP|Course(?:\s*Name)?|Query|Father|Mother|Gender|Category|Nationality|Sign)\s*[:.\-].*$/i, '').trim();
   // Strip leading/trailing quotes, bullets, punctuation, numbers at start, table pipes
   clean = clean.replace(/^[\s"'“”‘’\-.:,;0-9*#|]+|[\s"'“”‘’\-.:,;*#|]+$/g, '').trim();
+
+  // If candidate name is purely numbers or looks like a ticket number / application ID, reject it
+  if (/^\d+$/.test(clean) || /^(?:EN|MB|MC|PH|AR|DS|DSP|DSE)\d+/i.test(clean) || /^SAC\b/i.test(clean) || /^TK\b/i.test(clean)) {
+    return '';
+  }
+
+  // Reject headers, institutional phrases, form titles, or signature lines
+  if (/\b(?:ASSISTANCE\s*CENTRE|STUDENT\s*ASSISTANCE|GRIEVANCE\s*FORM|VERIFICATION|SCRUTINY|SIGNATURE|STATE\s*COMMON|CET\s*CELL|SAC\b|DATE\b|PLACE\b)\b/i.test(clean)) {
+    return '';
+  }
+
   // Reject placeholder values
   if (/^(candidate|name|student|applicant|query|course|none|na|n\/a|not\s*found|not\s*available|unclear|null|undefined|nil|-+|blank)$/i.test(clean)) {
     return '';
   }
-  return clean || raw.trim();
+  return clean;
 }
 
+/**
+ * Validates and normalizes parsed JSON or raw ticket fields into the canonical 8-field structure.
+ */
+export function normalizeTicketFields(raw: any, sourceText?: string): CapturedTicketDetails {
+  const needsReview: string[] = [];
+  const confidence: FieldConfidenceMap = {
+    candidateName: 'high',
+    cetApplicationNumber: 'high',
+    capApplicationNumber: 'high',
+    dob: 'high',
+    mobileNumber: 'high',
+    emailId: 'high',
+    courseName: 'high',
+    queryGrievanceDetails: 'high',
+  };
+
+  // 1. Candidate Name
+  let candidateName = cleanCandidateName(
+    raw.candidateName || raw.name || raw.studentName || raw.applicantName || raw.fullName || ''
+  );
+  if (!candidateName || candidateName.length < 2) {
+    candidateName = '';
+    confidence.candidateName = 'low';
+    needsReview.push('candidateName');
+  } else if (raw.confidence?.candidateName) {
+    confidence.candidateName = raw.confidence.candidateName;
+    if (confidence.candidateName !== 'high') needsReview.push('candidateName');
+  }
+
+  // 2. CET Application Number (digits / string, NEVER swapped with CAP)
+  let cetNo = cleanAppId(
+    raw.cetApplicationNumber || raw.cetNo || raw.cetAppNo || raw.cetRollNo || raw.applicationNumber || ''
+  );
+  // Ensure CET does not contain state CAP prefix if distinct
+  if (CAP_PREFIX_REGEX.test(cetNo) && !raw.capApplicationNumber && !raw.capId) {
+    // If it has CAP prefix (e.g. EN24...) and no capId provided, it's actually a CAP ID
+    raw.capApplicationNumber = cetNo;
+    cetNo = '';
+  }
+  if (!cetNo) {
+    confidence.cetApplicationNumber = 'low';
+    needsReview.push('cetApplicationNumber');
+  } else if (raw.confidence?.cetApplicationNumber) {
+    confidence.cetApplicationNumber = raw.confidence.cetApplicationNumber;
+    if (confidence.cetApplicationNumber !== 'high') needsReview.push('cetApplicationNumber');
+  }
+
+  // 3. CAP Application Number
+  let capId = cleanAppId(
+    raw.capApplicationNumber || raw.capId || raw.capAppNo || ''
+  );
+  if (capId && CAP_PREFIX_REGEX.test(capId)) {
+    capId = capId.toUpperCase();
+  }
+  if (!capId) {
+    confidence.capApplicationNumber = 'low';
+    // CAP number may legitimately be absent for students at CET stage before CAP registration
+    if (raw.needsReview?.includes('capApplicationNumber')) {
+      needsReview.push('capApplicationNumber');
+    }
+  } else if (raw.confidence?.capApplicationNumber) {
+    confidence.capApplicationNumber = raw.confidence.capApplicationNumber;
+    if (confidence.capApplicationNumber !== 'high') needsReview.push('capApplicationNumber');
+  }
+
+  // 4. Date of Birth (DOB)
+  const rawDob = String(raw.dob || raw.birthDate || raw.dateOfBirth || '').trim();
+  let dob = '';
+  if (rawDob) {
+    const normalized = normalizeDateToYMD(rawDob);
+    if (normalized) {
+      dob = normalized;
+      confidence.dob = raw.confidence?.dob || 'high';
+    } else {
+      // Preserve original handwriting text when ambiguous
+      dob = rawDob;
+      confidence.dob = 'medium';
+      needsReview.push('dob');
+    }
+  } else {
+    confidence.dob = 'low';
+    needsReview.push('dob');
+  }
+
+  // 5. Mobile Number (10 digits as string)
+  let mobile = String(raw.mobileNumber || raw.mobile || raw.phone || '').trim();
+  const digits = mobile.replace(/\D/g, '');
+  if (digits.length >= 10) {
+    mobile = digits.slice(-10);
+    confidence.mobileNumber = raw.confidence?.mobileNumber || 'high';
+  } else if (mobile) {
+    // Partial or uncertain mobile number
+    confidence.mobileNumber = 'medium';
+    needsReview.push('mobileNumber');
+  } else {
+    mobile = '';
+    confidence.mobileNumber = 'low';
+    needsReview.push('mobileNumber');
+  }
+
+  // 6. Email ID
+  let email = String(raw.emailId || raw.email || '').trim().toLowerCase();
+  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  if (email && emailRegex.test(email)) {
+    confidence.emailId = raw.confidence?.emailId || 'high';
+  } else if (email) {
+    confidence.emailId = 'medium';
+    needsReview.push('emailId');
+  } else {
+    email = '';
+    confidence.emailId = 'low';
+    needsReview.push('emailId');
+  }
+
+  // 7. Course Name
+  let course = String(raw.courseName || raw.course || '').trim();
+  if (course) {
+    const matched = matchCourseName(course);
+    course = matched || course;
+    confidence.courseName = raw.confidence?.courseName || 'high';
+  } else {
+    course = '';
+    confidence.courseName = 'low';
+    needsReview.push('courseName');
+  }
+
+  // 8. Query / Grievance Details
+  let query = String(raw.queryGrievanceDetails || raw.query || raw.grievance || '').trim();
+  // Strip separate Ticket Number from query if mistakenly included
+  query = query
+    .replace(/(?:^|\n|\s*)(?:Ticket\s*(?:No|Number)|Token\s*No|Sr\s*No)[\s:.\-#\t—=]+[A-Za-z0-9\-_/]+/gi, '')
+    .trim();
+  if (query && query.length >= 3) {
+    confidence.queryGrievanceDetails = raw.confidence?.queryGrievanceDetails || 'high';
+  } else {
+    query = '';
+    confidence.queryGrievanceDetails = 'low';
+    needsReview.push('queryGrievanceDetails');
+  }
+
+  // Merge any custom needsReview items passed from AI model
+  if (Array.isArray(raw.needsReview)) {
+    for (const item of raw.needsReview) {
+      if (typeof item === 'string' && !needsReview.includes(item)) {
+        needsReview.push(item);
+      }
+    }
+  }
+
+  const canonical: CanonicalTicketFields = {
+    candidateName,
+    cetApplicationNumber: cetNo,
+    capApplicationNumber: capId,
+    dob,
+    mobileNumber: mobile,
+    emailId: email,
+    courseName: course,
+    queryGrievanceDetails: query,
+    confidence,
+    needsReview,
+  };
+
+  return {
+    candidateName,
+    cetNo,
+    capId,
+    dob,
+    mobile,
+    email,
+    course,
+    query,
+    confidence,
+    needsReview,
+    canonical,
+  };
+}
+
+/**
+ * Attempts to parse JSON string (or markdown json block) into CanonicalTicketFields.
+ */
+export function tryParseJsonTicket(text: string): CanonicalTicketFields | null {
+  if (!text || typeof text !== 'string') return null;
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('{') && !trimmed.includes('```json') && !trimmed.includes('```')) {
+    return null;
+  }
+
+  try {
+    let cleanJson = trimmed;
+    const blockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (blockMatch) {
+      cleanJson = blockMatch[1].trim();
+    } else {
+      const firstBrace = cleanJson.indexOf('{');
+      const lastBrace = cleanJson.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        cleanJson = cleanJson.substring(firstBrace, lastBrace + 1);
+      }
+    }
+
+    const parsed = JSON.parse(cleanJson);
+    if (parsed && typeof parsed === 'object') {
+      const normalized = normalizeTicketFields(parsed);
+      return normalized.canonical || null;
+    }
+  } catch {
+    // Not valid JSON
+  }
+  return null;
+}
+
+/**
+ * Extracts ONLY the 8 required ticket details from extracted text (JSON or plain OCR).
+ */
 export function captureTicketDetailsFromText(rawText: string): CapturedTicketDetails {
   if (!rawText || !rawText.trim()) return {};
+
+  // First, check if input is structured JSON
+  const jsonResult = tryParseJsonTicket(rawText);
+  if (jsonResult) {
+    return {
+      candidateName: jsonResult.candidateName,
+      cetNo: jsonResult.cetApplicationNumber,
+      capId: jsonResult.capApplicationNumber,
+      dob: jsonResult.dob,
+      mobile: jsonResult.mobileNumber,
+      email: jsonResult.emailId,
+      course: jsonResult.courseName,
+      query: jsonResult.queryGrievanceDetails,
+      confidence: jsonResult.confidence,
+      needsReview: jsonResult.needsReview,
+      canonical: jsonResult,
+    };
+  }
 
   const details: CapturedTicketDetails = {};
   const cleanedText = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
@@ -318,34 +581,30 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
   // ---------------------------------------------------------------------------
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    // Strip leading list numbers/bullets/markdown
+    // Strip leading list numbers/bullets/markdown but preserve underscores inside emails
     const strippedLine = line
       .replace(/^[\s\d.)\-*•#[\]|]+/, '')
-      .replace(/[*_]/g, '')
+      .replace(/(?<!\w)[*`]|[*`](?!\w)/g, '')
       .trim();
 
     // Helper: extracts value after label on same line or from next line
     const extractLineVal = (labelRegex: RegExp): string => {
-      // 1. Try strippedLine first (matches "1. Candidate Name: Ramesh Shinde")
       let match = strippedLine.match(labelRegex);
       if (match && match[1] !== undefined && match[1].trim()) {
         return match[1].trim();
       }
-      // 2. Try raw line
       match = line.match(labelRegex);
       if (match && match[1] !== undefined && match[1].trim()) {
         return match[1].trim();
       }
-      // 3. If line is just the label without value, look at next line
       const cleanOnlyLabel = strippedLine.replace(/[\s:.\-#\t—=|]+$/, '');
       if (
         (labelRegex.test(strippedLine) || labelRegex.test(line) || labelRegex.test(cleanOnlyLabel + ':')) &&
         i + 1 < lines.length
       ) {
         const next = lines[i + 1].trim();
-        // Ensure next line is not another label
         if (
-          !/^(candidate|name|mobile|phone|email|dob|date of birth|cet|cap|course|query|grievance|\*{1,2}(candidate|name|mobile|email|dob|cet|cap|course|query))/i.test(
+          !/^(?:\d+[.)\-]|[*•#]+|candidate|name|mobile|phone|email|dob|date|cet|cap|course|query|grievance|ticket|application)/i.test(
             next
           )
         ) {
@@ -355,10 +614,10 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
       return '';
     };
 
-    // 1. Candidate Name
+    // 1. Candidate Name (As in CET)
     if (!details.candidateName) {
       const nameVal = extractLineVal(
-        /^(?:(?:\d+[.)\-]*)?\s*(?:Candidate(?:\s*['’]s)?(?:\s*Full)?\s*Name|Name\s*of\s*(?:the\s*)?(?:Candidate|Applicant|Student)|Student(?:\s*['’]s)?(?:\s*Full)?\s*Name|Applicant(?:\s*['’]s)?(?:\s*Full)?\s*Name|Full\s*Name(?:\s*of\s*(?:Candidate|Applicant|Student))?|Candidate|Student|Applicant|Name|उमेदवाराचे\s*(?:संपूर्ण\s*)?नाव|अर्जदाराचे\s*(?:संपूर्ण\s*)?नाव|विद्यार्थ्याचे\s*(?:संपूर्ण\s*)?नाव|उमेदवार|विद्यार्थी|अर्जदार))(?:\s*\([^)]*\))?[\s:.\-#\t—=|]+(.*)$/i
+        /^(?:(?:\d+[.)\-]*)?\s*(?:Candidate(?:\s*['’]s)?(?:\s*Full)?\s*Name(?:\s*\(As in CET\))?|Name\s*of\s*(?:the\s*)?(?:Candidate|Applicant|Student)|Student(?:\s*['’]s)?(?:\s*Full)?\s*Name|Applicant(?:\s*['’]s)?(?:\s*Full)?\s*Name|Full\s*Name(?:\s*of\s*(?:Candidate|Applicant|Student))?|उमेदवाराचे\s*(?:संपूर्ण\s*)?नाव|अर्जदाराचे\s*(?:संपूर्ण\s*)?नाव|विद्यार्थ्याचे\s*(?:संपूर्ण\s*)?नाव))(?:\s*\([^)]*\))?[\s:.\-#\t—=|]+(.*)$/i
       );
       if (nameVal) {
         const clean = cleanCandidateName(nameVal);
@@ -420,7 +679,9 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
         const dateToken = dobVal.match(/(\d{1,4}[/\-.][0-9A-Za-z]{1,9}[/\-.][0-9]{2,4}|\d{1,2}[\s\-][A-Za-z]{3,9}[\s\-]\d{2,4})/);
         if (dateToken) {
           const norm = normalizeDateToYMD(dateToken[1]);
-          if (norm) details.dob = norm;
+          details.dob = norm || dobVal.trim();
+        } else {
+          details.dob = dobVal.trim();
         }
       }
     }
@@ -434,6 +695,8 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
         const digits = mobVal.replace(/\D/g, '').slice(-10);
         if (digits.length === 10 && /^[6-9]\d{9}$/.test(digits)) {
           details.mobile = digits;
+        } else if (mobVal.trim()) {
+          details.mobile = mobVal.trim();
         }
       }
     }
@@ -445,14 +708,18 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
       );
       if (emailVal) {
         const m = emailVal.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
-        if (m) details.email = m[1].toLowerCase().trim();
+        if (m) {
+          details.email = m[1].toLowerCase().trim();
+        } else if (emailVal.trim()) {
+          details.email = emailVal.trim();
+        }
       }
     }
 
     // 8. Course Name
     if (!details.course) {
       const courseVal = extractLineVal(
-        /^(?:(?:\d+[.)\-]*)?\s*(?:Course\s*Name|Course\s*Applied|Applied\s*Course|Course|Branch|Programme|अभ्यासक्रमाचे\s*नाव|अभ्यासक्रम))[\s:.\-#\t—=|]+(.*)$/i
+        /^(?:(?:\d+[.)\-]*)?\s*(?:Course\s*(?:Name|Applied)?|Applied\s*Course|Branch|Programme|अभ्यासक्रमाचे\s*नाव(?:\s*(?:\/|\&)\s*Course)?|अभ्यासक्रम(?:\s*(?:\/|\&)\s*Course)?))[\s:.\-#\t—=|]+(.*)$/i
       );
       if (courseVal) {
         const cleanVal = courseVal.replace(/^[*_`|]+|[*_`|]+$/g, '').trim();
@@ -463,15 +730,32 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
       }
     }
 
-    // 9. Query / Grievance Details
+    // 9. Query / Grievance Details (gathers complete multi-line handwritten complaint)
     if (!details.query) {
-      const queryVal = extractLineVal(
-        /^(?:(?:\d+[.)\-]*)?\s*(?:Query\s*(?:\/|\&|and)?\s*Grievance(?:\s*Details)?|Query\s*Details|Query|Grievance(?:\s*Details)?|Issue(?:\s*Details)?|Problem|Complaint|Subject|Reason|Remarks?|तक्रार\s*(?:\/|\&)?\s*(?:अडचण|समस्या)?(?:\s*तपशील)?|तक्रार\s*तपशील|तक्रार|समस्या|अडचण|विषय))[\s:.\-#\t—=|\/]+(.*)$/i
+      const queryHeaderMatch = strippedLine.match(
+        /^(?:(?:\d+[.)\-]*)?\s*(?:Query\s*(?:\/|\&|and)?\s*Grievance(?:\s*Details)?|Query\s*Details|Query|Grievance(?:\s*Details)?|Issue(?:\s*Details)?|Problem|Complaint|Subject|Reason|Remarks?|तक्रार\s*(?:\/|\&)?\s*(?:अडचण|समस्या)?(?:\s*(?:तपशील|सविस्तर|वर्णन))?|समस्या\s*(?:तपशील|सविस्तर)?|अडचण\s*(?:तपशील|सविस्तर)?|तक्रार|विषय))[\s:.\-#\t—=|\/]*(.*)$/i
       );
-      if (queryVal && queryVal.length >= 2) {
-        const cleanQ = queryVal.replace(/^[*_`|/:\s\-—]+|[*_`|/:\s\-—]+$/g, '').trim();
-        if (!/^(none|na|n\/a|not\s*found|not\s*available|null|undefined|nil|-+)$/i.test(cleanQ)) {
-          details.query = cleanQ;
+      if (queryHeaderMatch) {
+        const queryLines: string[] = [];
+        if (queryHeaderMatch[1] && queryHeaderMatch[1].trim()) {
+          queryLines.push(queryHeaderMatch[1].trim());
+        }
+        for (let j = i + 1; j < lines.length; j++) {
+          const l = lines[j].trim();
+          if (/^(?:Candidate\s*Signature|Signature|Sign|Date\s*:|Place\s*:|Thanking|Yours|Ticket\s*No)/i.test(l)) {
+            break;
+          }
+          if (/^(?:\d+[.)\-]|[*•#]+|candidate|name|mobile|phone|email|dob|date of birth|cet|cap|course)/i.test(l)) {
+            break;
+          }
+          if (l) queryLines.push(l);
+        }
+        if (queryLines.length > 0) {
+          let fullQ = queryLines.join(' ');
+          fullQ = fullQ.replace(/(?:^|\n|\s*)(?:Ticket\s*(?:No|Number)|Token\s*No)[\s:.\-#\t—=]+[A-Za-z0-9\-_/]+/gi, '').trim();
+          if (!/^(none|na|n\/a|not\s*found|not\s*available|null|undefined|nil|-+)$/i.test(fullQ)) {
+            details.query = fullQ;
+          }
         }
       }
     }
@@ -479,13 +763,12 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
 
   // ---------------------------------------------------------------------------
   // STEP 2: GLOBAL REGEX SEARCH FOR UNRESOLVED FIELDS
-  // Scans for exact label prefixes across document text
   // ---------------------------------------------------------------------------
 
   // 1. Candidate Name (if not resolved)
   if (!details.candidateName) {
     const nameGlobalPatterns = [
-      /(?:Candidate(?:\s*['’]s)?(?:\s*Full)?\s*Name|Name\s*of\s*(?:the\s*)?(?:Candidate|Applicant|Student)|Student(?:\s*['’]s)?(?:\s*Full)?\s*Name|Applicant(?:\s*['’]s)?(?:\s*Full)?\s*Name|Full\s*Name(?:\s*of\s*(?:Candidate|Applicant|Student))?|उमेदवाराचे\s*(?:संपूर्ण\s*)?नाव|अर्जदाराचे\s*(?:संपूर्ण\s*)?नाव|विद्यार्थ्याचे\s*(?:संपूर्ण\s*)?नाव)(?:\s*\([^)]*\))?[\s:.\-#\t—=|]+([^\n\r|]{2,80})/i,
+      /(?:Candidate(?:\s*['’]s)?(?:\s*Full)?\s*Name(?:\s*\(As in CET\))?|Name\s*of\s*(?:the\s*)?(?:Candidate|Applicant|Student)|Student(?:\s*['’]s)?(?:\s*Full)?\s*Name|Applicant(?:\s*['’]s)?(?:\s*Full)?\s*Name|Full\s*Name(?:\s*of\s*(?:Candidate|Applicant|Student))?|उमेदवाराचे\s*(?:संपूर्ण\s*)?नाव|अर्जदाराचे\s*(?:संपूर्ण\s*)?नाव|विद्यार्थ्याचे\s*(?:संपूर्ण\s*)?नाव)(?:\s*\([^)]*\))?[\s:.\-#\t—=|]+([^\n\r|]{2,80})/i,
       /(?:^|\n)\s*(?:Candidate\s*Name|Student\s*Name|Applicant\s*Name)(?:\s*\([^)]*\))?[\s:.\-#\t\n|]+([^\n\r|]{2,80})/i,
     ];
     for (const pat of nameGlobalPatterns) {
@@ -551,10 +834,8 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
       const m = cleanedText.match(pat);
       if (m && m[1]) {
         const norm = normalizeDateToYMD(m[1].trim());
-        if (norm) {
-          details.dob = norm;
-          break;
-        }
+        details.dob = norm || m[1].trim();
+        break;
       }
     }
   }
@@ -600,7 +881,7 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
         let q = m[1].replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
         q = q
           .replace(
-            /\s*(?:Thanking\s*you|Yours\s*faithfully|Yours\s*sincerely|Date\s*:|Place\s*:|Signature\s*:).*$/i,
+            /\s*(?:Thanking\s*you|Yours\s*faithfully|Yours\s*sincerely|Date\s*:|Place\s*:|Signature\s*:|Ticket\s*No:).*$/i,
             ''
           )
           .trim();
@@ -612,5 +893,25 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
     }
   }
 
-  return details;
+  // Generate canonical validation
+  const normalized = normalizeTicketFields(details, rawText);
+  return normalized;
+}
+
+/**
+ * Formats the 8 extracted ticket fields cleanly for the text editor
+ */
+export function formatTicketFieldsText(details: CapturedTicketDetails, originalOcrText?: string): string {
+  const lines: string[] = [
+    `Candidate Name: ${details.candidateName || ''}`,
+    `CET Application Number: ${details.cetNo || ''}`,
+    `CAP Application Number: ${details.capId || ''}`,
+    `Date of Birth (DOB): ${details.dob || ''}`,
+    `Mobile Number: ${details.mobile || ''}`,
+    `Email ID: ${details.email || ''}`,
+    `Course Name: ${details.course || ''}`,
+    `Query / Grievance Details: ${details.query || ''}`,
+  ];
+
+  return lines.join('\n');
 }

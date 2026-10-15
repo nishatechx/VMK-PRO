@@ -1592,44 +1592,75 @@ CRITICAL DIRECTIVES:
 - Do NOT wrap in introductory or concluding remarks (such as "Here is the extracted text:").
 - Preserve line breaks, paragraphs, lists, and numbers as originally presented.`;
 
-      const ticketSystemInstruction = `You are an expert AI vision system specialized in Maharashtra State Common Entrance Test (CET) Cell and SAC (Scrutiny Center) student forms, verification sheets, and grievance letters.
+      const ticketSystemInstruction = `You are a specialized multimodal AI vision system for Maharashtra State Common Entrance Test (CET) Cell and Student Assistance Centre (SAC) handwritten application forms, verification sheets, and grievance letters.
 
-Your task is to inspect the uploaded candidate document (printed or handwritten) and extract EXACTLY what is written on the document in front of or under each of the following 8 fields:
+CRITICAL TASK:
+You are inspecting a photographed CET Student Assistance Centre (SAC) application form.
+The form consists of PRINTED ANCHOR LABELS (e.g., "Candidate Name (As in CET)", "CET Application Number", "CAP Application Number", "Date of Birth (DOB)", "Mobile Number", "Email ID", "Course Name", "Query / Grievance Details") followed by HANDWRITTEN ANSWERS written beside, in table cells, on ruled lines, or in boxes.
+Your job is to read BOTH the printed labels to locate the anchors AND the HANDWRITTEN text, numbers, and dates written in the corresponding field.
+Do NOT output only printed labels. Extract the handwritten answer associated with each anchor.
+Understand handwritten English, digits, ruled line writing, skewed or tilted phone photos, uneven lighting, shadows, and Indian phone numbers.
 
-1. Candidate Name: The student's legal full name written on the form (e.g. in front of "Candidate Name", "Name of Candidate", "Full Name", "उमेदवाराचे नाव").
-2. CET Application Number: The CET application form number or roll number written on the form (in front of "CET Application Number", "CET App No", "CET Roll No", "सीईटी अर्ज क्रमांक"). If blank or not present on form, leave blank.
-3. CAP Application Number: The Centralized Admission Process application ID starting with state course prefixes like EN..., MB..., MC..., PH..., AR..., DS..., DSP..., DSE..., or written in front of "CAP Application Number", "CAP ID", "Application ID", "कॅप अर्ज क्रमांक". If blank or not present on form, leave blank.
-4. Date of Birth (DOB): The student's actual birth date (e.g. DD/MM/YYYY) written in front of "Date of Birth", "DOB", or "जन्म तारीख". DO NOT extract the form print/submission date or current date!
-5. Mobile Number: The 10-digit mobile number written in front of "Mobile Number", "Contact No", "Phone", or "मोबाईल".
-6. Email ID: The student's email address written in front of "Email ID", "Email", or "ईमेल".
-7. Course Name: The exact degree/branch/course written on the form in front of "Course Name", "Course Applied", "Branch", or "अभ्यासक्रम" (e.g. B.E. / B.Tech, B.Pharmacy, MBA / MMS, etc.).
-8. Query / Grievance Details: The candidate's exact query, problem, discrepancy, or grievance text written in front of or under "Query / Grievance Details", "Query", "Grievance", "Issue", "तक्रार / अडचण तपशील", or letter body.
+CANONICAL 8 FIELDS TO EXTRACT:
+1. candidateName: Extract the handwritten full legal name from the row labelled "Candidate Name (As in CET)", "Candidate Name", "Name of Candidate", or "उमेदवाराचे नाव".
+   - Do NOT extract the nearby application number, CET number, CAP number, or ticket number as candidate name!
+   - Preserve exact spelling as handwritten.
+2. cetApplicationNumber: Extract ONLY the handwritten number from the "CET Application Number" row or box. Return as a string to preserve all digits.
+   - NEVER swap with CAP Application Number!
+3. capApplicationNumber: Extract ONLY the handwritten number or ID from the "CAP Application Number" / "CAP ID" row (often starts with state prefix like EN, MB, MC, PH, AR, DS, DSP, DSE, etc.).
+   - NEVER swap with CET Application Number! If blank or not present on form, return "".
+4. dob: Extract the handwritten birth date from the "Date of Birth (DOB)" row.
+   - If clear and unambiguous, normalize to YYYY-MM-DD (e.g. 14/08/2005 -> 2005-08-14).
+   - If ambiguous, preserve original handwritten text and flag in needsReview.
+5. mobileNumber: Extract the 10-digit handwritten mobile number from the "Mobile Number" / "Contact No" row. Return as string.
+6. emailId: Read the complete handwritten email address from the "Email ID" row. Preserve dots (.), underscores (_), digits, and @ symbol. Do NOT silently autocorrect.
+7. courseName: Extract the handwritten degree/branch from the "Course Name" row (e.g. "B.Sc. Nursing", "B.E. / B.Tech", "MBA / MMS", etc.).
+   - Do NOT put course into queryGrievanceDetails!
+8. queryGrievanceDetails: Extract the complete handwritten complaint from the "Query / Grievance Details" section.
+   - Join multi-line handwritten text into complete readable sentences without omitting details.
+   - Do NOT place ticket number, signature, or unrelated text here!
 
-STRICT ACCURACY RULES:
-- Extract EXACTLY what is written on the document image for these 8 fields.
-- Do NOT invent, assume, fabricate, or guess any information.
-- Never output placeholder or demo data (never output dummy names like Rahul Patil).
-- If a field is not present or blank on the document, leave the value empty after the colon.
-- Format strictly as:
-Candidate Name: <exact value from form>
-CET Application Number: <exact value from form>
-CAP Application Number: <exact value from form>
-Date of Birth (DOB): <exact value from form>
-Mobile Number: <exact value from form>
-Email ID: <exact value from form>
-Course Name: <exact value from form>
-Query / Grievance Details: <exact value from form>`;
+IMPORTANT TICKET NUMBER RULE:
+If the form contains a separate "Ticket Number", "Ticket No", "Sr No", or "Token No", it is NOT one of the eight fields. Do NOT put it in candidateName, courseName, or queryGrievanceDetails!
+
+OUTPUT REQUIREMENTS:
+Return valid JSON matching this exact schema:
+{
+  "candidateName": "",
+  "cetApplicationNumber": "",
+  "capApplicationNumber": "",
+  "dob": "",
+  "mobileNumber": "",
+  "emailId": "",
+  "courseName": "",
+  "queryGrievanceDetails": "",
+  "confidence": {
+    "candidateName": "high",
+    "cetApplicationNumber": "high",
+    "capApplicationNumber": "high",
+    "dob": "high",
+    "mobileNumber": "high",
+    "emailId": "high",
+    "courseName": "high",
+    "queryGrievanceDetails": "high"
+  },
+  "needsReview": []
+}
+
+- Confidence must reflect genuine visual clarity ('high', 'medium', or 'low').
+- If a value cannot be read reliably, return "" and add the field name to "needsReview".
+- Never invent missing values. Never use placeholder text like "Not detected", "Rahul Patil", or "N/A".`;
 
       const systemInstruction = isTicketMode ? ticketSystemInstruction : defaultSystemInstruction;
 
       const results: Array<{ pageIndex: number; name?: string; text: string }> = [];
+      let parsedTicketData: any = null;
 
-      // Multi-model resilience: verified responsive Gemini multimodal vision models
+      // Recommended responsive Gemini vision models
       const candidateModels = [
+        "gemini-3.8-flash",
         "gemini-2.5-flash",
-        "gemini-2.5-flash-lite",
-        "gemini-2.0-flash",
-        "gemini-1.5-flash",
+        "gemini-flash-latest",
       ];
 
       for (let i = 0; i < imageList.length; i++) {
@@ -1648,17 +1679,19 @@ Query / Grievance Details: <exact value from form>`;
         };
 
         const customPrompt = isTicketMode
-          ? `Extract EXACTLY what is written on this form in front of each of the 8 candidate ticket fields:
-Candidate Name:
-CET Application Number:
-CAP Application Number:
-Date of Birth (DOB):
-Mobile Number:
-Email ID:
-Course Name:
-Query / Grievance Details:
+          ? `Inspect this photographed handwritten CET Student Assistance Centre (SAC) application form.
+Using the printed form labels as anchors, extract the handwritten answer beside each of the 8 canonical fields into valid JSON:
+1. candidateName: handwritten candidate full name from "Candidate Name (As in CET)" row
+2. cetApplicationNumber: handwritten CET application number from "CET Application Number" row
+3. capApplicationNumber: handwritten CAP application ID from "CAP Application Number" row (e.g. EN24..., MB24..., PH24...)
+4. dob: handwritten date of birth from "Date of Birth (DOB)" row (normalized YYYY-MM-DD if clear)
+5. mobileNumber: 10-digit handwritten phone number from "Mobile Number" row
+6. emailId: complete handwritten email address from "Email ID" row
+7. courseName: degree/course applied (e.g. "B.Sc. Nursing", "B.E. / B.Tech") from "Course Name" row
+8. queryGrievanceDetails: complete handwritten query/complaint text from "Query / Grievance Details" section
 
-Extract strictly what is on the form. If a field is absent, leave it blank.`
+If the form contains a separate Ticket Number, do NOT put it into candidateName, courseName, or queryGrievanceDetails.
+Return ONLY valid JSON matching the schema in system instructions.`
           : prompt?.trim()
           ? `Transcribe all text from this image following the system instructions. Additional guidance: ${prompt}`
           : `Transcribe all readable text from this image (Marathi, Hindi, English, printed or handwritten). Look at the complete visual context, detect text orientation, preserve exact words, reading order, line breaks, and tables. Use [unclear] if a word is truly illegible. Do not translate or modify anything.`;
@@ -1676,6 +1709,7 @@ Extract strictly what is on the form. If a field is absent, leave it blank.`
               },
               config: {
                 systemInstruction,
+                responseMimeType: isTicketMode ? "application/json" : undefined,
                 temperature: 0.1,
               },
             });
@@ -1689,7 +1723,6 @@ Extract strictly what is on the form. If a field is absent, leave it blank.`
             lastModelError = err;
             const errMsg = String(err?.message || err || '');
             console.warn(`[IMAGE-TO-TEXT] Model '${model}' encountered error: ${errMsg}. Failing over...`);
-            // If customKey failed due to authentication/API key, immediately switch to central server key
             if (customKey && (errMsg.includes('API_KEY') || errMsg.includes('PERMISSION') || errMsg.includes('403') || errMsg.includes('400'))) {
               try {
                 ai = getGeminiClient();
@@ -1703,10 +1736,37 @@ Extract strictly what is on the form. If a field is absent, leave it blank.`
           throw lastModelError;
         }
 
+        let formattedPageText = extractedText;
+
+        if (isTicketMode && extractedText) {
+          try {
+            let cleanJson = extractedText.trim();
+            const jsonMatch = cleanJson.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+            if (jsonMatch) cleanJson = jsonMatch[1].trim();
+            const parsed = JSON.parse(cleanJson);
+            if (parsed && typeof parsed === 'object') {
+              parsedTicketData = parsed;
+              const lines = [
+                `Candidate Name: ${parsed.candidateName || ''}`,
+                `CET Application Number: ${parsed.cetApplicationNumber || ''}`,
+                `CAP Application Number: ${parsed.capApplicationNumber || ''}`,
+                `Date of Birth (DOB): ${parsed.dob || ''}`,
+                `Mobile Number: ${parsed.mobileNumber || ''}`,
+                `Email ID: ${parsed.emailId || ''}`,
+                `Course Name: ${parsed.courseName || ''}`,
+                `Query / Grievance Details: ${parsed.queryGrievanceDetails || ''}`,
+              ];
+              formattedPageText = lines.join('\n');
+            }
+          } catch (parseErr) {
+            console.warn("[IMAGE-TO-TEXT] JSON parse fallback:", parseErr);
+          }
+        }
+
         results.push({
           pageIndex: i,
           name: item.name,
-          text: extractedText,
+          text: formattedPageText,
         });
       }
 
@@ -1728,6 +1788,7 @@ Extract strictly what is on the form. If a field is absent, leave it blank.`
       return res.json({
         success: true,
         text: combinedText,
+        ticketData: parsedTicketData,
         pages: results,
         pageCount: results.length,
         unclearCount,

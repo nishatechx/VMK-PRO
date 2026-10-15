@@ -117,6 +117,8 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
   const [tgNotification, setTgNotification] = useState<string | null>(null);
   // Extraction mode: 'ticket_fields' extracts strictly the 8 ticket fields, 'default' extracts full OCR text
   const [extractionMode, setExtractionMode] = useState<'ticket_fields' | 'default'>('ticket_fields');
+  // Metadata from vision AI for confidence levels and needsReview flagging
+  const [extractedTicketMetadata, setExtractedTicketMetadata] = useState<any | null>(null);
 
   const activeUser = currentUser || getCurrentUser();
   const isAuthorizedForMasterKey = hasUserApiKeyPermission(activeUser);
@@ -518,6 +520,9 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
     }
 
     const activeMode = forcedMode || extractionMode;
+    if (forcedMode && forcedMode !== extractionMode) {
+      setExtractionMode(forcedMode);
+    }
 
     setIsAnalyzing(true);
     setErrorMessage(null);
@@ -615,6 +620,9 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
           extractionSuccess = true;
           resultText = data.text || '';
           resultPages = Array.isArray(data.pages) ? data.pages : [];
+          if (data.ticketData) {
+            setExtractedTicketMetadata(data.ticketData);
+          }
         } else {
           console.warn('Server OCR response note:', data?.error || `HTTP ${response.status}`);
         }
@@ -636,6 +644,9 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
             extractionSuccess = true;
             resultText = clientData.text || '';
             resultPages = clientData.pages || [];
+            if (clientData.ticketData) {
+              setExtractedTicketMetadata(clientData.ticketData);
+            }
           }
         } catch (clientErr) {
           console.warn('Client-side Gemini extraction fallback failed:', clientErr);
@@ -841,9 +852,56 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
 
   // Real-time extracted ticket details for Candidate Name, CET App No, CAP App No, DOB, Mobile, Email, Course, Query
   const detectedTicketFields = useMemo<CapturedTicketDetails | null>(() => {
-    if (!currentText || !currentText.trim()) return null;
-    return captureTicketDetailsFromText(currentText);
-  }, [currentText]);
+    if (!currentText || !currentText.trim()) {
+      if (extractedTicketMetadata) {
+        return {
+          candidateName: extractedTicketMetadata.candidateName || '',
+          cetNo: extractedTicketMetadata.cetApplicationNumber || extractedTicketMetadata.cetNo || '',
+          capId: extractedTicketMetadata.capApplicationNumber || extractedTicketMetadata.capId || '',
+          dob: extractedTicketMetadata.dob || '',
+          mobile: extractedTicketMetadata.mobileNumber || extractedTicketMetadata.mobile || '',
+          email: extractedTicketMetadata.emailId || extractedTicketMetadata.email || '',
+          course: extractedTicketMetadata.courseName || extractedTicketMetadata.course || '',
+          query: extractedTicketMetadata.queryGrievanceDetails || extractedTicketMetadata.query || '',
+          confidence: extractedTicketMetadata.confidence || {},
+          needsReview: extractedTicketMetadata.needsReview || [],
+        };
+      }
+      return null;
+    }
+    const parsed = captureTicketDetailsFromText(currentText);
+    if (extractedTicketMetadata) {
+      return {
+        ...parsed,
+        candidateName: parsed.candidateName || extractedTicketMetadata.candidateName || '',
+        cetNo: parsed.cetNo || extractedTicketMetadata.cetApplicationNumber || extractedTicketMetadata.cetNo || '',
+        capId: parsed.capId || extractedTicketMetadata.capApplicationNumber || extractedTicketMetadata.capId || '',
+        dob: parsed.dob || extractedTicketMetadata.dob || '',
+        mobile: parsed.mobile || extractedTicketMetadata.mobileNumber || extractedTicketMetadata.mobile || '',
+        email: parsed.email || extractedTicketMetadata.emailId || extractedTicketMetadata.email || '',
+        course: parsed.course || extractedTicketMetadata.courseName || extractedTicketMetadata.course || '',
+        query: parsed.query || extractedTicketMetadata.queryGrievanceDetails || extractedTicketMetadata.query || '',
+        confidence: {
+          ...extractedTicketMetadata.confidence,
+          ...parsed.confidence,
+        },
+        needsReview: Array.from(new Set([
+          ...(extractedTicketMetadata.needsReview || []),
+          ...(parsed.needsReview || []),
+        ])),
+      };
+    }
+    return parsed;
+  }, [currentText, extractedTicketMetadata]);
+
+  // Checks if an extracted field is flagged as uncertain or requires manual review
+  const isFieldNeedsReview = (fieldKey: string): boolean => {
+    if (!detectedTicketFields) return false;
+    const list = detectedTicketFields.needsReview || [];
+    if (list.includes(fieldKey)) return true;
+    const conf = (detectedTicketFields.confidence as any)?.[fieldKey];
+    return conf === 'low';
+  };
 
   // Send to TG (SAC Ticket Generator) with strictly extracted 8 candidate details:
   // 1. Candidate Name
@@ -967,6 +1025,25 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
     // 8. Query resolution
     let resolvedQuery = (detectedTicketFields?.query || captured.query || '').trim();
 
+    // Sanitize ticket field values to ensure placeholder strings are never passed as actual candidate data
+    const sanitizeTicketValue = (val?: string): string => {
+      if (!val) return '';
+      const trimmed = val.trim();
+      if (/^(?:not detected|needs review|not found|unclear|none|null|undefined|n\/a|-+|blank)$/i.test(trimmed)) {
+        return '';
+      }
+      return trimmed;
+    };
+
+    resolvedCandidateName = sanitizeTicketValue(resolvedCandidateName);
+    resolvedCetNo = sanitizeTicketValue(resolvedCetNo);
+    resolvedCapId = sanitizeTicketValue(resolvedCapId);
+    resolvedDob = sanitizeTicketValue(resolvedDob);
+    resolvedMobile = sanitizeTicketValue(resolvedMobile);
+    resolvedEmail = sanitizeTicketValue(resolvedEmail);
+    resolvedCourse = sanitizeTicketValue(resolvedCourse);
+    resolvedQuery = sanitizeTicketValue(resolvedQuery);
+
     // Send strictly the respective 8 fields to TG with comprehensive aliases for seamless transmission
     const ticketPayload = {
       // Candidate Name aliases
@@ -993,7 +1070,7 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
       'उमेदवाराचे नाव': resolvedCandidateName,
       'नाव': resolvedCandidateName,
 
-      // Application IDs
+      // Application IDs (Strictly unswapped)
       cetNo: resolvedCetNo,
       capId: resolvedCapId,
       cetApplicationNumber: resolvedCetNo,
@@ -1023,6 +1100,7 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
 
       // Query
       query: resolvedQuery,
+      queryGrievanceDetails: resolvedQuery,
       grievance: resolvedQuery,
     };
 
@@ -1837,65 +1915,169 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
                   {/* 1. Candidate Name */}
                   <div className="bg-white/90 p-2 rounded-lg border border-blue-100/80">
-                    <span className="font-semibold text-slate-500 block text-[10px]">1. Candidate Name:</span>
-                    <span className="font-bold text-slate-800 truncate block" title={detectedTicketFields.candidateName || 'Not detected'}>
-                      {detectedTicketFields.candidateName || <span className="text-amber-600 font-normal italic">Not detected</span>}
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-slate-500 block text-[10px]">1. Candidate Name:</span>
+                      {detectedTicketFields.candidateName && isFieldNeedsReview('candidateName') && (
+                        <span className="text-[9px] font-semibold bg-amber-100 text-amber-800 px-1 py-0.5 rounded border border-amber-200">
+                          Needs review
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-bold text-slate-800 truncate block mt-0.5" title={detectedTicketFields.candidateName || (isFieldNeedsReview('candidateName') ? 'Needs review' : 'Not detected')}>
+                      {detectedTicketFields.candidateName ? (
+                        detectedTicketFields.candidateName
+                      ) : isFieldNeedsReview('candidateName') ? (
+                        <span className="text-amber-600 font-medium italic">Needs review</span>
+                      ) : (
+                        <span className="text-slate-400 font-normal italic">Not detected</span>
+                      )}
                     </span>
                   </div>
 
                   {/* 2. CET Application Number */}
                   <div className="bg-white/90 p-2 rounded-lg border border-blue-100/80">
-                    <span className="font-semibold text-slate-500 block text-[10px]">2. CET Application Number:</span>
-                    <span className="font-bold font-mono text-slate-800 truncate block" title={detectedTicketFields.cetNo || 'Not detected'}>
-                      {detectedTicketFields.cetNo || <span className="text-amber-600 font-normal italic">Not detected</span>}
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-slate-500 block text-[10px]">2. CET Application Number:</span>
+                      {detectedTicketFields.cetNo && (isFieldNeedsReview('cetApplicationNumber') || isFieldNeedsReview('cetNo')) && (
+                        <span className="text-[9px] font-semibold bg-amber-100 text-amber-800 px-1 py-0.5 rounded border border-amber-200">
+                          Needs review
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-bold font-mono text-slate-800 truncate block mt-0.5" title={detectedTicketFields.cetNo || (isFieldNeedsReview('cetApplicationNumber') ? 'Needs review' : 'Not detected')}>
+                      {detectedTicketFields.cetNo ? (
+                        detectedTicketFields.cetNo
+                      ) : isFieldNeedsReview('cetApplicationNumber') || isFieldNeedsReview('cetNo') ? (
+                        <span className="text-amber-600 font-medium italic">Needs review</span>
+                      ) : (
+                        <span className="text-slate-400 font-normal italic">Not detected</span>
+                      )}
                     </span>
                   </div>
 
                   {/* 3. CAP Application Number */}
                   <div className="bg-white/90 p-2 rounded-lg border border-blue-100/80">
-                    <span className="font-semibold text-slate-500 block text-[10px]">3. CAP Application Number:</span>
-                    <span className="font-bold font-mono text-slate-800 truncate block" title={detectedTicketFields.capId || 'Not detected'}>
-                      {detectedTicketFields.capId || <span className="text-slate-400 font-normal italic">Not detected</span>}
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-slate-500 block text-[10px]">3. CAP Application Number:</span>
+                      {detectedTicketFields.capId && (isFieldNeedsReview('capApplicationNumber') || isFieldNeedsReview('capId')) && (
+                        <span className="text-[9px] font-semibold bg-amber-100 text-amber-800 px-1 py-0.5 rounded border border-amber-200">
+                          Needs review
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-bold font-mono text-slate-800 truncate block mt-0.5" title={detectedTicketFields.capId || (isFieldNeedsReview('capApplicationNumber') ? 'Needs review' : 'Not detected')}>
+                      {detectedTicketFields.capId ? (
+                        detectedTicketFields.capId
+                      ) : isFieldNeedsReview('capApplicationNumber') || isFieldNeedsReview('capId') ? (
+                        <span className="text-amber-600 font-medium italic">Needs review</span>
+                      ) : (
+                        <span className="text-slate-400 font-normal italic">Not detected</span>
+                      )}
                     </span>
                   </div>
 
                   {/* 4. Date of Birth (DOB) */}
                   <div className="bg-white/90 p-2 rounded-lg border border-blue-100/80">
-                    <span className="font-semibold text-slate-500 block text-[10px]">4. Date of Birth (DOB):</span>
-                    <span className="font-bold font-mono text-slate-800 truncate block" title={detectedTicketFields.dob || 'Not detected'}>
-                      {detectedTicketFields.dob || <span className="text-amber-600 font-normal italic">Not detected</span>}
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-slate-500 block text-[10px]">4. Date of Birth (DOB):</span>
+                      {detectedTicketFields.dob && isFieldNeedsReview('dob') && (
+                        <span className="text-[9px] font-semibold bg-amber-100 text-amber-800 px-1 py-0.5 rounded border border-amber-200">
+                          Needs review
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-bold font-mono text-slate-800 truncate block mt-0.5" title={detectedTicketFields.dob || (isFieldNeedsReview('dob') ? 'Needs review' : 'Not detected')}>
+                      {detectedTicketFields.dob ? (
+                        detectedTicketFields.dob
+                      ) : isFieldNeedsReview('dob') ? (
+                        <span className="text-amber-600 font-medium italic">Needs review</span>
+                      ) : (
+                        <span className="text-slate-400 font-normal italic">Not detected</span>
+                      )}
                     </span>
                   </div>
 
                   {/* 5. Mobile Number */}
                   <div className="bg-white/90 p-2 rounded-lg border border-blue-100/80">
-                    <span className="font-semibold text-slate-500 block text-[10px]">5. Mobile Number:</span>
-                    <span className="font-bold font-mono text-slate-800 truncate block" title={detectedTicketFields.mobile || 'Not detected'}>
-                      {detectedTicketFields.mobile || <span className="text-amber-600 font-normal italic">Not detected</span>}
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-slate-500 block text-[10px]">5. Mobile Number:</span>
+                      {detectedTicketFields.mobile && (isFieldNeedsReview('mobileNumber') || isFieldNeedsReview('mobile')) && (
+                        <span className="text-[9px] font-semibold bg-amber-100 text-amber-800 px-1 py-0.5 rounded border border-amber-200">
+                          Needs review
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-bold font-mono text-slate-800 truncate block mt-0.5" title={detectedTicketFields.mobile || (isFieldNeedsReview('mobileNumber') ? 'Needs review' : 'Not detected')}>
+                      {detectedTicketFields.mobile ? (
+                        detectedTicketFields.mobile
+                      ) : isFieldNeedsReview('mobileNumber') || isFieldNeedsReview('mobile') ? (
+                        <span className="text-amber-600 font-medium italic">Needs review</span>
+                      ) : (
+                        <span className="text-slate-400 font-normal italic">Not detected</span>
+                      )}
                     </span>
                   </div>
 
                   {/* 6. Email ID */}
                   <div className="bg-white/90 p-2 rounded-lg border border-blue-100/80">
-                    <span className="font-semibold text-slate-500 block text-[10px]">6. Email ID:</span>
-                    <span className="font-bold text-slate-800 truncate block" title={detectedTicketFields.email || 'Not detected'}>
-                      {detectedTicketFields.email || <span className="text-amber-600 font-normal italic">Not detected</span>}
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-slate-500 block text-[10px]">6. Email ID:</span>
+                      {detectedTicketFields.email && (isFieldNeedsReview('emailId') || isFieldNeedsReview('email')) && (
+                        <span className="text-[9px] font-semibold bg-amber-100 text-amber-800 px-1 py-0.5 rounded border border-amber-200">
+                          Needs review
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-bold text-slate-800 truncate block mt-0.5" title={detectedTicketFields.email || (isFieldNeedsReview('emailId') ? 'Needs review' : 'Not detected')}>
+                      {detectedTicketFields.email ? (
+                        detectedTicketFields.email
+                      ) : isFieldNeedsReview('emailId') || isFieldNeedsReview('email') ? (
+                        <span className="text-amber-600 font-medium italic">Needs review</span>
+                      ) : (
+                        <span className="text-slate-400 font-normal italic">Not detected</span>
+                      )}
                     </span>
                   </div>
 
                   {/* 7. Course Name */}
                   <div className="bg-white/90 p-2 rounded-lg border border-blue-100/80">
-                    <span className="font-semibold text-slate-500 block text-[10px]">7. Course Name:</span>
-                    <span className="font-bold text-slate-800 truncate block" title={detectedTicketFields.course || 'Not detected'}>
-                      {detectedTicketFields.course || <span className="text-amber-600 font-normal italic">Not detected</span>}
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-slate-500 block text-[10px]">7. Course Name:</span>
+                      {detectedTicketFields.course && (isFieldNeedsReview('courseName') || isFieldNeedsReview('course')) && (
+                        <span className="text-[9px] font-semibold bg-amber-100 text-amber-800 px-1 py-0.5 rounded border border-amber-200">
+                          Needs review
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-bold text-slate-800 truncate block mt-0.5" title={detectedTicketFields.course || (isFieldNeedsReview('courseName') ? 'Needs review' : 'Not detected')}>
+                      {detectedTicketFields.course ? (
+                        detectedTicketFields.course
+                      ) : isFieldNeedsReview('courseName') || isFieldNeedsReview('course') ? (
+                        <span className="text-amber-600 font-medium italic">Needs review</span>
+                      ) : (
+                        <span className="text-slate-400 font-normal italic">Not detected</span>
+                      )}
                     </span>
                   </div>
 
                   {/* 8. Query / Grievance Details */}
                   <div className="bg-white/90 p-2 rounded-lg border border-blue-100/80">
-                    <span className="font-semibold text-slate-500 block text-[10px]">8. Query / Grievance Details:</span>
-                    <span className="font-medium text-slate-800 truncate block" title={detectedTicketFields.query || 'Not detected'}>
-                      {detectedTicketFields.query || <span className="text-amber-600 font-normal italic">Not detected</span>}
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-slate-500 block text-[10px]">8. Query / Grievance Details:</span>
+                      {detectedTicketFields.query && (isFieldNeedsReview('queryGrievanceDetails') || isFieldNeedsReview('query')) && (
+                        <span className="text-[9px] font-semibold bg-amber-100 text-amber-800 px-1 py-0.5 rounded border border-amber-200">
+                          Needs review
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-medium text-slate-800 truncate block mt-0.5" title={detectedTicketFields.query || (isFieldNeedsReview('queryGrievanceDetails') ? 'Needs review' : 'Not detected')}>
+                      {detectedTicketFields.query ? (
+                        detectedTicketFields.query
+                      ) : isFieldNeedsReview('queryGrievanceDetails') || isFieldNeedsReview('query') ? (
+                        <span className="text-amber-600 font-medium italic">Needs review</span>
+                      ) : (
+                        <span className="text-slate-400 font-normal italic">Not detected</span>
+                      )}
                     </span>
                   </div>
                 </div>

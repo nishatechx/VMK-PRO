@@ -463,6 +463,7 @@ export const TicketGeneratorModal: React.FC<TicketGeneratorModalProps> = ({
 
         // Robust Query resolution
         const rawQuery =
+          initialCandidate.queryGrievanceDetails ||
           initialCandidate.query ||
           initialCandidate.grievance ||
           '';

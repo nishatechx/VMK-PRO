@@ -6,7 +6,9 @@
  */
 
 import Tesseract from 'tesseract.js';
-import { captureTicketDetailsFromText, CapturedTicketDetails } from '../utils/ticketExtractor';
+import { captureTicketDetailsFromText, CapturedTicketDetails, formatTicketFieldsText } from '../utils/ticketExtractor';
+
+export { formatTicketFieldsText };
 
 export interface ClientOcrResult {
   text: string;
@@ -102,29 +104,6 @@ export async function preprocessImageForOcr(dataUrl: string): Promise<string> {
     img.onerror = () => resolve(dataUrl);
     img.src = dataUrl;
   });
-}
-
-/**
- * Format 8 ticket fields into structured, readable text
- */
-export function formatTicketFieldsText(details: CapturedTicketDetails, originalOcrText?: string): string {
-  const lines: string[] = [
-    `Candidate Name: ${details.candidateName || ''}`,
-    `CET Application Number: ${details.cetNo || ''}`,
-    `CAP Application Number: ${details.capId || ''}`,
-    `Date of Birth (DOB): ${details.dob || ''}`,
-    `Mobile Number: ${details.mobile || ''}`,
-    `Email ID: ${details.email || ''}`,
-    `Course Name: ${details.course || ''}`,
-    `Query / Grievance Details: ${details.query || ''}`,
-  ];
-
-  if (originalOcrText && originalOcrText.trim()) {
-    lines.push('\n--- Full Document Text ---');
-    lines.push(originalOcrText.trim());
-  }
-
-  return lines.join('\n');
 }
 
 /**
