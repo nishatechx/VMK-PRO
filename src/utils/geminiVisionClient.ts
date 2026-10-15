@@ -1,9 +1,10 @@
 import { GoogleGenAI } from "@google/genai";
 
 const CANDIDATE_VISION_MODELS = [
-  "gemini-3.1-flash-lite",
-  "gemini-flash-latest",
-  "gemini-4-argon",
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-2.0-flash",
+  "gemini-1.5-flash",
 ];
 
 function parseBase64(dataUrl: string): { mimeType: string; base64Data: string } {

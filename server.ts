@@ -1634,10 +1634,10 @@ Query: <value>`;
 
       // Multi-model resilience: verified responsive Gemini multimodal vision models
       const candidateModels = [
-        "gemini-3.1-flash-lite",
-        "gemini-3.5-flash-lite",
-        "gemini-3.5-flash",
-        "gemini-flash-lite-latest",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
       ];
 
       for (let i = 0; i < imageList.length; i++) {
@@ -1789,9 +1789,10 @@ Do not extract any other text. Follow the system instructions strictly.`
       const ai = getGeminiClient(customKey);
 
       const candidateModels = [
-        "gemini-3.1-flash-lite",
-        "gemini-flash-latest",
-        "gemini-4-argon",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
       ];
 
       const systemInstruction = `You are a professional bilingual translator specialized in translating Marathi (मराठी) and Hindi (हिन्दी) documents into natural, highly accurate, and fluent English.
