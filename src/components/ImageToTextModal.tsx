@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { APP_ASSETS } from '../constants/assets';
 import { extractTextClientSide, translateTextClientSide } from '../utils/geminiVisionClient';
+import { executeBrowserOcr, translateTextZeroKey } from '../services/clientOcrService';
 import { UserProfile } from '../types/auth';
 import { getCurrentUser, DNO_USER } from '../services/authService';
 import {
@@ -590,7 +591,7 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
       let resultText = '';
       let resultPages: any[] = [];
 
-      // 1. Try server endpoint first (/api/image-to-text)
+      // 1. Try server endpoint first (/api/image-to-text) if reachable
       try {
         const response = await fetch('/api/image-to-text', {
           method: 'POST',
@@ -610,43 +611,79 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
           data = null;
         }
 
-        if (response.ok && data?.success) {
+        if (response.ok && data?.success && data?.text) {
           extractionSuccess = true;
           resultText = data.text || '';
           resultPages = Array.isArray(data.pages) ? data.pages : [];
-        } else if (data?.error && !data.error.includes('GEMINI_API_KEY')) {
-          // If server returned a genuine vision error (e.g. rate limit), throw it
-          throw new Error(data.error);
         } else {
-          // Server returned HTML (e.g. 404) or missing key error
-          throw new Error(data?.error || `Server HTTP ${response.status}`);
+          console.warn('Server OCR response note:', data?.error || `HTTP ${response.status}`);
         }
       } catch (serverErr: any) {
-        console.warn('Server endpoint /api/image-to-text failed or unavailable:', serverErr);
+        console.warn('Server endpoint /api/image-to-text unavailable, falling back:', serverErr);
+      }
 
-        // 2. Resilient Fallback: If server is unavailable (e.g. on static Vercel build), use client-side Gemini Vision
-        if (effectiveKey) {
-          setAnalysisStep('Processing with Google Gemini AI...');
+      // 2. Resilient Fallback A: If server failed, try client-side Gemini Vision if an API key is available
+      if (!extractionSuccess && effectiveKey) {
+        try {
+          setAnalysisStep('Processing with Google Gemini Vision AI...');
           const clientData = await extractTextClientSide(
             effectiveKey,
             optimizedImages,
             promptGuidance.trim() || undefined,
             activeMode
           );
+          if (clientData?.text && clientData.text.trim()) {
+            extractionSuccess = true;
+            resultText = clientData.text || '';
+            resultPages = clientData.pages || [];
+          }
+        } catch (clientErr) {
+          console.warn('Client-side Gemini extraction fallback failed:', clientErr);
+        }
+      }
+
+      // 3. Resilient Fallback B: ZERO-KEY AUTONOMOUS IN-BROWSER OCR (Tesseract.js)
+      // Runs directly inside the user's browser via WebAssembly.
+      // Requires ZERO API key in Vercel, zero environment variables, zero server config.
+      if (!extractionSuccess || !resultText || !resultText.trim()) {
+        setAnalysisStep('Initializing high-speed in-browser OCR (zero API key required)...');
+        const pageResults: any[] = [];
+        const textPieces: string[] = [];
+
+        for (let idx = 0; idx < imagesToProcess.length; idx++) {
+          const img = imagesToProcess[idx];
+          const browserResult = await executeBrowserOcr(img.dataUrl, {
+            mode: activeMode,
+            onProgress: (pStatus) => {
+              setAnalysisStep(
+                imagesToProcess.length > 1
+                  ? `Page ${idx + 1}/${imagesToProcess.length}: ${pStatus}`
+                  : pStatus
+              );
+            },
+          });
+
+          if (browserResult.text) {
+            textPieces.push(browserResult.text);
+            pageResults.push({
+              name: img.name,
+              text: browserResult.text,
+            });
+          }
+        }
+
+        if (textPieces.length > 0) {
+          resultText = textPieces.join('\n\n--- Page Break ---\n\n');
+          resultPages = pageResults;
           extractionSuccess = true;
-          resultText = clientData.text || '';
-          resultPages = clientData.pages || [];
-        } else {
-          // No client key and server failed
-          throw new Error("We couldn't complete your request. Please try again.");
         }
       }
 
       clearTimeout(stepTimer1);
       clearTimeout(stepTimer2);
 
-      if (!extractionSuccess || !resultText) {
-        throw new Error('Could not extract text from document.');
+      if (!extractionSuccess || !resultText || !resultText.trim()) {
+        throw new Error('No readable text could be extracted. Please ensure the document image is clear, sharp, and well-lit.');
       }
 
       setAnalysisStep(
@@ -688,7 +725,7 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
     } catch (err: any) {
       console.error('Extraction error:', err);
       const raw = String(err?.message || err || '');
-      let clean = 'Error occurred while communicating with the AI vision service.';
+      let clean = 'Could not extract text from the document. Please check image lighting and click Retry.';
       try {
         const parsed = JSON.parse(raw);
         if (parsed?.error?.message) {
@@ -696,9 +733,7 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
         }
       } catch {
         if (raw.includes('503') || raw.includes('high demand') || raw.includes('UNAVAILABLE')) {
-          clean = 'The service is temporarily experiencing high demand. Please click Retry.';
-        } else if (raw.toLowerCase().includes('api key') || raw.toLowerCase().includes('quota') || raw.toLowerCase().includes('gemini')) {
-          clean = "We couldn't complete your request. Please try again shortly.";
+          clean = 'The OCR service is temporarily experiencing high load. Please click Retry.';
         } else if (raw.trim()) {
           clean = raw;
         }
@@ -757,16 +792,30 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
       } catch (serverErr: any) {
         console.warn('Server translation endpoint failed, trying client fallback:', serverErr);
 
+        // 2. Client Gemini translation if key available
         if (effectiveKey) {
-          englishTranslation = await translateTextClientSide(effectiveKey, extractedText);
-          translationSuccess = true;
-        } else {
-          throw new Error("Translation is temporarily unavailable. Please try again shortly.");
+          try {
+            englishTranslation = await translateTextClientSide(effectiveKey, extractedText);
+            if (englishTranslation && englishTranslation.trim()) {
+              translationSuccess = true;
+            }
+          } catch (clientTransErr) {
+            console.warn('Client Gemini translation error:', clientTransErr);
+          }
+        }
+
+        // 3. Resilient Zero-Key English Translation Fallback
+        if (!translationSuccess || !englishTranslation) {
+          englishTranslation = await translateTextZeroKey(extractedText);
+          if (englishTranslation && englishTranslation.trim()) {
+            translationSuccess = true;
+          }
         }
       }
 
       if (!translationSuccess || !englishTranslation) {
-        throw new Error('Failed to translate text into English.');
+        englishTranslation = await translateTextZeroKey(extractedText);
+        translationSuccess = Boolean(englishTranslation);
       }
 
       setTranslatedText(englishTranslation);
