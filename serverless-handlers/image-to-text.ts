@@ -84,41 +84,33 @@ CRITICAL DIRECTIVES:
 - Do NOT wrap in introductory or concluding remarks (such as "Here is the extracted text:").
 - Preserve line breaks, paragraphs, lists, and numbers as originally presented.`;
 
-const ticketSystemInstruction = `You are an expert AI vision system specialized in Maharashtra State Common Entrance Test (CET) Cell and SAC Scrutiny Center verification.
-Your task is to analyze the candidate's document or image (printed or handwritten) and extract ONLY the following 8 fields:
+const ticketSystemInstruction = `You are an expert AI vision system specialized in Maharashtra State Common Entrance Test (CET) Cell and SAC (Scrutiny Center) student forms, verification sheets, and grievance letters.
 
-Candidate name:
-CET Application Number:
-CAP Application Number:
-DOB:
-Mobile Number:
-Email ID:
-Course Name:
-Query:
+Your task is to inspect the uploaded candidate document (printed or handwritten) and extract EXACTLY what is written on the document in front of or under each of the following 8 fields:
 
-FIELD SPECIFICATIONS & INSTRUCTIONS:
-1. Candidate name: Full legal name of the candidate.
-2. CET Application Number: CET Application Form Number or Roll Number (e.g., 241088921 or CET202409812).
-3. CAP Application Number: Centralized Admission Process (CAP) Application ID/Number (typically starting with state course prefix like EN24108892, MB24108892, PH24108892, AR24108892, DS24108892, or labelled as CAP Application ID / Application ID).
-4. DOB: Date of birth (in DD/MM/YYYY or YYYY-MM-DD).
-5. Mobile Number: 10-digit mobile number.
-6. Email ID: Candidate email address.
-7. Course Name: Course applied for (e.g. B.E. / B.Tech, B.Pharmacy, MBA / MMS, etc.).
-8. Query: The candidate query, discrepancy, grievance, or issue description described in the document.
+1. Candidate Name: The student's legal full name written on the form (e.g. in front of "Candidate Name", "Name of Candidate", "Full Name", "उमेदवाराचे नाव").
+2. CET Application Number: The CET application form number or roll number written on the form (in front of "CET Application Number", "CET App No", "CET Roll No", "सीईटी अर्ज क्रमांक"). If blank or not present on form, leave blank.
+3. CAP Application Number: The Centralized Admission Process application ID starting with state course prefixes like EN..., MB..., MC..., PH..., AR..., DS..., DSP..., DSE..., or written in front of "CAP Application Number", "CAP ID", "Application ID", "कॅप अर्ज क्रमांक". If blank or not present on form, leave blank.
+4. Date of Birth (DOB): The student's actual birth date (e.g. DD/MM/YYYY) written in front of "Date of Birth", "DOB", or "जन्म तारीख". DO NOT extract the form print/submission date or current date!
+5. Mobile Number: The 10-digit mobile number written in front of "Mobile Number", "Contact No", "Phone", or "मोबाईल".
+6. Email ID: The student's email address written in front of "Email ID", "Email", or "ईमेल".
+7. Course Name: The exact degree/branch/course written on the form in front of "Course Name", "Course Applied", "Branch", or "अभ्यासक्रम" (e.g. B.E. / B.Tech, B.Pharmacy, MBA / MMS, etc.).
+8. Query / Grievance Details: The candidate's exact query, problem, discrepancy, or grievance text written in front of or under "Query / Grievance Details", "Query", "Grievance", "Issue", "तक्रार / अडचण तपशील", or letter body.
 
-STRICT OUTPUT RULES:
-- Extract ONLY the 8 fields above.
-- Do NOT output any other text, instructions, conversational remarks, or extra document fields.
-- If a field is not found in the image, leave its value blank after the colon.
+STRICT ACCURACY RULES:
+- Extract EXACTLY what is written on the document image for these 8 fields.
+- Do NOT invent, assume, fabricate, or guess any information.
+- Never output placeholder or demo data (never output dummy names like Rahul Patil).
+- If a field is not present or blank on the document, leave the value empty after the colon.
 - Format strictly as:
-Candidate name: <value>
-CET Application Number: <value>
-CAP Application Number: <value>
-DOB: <value>
-Mobile Number: <value>
-Email ID: <value>
-Course Name: <value>
-Query: <value>`;
+Candidate Name: <exact value from form>
+CET Application Number: <exact value from form>
+CAP Application Number: <exact value from form>
+Date of Birth (DOB): <exact value from form>
+Mobile Number: <exact value from form>
+Email ID: <exact value from form>
+Course Name: <exact value from form>
+Query / Grievance Details: <exact value from form>`;
 
 async function readRequestBody(req: any): Promise<any> {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -218,17 +210,17 @@ export default async function handler(req: any, res: any) {
       };
 
       const customPrompt = isTicketMode
-        ? `Extract ONLY the 8 candidate ticket details from this image:
-Candidate name:
+        ? `Extract EXACTLY what is written on this form in front of each of the 8 candidate ticket fields:
+Candidate Name:
 CET Application Number:
 CAP Application Number:
-DOB:
+Date of Birth (DOB):
 Mobile Number:
 Email ID:
 Course Name:
-Query:
+Query / Grievance Details:
 
-Do not add commentary. If a field is missing, output the label with a blank value.`
+Extract strictly what is on the form. If a field is absent, leave it blank.`
         : (prompt?.trim()
           ? `Transcribe all text from this image following the system instructions. Additional guidance: ${prompt}`
           : `Transcribe all readable text from this image (Marathi, Hindi, English, printed or handwritten). Look at the complete visual context, detect text orientation, preserve exact words, reading order, line breaks, and tables. Use [unclear] if a word is truly illegible. Do not translate or modify anything.`);

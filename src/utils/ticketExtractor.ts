@@ -225,10 +225,21 @@ export const CAP_PREFIX_REGEX = /^(?:EN|MB|MC|PH|AR|HM|DS|DSE|DSP|TE|CO|PL|BS|AG
  */
 export function cleanAppId(val: string): string {
   if (!val) return '';
+  const trimmed = val.trim();
+  if (/^(?:none|na|n\/a|not\s*found|not\s*available|available|unclear|null|undefined|nil|-+|blank|optional)$/i.test(trimmed)) {
+    return '';
+  }
+  if (/\b(?:not\s*available|not\s*found|n\/a|none|nil|null|undefined|unclear)\b/i.test(trimmed)) {
+    return '';
+  }
   // Remove markdown bold, backticks, leading punctuation, colons
-  let clean = val.replace(/[*`_]/g, '').replace(/^[ :.\-#\t—=]+/, '').trim();
+  let clean = val.replace(/[*`_]/g, '').replace(/^[ :.\-#\t—=|]+/, '').trim();
   // Cut off if subsequent field labels are concatenated on same line
-  clean = clean.replace(/\s*(?:Candidate|Name|Mobile|Phone|Email|DOB|Date|CET|CAP|Course|Query|Status|Father|Mother).*$/i, '').trim();
+  clean = clean.replace(/\s*(?:Candidate|Name|Mobile|Phone|Email|DOB|Date|CET|CAP|Course|Query|Status|Father|Mother|Gender).*$/i, '').trim();
+
+  if (/^(?:none|na|n\/a|not\s*found|not\s*available|available|unclear|null|undefined|nil|-+|blank)$/i.test(clean)) {
+    return '';
+  }
 
   // Check for CAP prefix with optional space or dash, e.g. "EN 24108892" -> "EN24108892"
   const capWithSpaceMatch = clean.match(/\b((?:EN|MB|MC|PH|AR|HM|DS|DSE|DSP|TE|CO|PL|BS|AG|LA|ED|MP|NU)[\s\-_/]?\d{6,10})\b/i);
@@ -242,12 +253,18 @@ export function cleanAppId(val: string): string {
     return cetWithSpaceMatch[1].replace(/[\s\-_/]/g, '').toUpperCase();
   }
 
+  // Pure digits token of 6 to 14 digits (typical CET application / roll number)
+  const digitsMatch = clean.match(/\b(\d{6,14})\b/);
+  if (digitsMatch) {
+    return digitsMatch[1];
+  }
+
   // Extract contiguous alphanumeric token of 6 to 16 chars
   const tokenMatch = clean.match(/([A-Za-z0-9]{6,16})/);
-  if (tokenMatch) {
+  if (tokenMatch && !/^(candidate|applicant|student|course|status|number|application|details|none|notavailable|available|notfound|unclear|present)$/i.test(tokenMatch[1])) {
     return tokenMatch[1].toUpperCase();
   }
-  return clean.replace(/[\s]/g, '').toUpperCase();
+  return '';
 }
 
 /**
@@ -256,11 +273,11 @@ export function cleanAppId(val: string): string {
  * 1. Candidate Name -> details.candidateName
  * 2. CET Application Number -> details.cetNo
  * 3. CAP Application Number -> details.capId
- * 4. DOB (Date of Birth) -> details.dob
+ * 4. Date of Birth (DOB) -> details.dob
  * 5. Mobile Number -> details.mobile
  * 6. Email ID -> details.email
  * 7. Course Name -> details.course
- * 8. Query: -> details.query
+ * 8. Query / Grievance Details -> details.query
  */
 // Helper to cleanly sanitize extracted candidate names
 export function cleanCandidateName(raw: string): string {
@@ -277,12 +294,12 @@ export function cleanCandidateName(raw: string): string {
   ).trim();
   // Strip leading parenthetical note like '(as per SSC):' or '(in block letters):'
   clean = clean.replace(/^\([^)]*\)[\s:.\-#\t—=|]*/, '').trim();
-  // Strip inline next-field label if present on same line (e.g. 'DOB: 15/08/2004' or 'Mobile: 9822...')
-  clean = clean.replace(/\s+(?:Mobile(?:\s*No)?|Phone|Email(?:\s*ID)?|DOB|Date\s*of\s*Birth|CET|CAP|Course(?:\s*Name)?|Query)\s*[:.\-].*$/i, '').trim();
+  // Strip inline next-field label if present on same line (e.g. 'DOB: 15/08/2004' or 'Mobile: 9822...' or 'Father's Name')
+  clean = clean.replace(/\s+(?:Mobile(?:\s*No)?|Phone|Email(?:\s*ID)?|DOB|Date\s*of\s*Birth|CET|CAP|Course(?:\s*Name)?|Query|Father|Mother|Gender|Category|Nationality|Sign)\s*[:.\-].*$/i, '').trim();
   // Strip leading/trailing quotes, bullets, punctuation, numbers at start, table pipes
   clean = clean.replace(/^[\s"'“”‘’\-.:,;0-9*#|]+|[\s"'“”‘’\-.:,;*#|]+$/g, '').trim();
   // Reject placeholder values
-  if (/^(candidate|name|student|applicant|query|course|none|na|n\/a|not\s*found|unclear|null|undefined)$/i.test(clean)) {
+  if (/^(candidate|name|student|applicant|query|course|none|na|n\/a|not\s*found|not\s*available|unclear|null|undefined|nil|-+|blank)$/i.test(clean)) {
     return '';
   }
   return clean || raw.trim();
@@ -297,11 +314,11 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
 
   // ---------------------------------------------------------------------------
   // STEP 1: LINE-BY-LINE STRUCTURED KEY-VALUE EXTRACTION
-  // Check if text has explicit key-value labels on lines
+  // Matches exact 8 fields from form lines (with or without numbers like 1., 2.)
   // ---------------------------------------------------------------------------
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    // Strip any leading numbering, bullet points, pipes, markdown wrappers
+    // Strip leading list numbers/bullets/markdown
     const strippedLine = line
       .replace(/^[\s\d.)\-*•#[\]|]+/, '')
       .replace(/[*_]/g, '')
@@ -309,7 +326,7 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
 
     // Helper: extracts value after label on same line or from next line
     const extractLineVal = (labelRegex: RegExp): string => {
-      // 1. Try strippedLine first (matches "2. CET Application Number: 24108892")
+      // 1. Try strippedLine first (matches "1. Candidate Name: Ramesh Shinde")
       let match = strippedLine.match(labelRegex);
       if (match && match[1] !== undefined && match[1].trim()) {
         return match[1].trim();
@@ -328,7 +345,7 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
         const next = lines[i + 1].trim();
         // Ensure next line is not another label
         if (
-          !/^(candidate|name|mobile|email|dob|date of birth|cet|cap|course|query|\*{1,2}(candidate|name|mobile|email|dob|cet|cap|course|query))/i.test(
+          !/^(candidate|name|mobile|phone|email|dob|date of birth|cet|cap|course|query|grievance|\*{1,2}(candidate|name|mobile|email|dob|cet|cap|course|query))/i.test(
             next
           )
         ) {
@@ -341,7 +358,7 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
     // 1. Candidate Name
     if (!details.candidateName) {
       const nameVal = extractLineVal(
-        /^(?:Candidate(?:\s*['’]s)?(?:\s*Full)?\s*Name|Name\s*of\s*(?:the\s*)?(?:Candidate|Applicant|Student)|Student(?:\s*['’]s)?(?:\s*Full)?\s*Name|Applicant(?:\s*['’]s)?(?:\s*Full)?\s*Name|Full\s*Name(?:\s*of\s*(?:Candidate|Applicant|Student))?|Candidate|Student|Applicant|Name|उमेदवाराचे\s*(?:संपूर्ण\s*)?नाव|अर्जदाराचे\s*(?:संपूर्ण\s*)?नाव|विद्यार्थ्याचे\s*(?:संपूर्ण\s*)?नाव|उमेदवार|विद्यार्थी|अर्जदार)(?:\s*\([^)]*\))?[\s:.\-#\t—=|]+(.*)$/i
+        /^(?:(?:\d+[.)\-]*)?\s*(?:Candidate(?:\s*['’]s)?(?:\s*Full)?\s*Name|Name\s*of\s*(?:the\s*)?(?:Candidate|Applicant|Student)|Student(?:\s*['’]s)?(?:\s*Full)?\s*Name|Applicant(?:\s*['’]s)?(?:\s*Full)?\s*Name|Full\s*Name(?:\s*of\s*(?:Candidate|Applicant|Student))?|Candidate|Student|Applicant|Name|उमेदवाराचे\s*(?:संपूर्ण\s*)?नाव|अर्जदाराचे\s*(?:संपूर्ण\s*)?नाव|विद्यार्थ्याचे\s*(?:संपूर्ण\s*)?नाव|उमेदवार|विद्यार्थी|अर्जदार))(?:\s*\([^)]*\))?[\s:.\-#\t—=|]+(.*)$/i
       );
       if (nameVal) {
         const clean = cleanCandidateName(nameVal);
@@ -351,53 +368,53 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
       }
     }
 
-    // 2. CAP Application Number (checked before generic Application Number)
-    if (!details.capId) {
-      const capVal = extractLineVal(
-        /^(?:CAP\s*(?:Application|App|Reg|Registration)?\s*(?:Number|No|Num|ID|Form)?|CAP\s*ID|कॅप\s*अर्ज\s*क्रमांक|कॅप\s*आयडी)[\s:.\-#\t—=]+(.*)$/i
-      );
-      if (capVal) {
-        const cleaned = cleanAppId(capVal);
-        if (cleaned && !/^(CANDIDATE|COURSE|MOBILE|EMAIL|STATUS|QUERY|NONE|NA|NOT\s*FOUND)$/i.test(cleaned)) {
-          details.capId = cleaned;
-        }
-      }
-    }
-
-    // 3. CET Application Number (explicit CET prefix or Marathi label)
+    // 2. CET Application Number (exact CET field on form)
     if (!details.cetNo) {
       const cetVal = extractLineVal(
-        /^(?:CET\s*(?:Application|App|Reg|Registration|Form)?\s*(?:Number|No|Num|ID)?|CET\s*Roll\s*(?:No|Number)|सीईटी\s*अर्ज\s*क्रमांक|सीईटी\s*नोंदणी\s*क्रमांक|सीईटी\s*रोल\s*नंबर|MHT[\s-]?CET\s*(?:Application|App|Reg)?\s*(?:Number|No|Num|ID)?|MAH[\s-]?CET\s*(?:Application|App|Reg)?\s*(?:Number|No|Num|ID)?)[\s:.\-#\t—=]+(.*)$/i
+        /^(?:(?:\d+[.)\-]*)?\s*(?:CET\s*(?:Application|App|Reg|Registration|Form)?\s*(?:Number|No|Num|ID)?|CET\s*Roll\s*(?:No|Number)|सीईटी\s*(?:अर्ज|नोंदणी)?\s*(?:क्रमांक|क्र\.?|नंबर)?|सीईटी\s*रोल\s*नंबर|MHT[\s-]?CET\s*(?:Application|App|Reg)?\s*(?:Number|No|Num|ID)?|MAH[\s-]?CET\s*(?:Application|App|Reg)?\s*(?:Number|No|Num|ID)?))[\s:.\-#\t—=|]+(.*)$/i
       );
       if (cetVal) {
         const cleaned = cleanAppId(cetVal);
-        if (cleaned && !/^(CANDIDATE|COURSE|MOBILE|EMAIL|FATHER|MOTHER|STATUS|NUMBER|APPLICATION|NONE|NA|NOT\s*FOUND)$/i.test(cleaned)) {
+        if (cleaned && !/^(CANDIDATE|COURSE|MOBILE|EMAIL|FATHER|MOTHER|STATUS|NUMBER|APPLICATION|NONE|NA|NOT\s*FOUND|NOTAVAILABLE)$/i.test(cleaned)) {
           details.cetNo = cleaned;
         }
       }
     }
 
-    // 4. Generic Application Number / ID (if neither CET nor CAP explicitly matched)
-    if (!details.cetNo || !details.capId) {
+    // 3. CAP Application Number (exact CAP field on form)
+    if (!details.capId) {
+      const capVal = extractLineVal(
+        /^(?:(?:\d+[.)\-]*)?\s*(?:CAP\s*(?:Application|App|Reg|Registration)?\s*(?:Number|No|Num|ID|Form)?|CAP\s*ID|कॅप\s*(?:नोंदणी|अर्ज)?\s*(?:क्रमांक|क्र\.?|आयडी)?))[\s:.\-#\t—=|]+(.*)$/i
+      );
+      if (capVal) {
+        const cleaned = cleanAppId(capVal);
+        if (cleaned && !/^(CANDIDATE|COURSE|MOBILE|EMAIL|STATUS|QUERY|NONE|NA|NOT\s*FOUND|NOTAVAILABLE)$/i.test(cleaned)) {
+          details.capId = cleaned;
+        }
+      }
+    }
+
+    // 4. Generic Application Number / ID (only if neither CET nor CAP matched)
+    if (!details.cetNo && !details.capId) {
       const genAppVal = extractLineVal(
-        /^(?:Application\s*(?:Number|No|Num|ID|Form\s*No)|अर्ज\s*क्रमांक)[\s:.\-#\t—=]+(.*)$/i
+        /^(?:(?:\d+[.)\-]*)?\s*(?:Application\s*(?:Number|No|Num|ID|Form\s*No)|अर्ज\s*(?:क्रमांक|क्र\.?|नंबर)))[\s:.\-#\t—=|]+(.*)$/i
       );
       if (genAppVal) {
         const cleaned = cleanAppId(genAppVal);
-        if (cleaned && !/^(CANDIDATE|COURSE|MOBILE|EMAIL|STATUS|QUERY|NONE|NA)$/i.test(cleaned)) {
-          if (CAP_PREFIX_REGEX.test(cleaned) && !details.capId) {
+        if (cleaned && !/^(CANDIDATE|COURSE|MOBILE|EMAIL|STATUS|QUERY|NONE|NA|NOTAVAILABLE)$/i.test(cleaned)) {
+          if (CAP_PREFIX_REGEX.test(cleaned)) {
             details.capId = cleaned;
-          } else if (!details.cetNo) {
+          } else {
             details.cetNo = cleaned;
           }
         }
       }
     }
 
-    // 5. DOB (Date of Birth)
+    // 5. Date of Birth (DOB)
     if (!details.dob) {
       const dobVal = extractLineVal(
-        /^(?:DOB(?:\s*\(\s*Date\s*of\s*Birth\s*\))?|Date\s*of\s*Birth|Birth\s*Date|D\.O\.B\.?|जन्म\s*तारीख|जन्म\s*दिनांक)[\s:.\-#\t—=]+(.*)$/i
+        /^(?:(?:\d+[.)\-]*)?\s*(?:Date\s*of\s*Birth(?:\s*\(\s*DOB\s*\))?|DOB(?:\s*\(\s*Date\s*of\s*Birth\s*\))?|Birth\s*Date|D\.O\.B\.?|जन्म\s*तारीख|जन्म\s*दिनांक))[\s:.\-#\t—=|]+(.*)$/i
       );
       if (dobVal) {
         const dateToken = dobVal.match(/(\d{1,4}[/\-.][0-9A-Za-z]{1,9}[/\-.][0-9]{2,4}|\d{1,2}[\s\-][A-Za-z]{3,9}[\s\-]\d{2,4})/);
@@ -411,7 +428,7 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
     // 6. Mobile Number
     if (!details.mobile) {
       const mobVal = extractLineVal(
-        /^(?:Mobile\s*(?:Number|No)?|Phone\s*(?:Number|No)?|Contact\s*(?:Number|No)?|Cell\s*(?:Number|No)?|मोबाईल|दूरध्वनी)[\s:.\-#\t—=]+(.*)$/i
+        /^(?:(?:\d+[.)\-]*)?\s*(?:Mobile\s*(?:Number|No)?|Phone\s*(?:Number|No)?|Contact\s*(?:Number|No)?|Cell\s*(?:Number|No)?|मोबाईल(?:\s*(?:क्रमांक|नंबर|क्र\.?))?|भ्रमणध्वनी(?:\s*क्र\.?)?|दूरध्वनी))[\s:.\-#\t—=|]+(.*)$/i
       );
       if (mobVal) {
         const digits = mobVal.replace(/\D/g, '').slice(-10);
@@ -424,7 +441,7 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
     // 7. Email ID
     if (!details.email) {
       const emailVal = extractLineVal(
-        /^(?:Email\s*(?:Address|ID)?|E-mail\s*(?:Address|ID)?|Mail\s*ID|ईमेल)[\s:.\-#\t—=]+(.*)$/i
+        /^(?:(?:\d+[.)\-]*)?\s*(?:Email\s*(?:Address|ID)?|E-mail\s*(?:Address|ID)?|Mail\s*ID|ई-मेल|ईमेल(?:\s*आयडी)?))[\s:.\-#\t—=|]+(.*)$/i
       );
       if (emailVal) {
         const m = emailVal.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
@@ -435,28 +452,34 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
     // 8. Course Name
     if (!details.course) {
       const courseVal = extractLineVal(
-        /^(?:Course\s*Name|Course\s*Applied|Applied\s*Course|Course|Branch|Programme|अभ्यासक्रम)[\s:.\-#\t—=]+(.*)$/i
+        /^(?:(?:\d+[.)\-]*)?\s*(?:Course\s*Name|Course\s*Applied|Applied\s*Course|Course|Branch|Programme|अभ्यासक्रमाचे\s*नाव|अभ्यासक्रम))[\s:.\-#\t—=|]+(.*)$/i
       );
       if (courseVal) {
-        const matched = matchCourseName(courseVal);
-        if (matched) details.course = matched;
+        const cleanVal = courseVal.replace(/^[*_`|]+|[*_`|]+$/g, '').trim();
+        if (!/^(none|na|n\/a|not\s*found|not\s*available|null|undefined|-+)$/i.test(cleanVal)) {
+          const matched = matchCourseName(cleanVal);
+          details.course = matched || cleanVal;
+        }
       }
     }
 
-    // 9. Query: / Grievance Details
+    // 9. Query / Grievance Details
     if (!details.query) {
       const queryVal = extractLineVal(
-        /^(?:Query\s*(?:\/|\&)?\s*Grievance|Query\s*Details|Query|Grievance(?:\s*Details)?|Issue|Problem|Complaint|Subject|Reason|Remarks?|तक्रार|विषय)[\s:.\-#\t—=]+(.*)$/i
+        /^(?:(?:\d+[.)\-]*)?\s*(?:Query\s*(?:\/|\&|and)?\s*Grievance(?:\s*Details)?|Query\s*Details|Query|Grievance(?:\s*Details)?|Issue(?:\s*Details)?|Problem|Complaint|Subject|Reason|Remarks?|तक्रार\s*(?:\/|\&)?\s*(?:अडचण|समस्या)?(?:\s*तपशील)?|तक्रार\s*तपशील|तक्रार|समस्या|अडचण|विषय))[\s:.\-#\t—=|\/]+(.*)$/i
       );
-      if (queryVal && queryVal.length >= 3) {
-        details.query = queryVal;
+      if (queryVal && queryVal.length >= 2) {
+        const cleanQ = queryVal.replace(/^[*_`|/:\s\-—]+|[*_`|/:\s\-—]+$/g, '').trim();
+        if (!/^(none|na|n\/a|not\s*found|not\s*available|null|undefined|nil|-+)$/i.test(cleanQ)) {
+          details.query = cleanQ;
+        }
       }
     }
   }
 
   // ---------------------------------------------------------------------------
   // STEP 2: GLOBAL REGEX SEARCH FOR UNRESOLVED FIELDS
-  // If line-by-line did not find all fields, scan the full text with targeted patterns
+  // Scans for exact label prefixes across document text
   // ---------------------------------------------------------------------------
 
   // 1. Candidate Name (if not resolved)
@@ -464,7 +487,6 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
     const nameGlobalPatterns = [
       /(?:Candidate(?:\s*['’]s)?(?:\s*Full)?\s*Name|Name\s*of\s*(?:the\s*)?(?:Candidate|Applicant|Student)|Student(?:\s*['’]s)?(?:\s*Full)?\s*Name|Applicant(?:\s*['’]s)?(?:\s*Full)?\s*Name|Full\s*Name(?:\s*of\s*(?:Candidate|Applicant|Student))?|उमेदवाराचे\s*(?:संपूर्ण\s*)?नाव|अर्जदाराचे\s*(?:संपूर्ण\s*)?नाव|विद्यार्थ्याचे\s*(?:संपूर्ण\s*)?नाव)(?:\s*\([^)]*\))?[\s:.\-#\t—=|]+([^\n\r|]{2,80})/i,
       /(?:^|\n)\s*(?:Candidate\s*Name|Student\s*Name|Applicant\s*Name)(?:\s*\([^)]*\))?[\s:.\-#\t\n|]+([^\n\r|]{2,80})/i,
-      /\b(?:Mr\.|Mrs\.|Ms\.|Shri|Smt\.|Kumari)\s+([A-Za-z\s.'’]{3,60})\b/i,
     ];
     for (const pat of nameGlobalPatterns) {
       const m = cleanedText.match(pat);
@@ -478,91 +500,52 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
     }
   }
 
-  // 2. CAP Application Number (explicit search first to avoid collision with CET)
+  // 2. CAP Application Number
   if (!details.capId) {
     const capMatch = cleanedText.match(
       /(?:CAP\s*(?:Application|App|Reg|Registration)?\s*(?:Number|No|Num|ID|Form)?|CAP\s*ID|कॅप\s*अर्ज\s*क्रमांक|कॅप\s*आयडी)[\s:.\-#\t—=\n]+([A-Za-z0-9\s\-_/]{6,20})/i
     );
     if (capMatch && capMatch[1]) {
       const cleaned = cleanAppId(capMatch[1]);
-      if (cleaned && !/^(CANDIDATE|APPLICANT|STUDENT|COURSE|STATUS|NUMBER|MOBILE|DETAILS|NONE|NA)$/i.test(cleaned)) {
+      if (cleaned && !/^(CANDIDATE|APPLICANT|STUDENT|COURSE|STATUS|NUMBER|MOBILE|DETAILS|NONE|NA|NOTAVAILABLE)$/i.test(cleaned)) {
         details.capId = cleaned;
       }
     }
   }
 
-  // Standalone CAP course prefix pattern (e.g., EN24108892 or EN 24108892)
+  // Standalone CAP course prefix pattern (e.g., EN24108892) only if not matching CET number
   if (!details.capId) {
-    const capPrefixMatch = cleanedText.match(/\b((?:EN|MB|MC|PH|AR|HM|DS|DSE|DSP|TE|CO|PL|BS|AG|LA|ED|MP|NU)[\s\-_/]?\d{6,10})\b/i);
-    if (capPrefixMatch) {
-      details.capId = capPrefixMatch[1].replace(/[\s\-_/]/g, '').toUpperCase();
+    const capPrefixMatch = cleanedText.match(/\b((?:EN|MB|MC|PH|AR|HM|DS|DSE|DSP|TE|CO|PL|BS|AG|LA|ED|MP|NU)\d{6,10})\b/i);
+    if (capPrefixMatch && capPrefixMatch[1] !== details.cetNo) {
+      details.capId = capPrefixMatch[1].toUpperCase();
     }
   }
 
-  // 3. CET Application Number (ensuring it does NOT capture CAP Application Number)
+  // 3. CET Application Number (explicit CET prefix or Marathi label)
   if (!details.cetNo) {
     const explicitCet = cleanedText.match(
       /(?:CET\s*(?:Application|App|Reg|Registration|Form)?\s*(?:Number|No|Num|ID)?|CET\s*Roll\s*(?:No|Number)|सीईटी\s*अर्ज\s*क्रमांक|सीईटी\s*नोंदणी\s*क्रमांक|सीईटी\s*रोल\s*नंबर|MHT[\s-]?CET\s*(?:Application|App|Reg)?\s*(?:Number|No|Num|ID)?|MAH[\s-]?CET\s*(?:Application|App|Reg)?\s*(?:Number|No|Num|ID)?)[\s:.\-#\t—=\n]+([A-Za-z0-9\s\-_/]{6,20})/i
     );
     if (explicitCet && explicitCet[1]) {
       const cleaned = cleanAppId(explicitCet[1]);
-      if (cleaned && !/^(CANDIDATE|APPLICANT|STUDENT|COURSE|STATUS|NUMBER|MOBILE|DETAILS|NONE|NA)$/i.test(cleaned)) {
+      if (cleaned && !/^(CANDIDATE|APPLICANT|STUDENT|COURSE|STATUS|NUMBER|MOBILE|DETAILS|NONE|NA|NOTAVAILABLE)$/i.test(cleaned)) {
         details.cetNo = cleaned;
       }
     }
   }
 
-  // Generic Application Number if not preceded by CAP
-  if (!details.cetNo || !details.capId) {
-    const appMatch = cleanedText.match(
-      /(?:^|[^A-Za-z0-9])(?:Application\s*(?:Number|No|Num|ID|Form\s*No)|अर्ज\s*क्रमांक)[\s:.\-#\t—=\n]+([A-Za-z0-9\s\-_/]{6,20})/i
-    );
-    if (appMatch && appMatch[1]) {
-      const cleaned = cleanAppId(appMatch[1]);
-      if (cleaned && !/^(CANDIDATE|APPLICANT|STUDENT|COURSE|STATUS|NUMBER|MOBILE|DETAILS|NONE|NA)$/i.test(cleaned)) {
-        // If it starts with CAP prefix and capId is not set, set capId instead
-        if (CAP_PREFIX_REGEX.test(cleaned) && !details.capId) {
-          details.capId = cleaned;
-        } else if (!details.cetNo) {
-          details.cetNo = cleaned;
-        }
-      }
-    }
-  }
-
-  // Standalone CET number (starts with CET or standard 8-9 digits like 24108892)
+  // Standalone CET number (starts with CET prefix)
   if (!details.cetNo) {
     const cetPrefixMatch = cleanedText.match(/\b(CET[\s\-_/]?\d{6,14})\b/i);
     if (cetPrefixMatch) {
       details.cetNo = cetPrefixMatch[1].replace(/[\s\-_/]/g, '').toUpperCase();
-    } else {
-      const mahCetMatch = cleanedText.match(/\b(2[3-6]\d{6,9})\b/);
-      if (mahCetMatch && mahCetMatch[1] !== details.mobile && mahCetMatch[1] !== details.capId) {
-        details.cetNo = mahCetMatch[1];
-      }
     }
   }
 
-  // Cross-validation and fallback synchronization
-  // 1. If cetNo was set to a CAP prefix format (e.g. EN24108892) and capId is empty, set capId
-  if (details.cetNo && CAP_PREFIX_REGEX.test(details.cetNo) && !details.capId) {
-    details.capId = details.cetNo;
-  }
-
-  // 2. If capId was detected (e.g. EN24108892) but cetNo is empty:
-  // In SAC Ticket Generator, CET Application Number is a mandatory required field (*).
-  // Ensure cetNo is also populated with the candidate's primary application ID so the form is never blocked.
-  if (details.capId && !details.cetNo) {
-    details.cetNo = details.capId;
-  }
-
-  // 4. DOB (Date of Birth) (if not resolved)
+  // 4. Date of Birth (DOB) - ONLY match when explicitly labeled
   if (!details.dob) {
     const dobGlobalPatterns = [
-      /(?:DOB(?:\s*\(\s*Date\s*of\s*Birth\s*\))?|Date\s*of\s*Birth|Birth\s*Date|D\.O\.B\.?|जन्म\s*तारीख)[\s:.\-#\t\n]+(\d{1,4}[/\-.][0-9A-Za-z]{1,9}[/\-.][0-9]{2,4})/i,
-      /\b(\d{1,2}[/\-.]\d{1,2}[/\-.](?:19|20)\d{2})\b/,
-      /\b((?:19|20)\d{2}[/\-.]\d{1,2}[/\-.]\d{1,2})\b/,
-      /\b(\d{1,2}[\s\-]+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[\s\-]+(?:19|20)\d{2})\b/i,
+      /(?:Date\s*of\s*Birth(?:\s*\(\s*DOB\s*\))?|DOB(?:\s*\(\s*Date\s*of\s*Birth\s*\))?|Birth\s*Date|D\.O\.B\.?|जन्म\s*तारीख)[\s:.\-#\t\n]+(\d{1,4}[/\-.][0-9A-Za-z]{1,9}[/\-.][0-9]{2,4})/i,
     ];
     for (const pat of dobGlobalPatterns) {
       const m = cleanedText.match(pat);
@@ -581,16 +564,10 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
     const mobGlobal = cleanedText.match(/(?:Mobile|Phone|Contact|Cell|मोबाईल)[\s:.\-#\t\n+]+(?:(?:91|0)[\s\-]*)?([6-9]\d{9})\b/i);
     if (mobGlobal && mobGlobal[1]) {
       details.mobile = mobGlobal[1];
-    } else {
-      // Find any 10-digit phone starting with 6-9
-      const anyPhone = cleanedText.match(/\b([6-9]\d{9})\b/);
-      if (anyPhone && anyPhone[1]) {
-        details.mobile = anyPhone[1];
-      }
     }
   }
 
-  // 6. Email Address (if not resolved)
+  // 6. Email ID (if not resolved)
   if (!details.email) {
     const emailGlobal = cleanedText.match(/\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b/);
     if (emailGlobal && emailGlobal[1]) {
@@ -600,31 +577,22 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
 
   // 7. Course Name (if not resolved)
   if (!details.course) {
-    // Check if course header appears in text
     const courseHeaderMatch = cleanedText.match(
-      /(?:Course\s*Name|Course\s*Applied|Applied\s*Course|Course|Branch|Programme|अभ्यासक्रम)[\s:.\-#\t]+([^\n\r]{2,80})/i
+      /(?:Course\s*Name|Course\s*Applied|Applied\s*Course|Course|Branch|Programme|अभ्यासक्रमाचे\s*नाव|अभ्यासक्रम)[\s:.\-#\t]+([^\n\r]{2,80})/i
     );
     if (courseHeaderMatch && courseHeaderMatch[1]) {
-      const matched = matchCourseName(courseHeaderMatch[1]);
-      if (matched) details.course = matched;
+      const cleanVal = courseHeaderMatch[1].replace(/^[*_`|]+|[*_`|]+$/g, '').trim();
+      if (!/^(none|na|n\/a|not\s*found|not\s*available|null|undefined|-+)$/i.test(cleanVal)) {
+        const matched = matchCourseName(cleanVal);
+        details.course = matched || cleanVal;
+      }
     }
   }
 
-  // If still not matched, check general text keywords
-  if (!details.course) {
-    const matched = matchCourseName(cleanedText);
-    if (matched) {
-      details.course = matched;
-    } else {
-      details.course = DEFAULT_COURSE;
-    }
-  }
-
-  // 8. Query: / Grievance Details (if not resolved)
-  // Extract strictly the query/issue text so other fields do not bleed into the Query field
+  // 8. Query / Grievance Details (if not resolved)
   if (!details.query) {
     const queryPatterns = [
-      /(?:Query\s*(?:\/|\&)?\s*Grievance|Query\s*Details|Query|Grievance(?:\s*Details)?|Issue|Problem|Complaint|Subject|Reason|Remarks?|तक्रार|विषय)[\s:.\-#\t—=]+([\s\S]+?)(?=(?:\n\s*(?:Candidate|Name|Mobile|Email|DOB|Date\s*of\s*Birth|CET|CAP|Course|Date|Sign|Signature|Note|Place|Status\b))|$)/i,
+      /(?:Query\s*(?:\/|\&)?\s*Grievance(?:\s*Details)?|Query\s*Details|Query|Grievance(?:\s*Details)?|Issue(?:\s*Details)?|Problem|Complaint|Subject|Reason|Remarks?|तक्रार\s*(?:\/|\&)?\s*अडचण(?:\s*तपशील)?|तक्रार\s*तपशील|तक्रार|विषय)[\s:.\-#\t—=]+([\s\S]+?)(?=(?:\n\s*(?:Candidate|Name|Mobile|Email|DOB|Date\s*of\s*Birth|CET|CAP|Course|Date|Sign|Signature|Note|Place|Status\b))|$)/i,
     ];
     for (const pat of queryPatterns) {
       const m = cleanedText.match(pat);
@@ -636,17 +604,12 @@ export function captureTicketDetailsFromText(rawText: string): CapturedTicketDet
             ''
           )
           .trim();
-        if (q.length >= 3) {
+        if (q.length >= 2 && !/^(none|na|n\/a|not\s*found|not\s*available|null|undefined|-+)$/i.test(q)) {
           details.query = q;
           break;
         }
       }
     }
-  }
-
-  // If query is in first-person language, rewrite into third-person statement suitable for SAC ticket
-  if (details.query && detectFirstPersonLanguage(details.query)) {
-    details.query = convertQueryToThirdPersonFallback(details.query);
   }
 
   return details;

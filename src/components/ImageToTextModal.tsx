@@ -1843,25 +1843,25 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
                     </span>
                   </div>
 
-                  {/* 2. CET App No */}
+                  {/* 2. CET Application Number */}
                   <div className="bg-white/90 p-2 rounded-lg border border-blue-100/80">
-                    <span className="font-semibold text-slate-500 block text-[10px]">2. CET App Number:</span>
+                    <span className="font-semibold text-slate-500 block text-[10px]">2. CET Application Number:</span>
                     <span className="font-bold font-mono text-slate-800 truncate block" title={detectedTicketFields.cetNo || 'Not detected'}>
                       {detectedTicketFields.cetNo || <span className="text-amber-600 font-normal italic">Not detected</span>}
                     </span>
                   </div>
 
-                  {/* 3. CAP App No */}
+                  {/* 3. CAP Application Number */}
                   <div className="bg-white/90 p-2 rounded-lg border border-blue-100/80">
-                    <span className="font-semibold text-slate-500 block text-[10px]">3. CAP App Number:</span>
-                    <span className="font-bold font-mono text-slate-800 truncate block" title={detectedTicketFields.capId || 'Optional / None'}>
-                      {detectedTicketFields.capId || <span className="text-slate-400 font-normal italic">Optional / None</span>}
+                    <span className="font-semibold text-slate-500 block text-[10px]">3. CAP Application Number:</span>
+                    <span className="font-bold font-mono text-slate-800 truncate block" title={detectedTicketFields.capId || 'Not detected'}>
+                      {detectedTicketFields.capId || <span className="text-slate-400 font-normal italic">Not detected</span>}
                     </span>
                   </div>
 
-                  {/* 4. DOB */}
+                  {/* 4. Date of Birth (DOB) */}
                   <div className="bg-white/90 p-2 rounded-lg border border-blue-100/80">
-                    <span className="font-semibold text-slate-500 block text-[10px]">4. DOB:</span>
+                    <span className="font-semibold text-slate-500 block text-[10px]">4. Date of Birth (DOB):</span>
                     <span className="font-bold font-mono text-slate-800 truncate block" title={detectedTicketFields.dob || 'Not detected'}>
                       {detectedTicketFields.dob || <span className="text-amber-600 font-normal italic">Not detected</span>}
                     </span>
@@ -1891,9 +1891,9 @@ export const ImageToTextModal: React.FC<ImageToTextModalProps> = ({
                     </span>
                   </div>
 
-                  {/* 8. Query */}
+                  {/* 8. Query / Grievance Details */}
                   <div className="bg-white/90 p-2 rounded-lg border border-blue-100/80">
-                    <span className="font-semibold text-slate-500 block text-[10px]">8. Query / Issue:</span>
+                    <span className="font-semibold text-slate-500 block text-[10px]">8. Query / Grievance Details:</span>
                     <span className="font-medium text-slate-800 truncate block" title={detectedTicketFields.query || 'Not detected'}>
                       {detectedTicketFields.query || <span className="text-amber-600 font-normal italic">Not detected</span>}
                     </span>

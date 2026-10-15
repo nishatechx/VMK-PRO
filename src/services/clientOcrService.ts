@@ -109,19 +109,18 @@ export async function preprocessImageForOcr(dataUrl: string): Promise<string> {
  */
 export function formatTicketFieldsText(details: CapturedTicketDetails, originalOcrText?: string): string {
   const lines: string[] = [
-    '=== EXTRACTED 8 TICKET FIELDS ===',
-    `1. Candidate Name: ${details.candidateName || 'Not Found'}`,
-    `2. CET Application Number: ${details.cetNo || 'Not Found'}`,
-    `3. CAP Application Number: ${details.capId || 'Not Found'}`,
-    `4. Date of Birth (DOB): ${details.dob || 'Not Found'}`,
-    `5. Mobile Number: ${details.mobile || 'Not Found'}`,
-    `6. Email ID: ${details.email || 'Not Found'}`,
-    `7. Course Name: ${details.course || 'Not Found'}`,
-    `8. Query: ${details.query || (originalOcrText ? originalOcrText.slice(0, 250).replace(/\n/g, ' ') : 'Not Found')}`,
+    `Candidate Name: ${details.candidateName || ''}`,
+    `CET Application Number: ${details.cetNo || ''}`,
+    `CAP Application Number: ${details.capId || ''}`,
+    `Date of Birth (DOB): ${details.dob || ''}`,
+    `Mobile Number: ${details.mobile || ''}`,
+    `Email ID: ${details.email || ''}`,
+    `Course Name: ${details.course || ''}`,
+    `Query / Grievance Details: ${details.query || ''}`,
   ];
 
   if (originalOcrText && originalOcrText.trim()) {
-    lines.push('\n=== FULL DOCUMENT OCR TEXT ===');
+    lines.push('\n--- Full Document Text ---');
     lines.push(originalOcrText.trim());
   }
 
