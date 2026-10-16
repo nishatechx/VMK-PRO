@@ -1153,25 +1153,34 @@ async function startServer() {
   // Upload file from Mobile or Desktop
   app.post("/api/qr-upload", (req, res) => {
     try {
-      const { sessionId, name, type, size, dataUrl, category, folder, uploadedBy, uploaderName, uploaderRole, district } = req.body;
+      const body = req.body || {};
+      const resolvedSessionId =
+        body.sessionId || body.session || body.qrSession || req.query?.sessionId || req.query?.qrSession;
+      const resolvedDataUrl = body.dataUrl || body.data || body.fileData;
+      const resolvedName =
+        body.name ||
+        (resolvedDataUrl && typeof resolvedDataUrl === 'string' && resolvedDataUrl.startsWith('data:application/pdf')
+          ? `Document_${Date.now()}.pdf`
+          : `Scan_${Date.now()}.jpg`);
 
-      if (!sessionId || !name || !dataUrl) {
-        return res.status(400).json({ error: "Missing required fields (sessionId, name, dataUrl)" });
+      if (!resolvedSessionId || !resolvedDataUrl) {
+        return res.status(400).json({ error: "Missing required fields (sessionId, dataUrl)" });
       }
 
-      const normSessionId = String(sessionId).trim().toUpperCase();
+      const { type, size, category, folder, uploadedBy, uploaderName, uploaderRole, district } = body;
+      const normSessionId = String(resolvedSessionId).trim().toUpperCase();
 
       const file: QrUploadedFile = {
         id: `doc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         sessionId: normSessionId,
-        name: String(name),
-        type: type || 'application/octet-stream',
-        size: Number(size) || 0,
-        dataUrl: String(dataUrl),
+        name: String(resolvedName),
+        type: type || (resolvedDataUrl.startsWith('data:image/') ? 'image/jpeg' : (resolvedDataUrl.startsWith('data:application/pdf') ? 'application/pdf' : 'application/octet-stream')),
+        size: Number(size) || Math.round(String(resolvedDataUrl).length * 0.75),
+        dataUrl: String(resolvedDataUrl),
         uploadedAt: new Date().toISOString(),
         isDownloadedToSoftware: true,
         verifiedStamp: false,
-        category: category || detectDocCategory(name),
+        category: category || detectDocCategory(resolvedName),
         folder: folder ? String(folder).trim() : undefined,
         uploadedBy: uploadedBy ? String(uploadedBy).trim() : undefined,
         uploaderName: uploaderName ? String(uploaderName).trim() : undefined,
@@ -1187,7 +1196,7 @@ async function startServer() {
       sessionFiles.unshift(file);
       if (sessionFiles.length > 50) sessionFiles.pop();
 
-      const rawSession = String(sessionId).trim();
+      const rawSession = String(resolvedSessionId).trim();
       if (rawSession !== normSessionId) {
         if (!sessionStore.has(rawSession)) sessionStore.set(rawSession, []);
         sessionStore.get(rawSession)!.unshift(file);

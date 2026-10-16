@@ -642,6 +642,7 @@ export default function App() {
         currentUser={currentUser}
         onOpenImgToPdf={hasFeaturePermission(currentUser, 'img_to_pdf_tool') ? handleOpenImgToPdf : undefined}
         onOpenImageToText={hasFeaturePermission(currentUser, 'image_to_text_tool') ? handleOpenImageToTextWithImage : undefined}
+        onOpenTicketWithData={hasFeaturePermission(currentUser, 'ticket_generator_tool') ? handleOpenTicketWithData : undefined}
       />
 
       <TicketGeneratorModal

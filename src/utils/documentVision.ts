@@ -1186,43 +1186,54 @@ export async function autoCropAndOptimizeDocument(
  */
 export async function compressImageForUpload(
   dataUrl: string,
-  maxDimension = 2048,
-  quality = 0.88
+  maxDimension = 1800,
+  quality = 0.85
 ): Promise<{ dataUrl: string; size: number }> {
-  if (!dataUrl || !dataUrl.startsWith('data:image/')) {
-    return { dataUrl, size: Math.round((dataUrl?.length || 0) * 0.75) };
+  if (!dataUrl) {
+    return { dataUrl: '', size: 0 };
   }
+  // If it's a PDF, do not attempt canvas rendering
+  if (dataUrl.startsWith('data:application/pdf') || dataUrl.includes('application/pdf')) {
+    return { dataUrl, size: Math.round(dataUrl.length * 0.75) };
+  }
+  // If already under 450KB, safe for fast upload
+  if (dataUrl.length < 500 * 1024 && (dataUrl.startsWith('data:image/jpeg') || dataUrl.startsWith('data:image/jpg'))) {
+    return { dataUrl, size: Math.round(dataUrl.length * 0.75) };
+  }
+
   return new Promise((resolve) => {
     const img = new Image();
     if (dataUrl && !dataUrl.startsWith('data:') && !dataUrl.startsWith('blob:')) {
       img.crossOrigin = 'anonymous';
     }
     img.onload = () => {
-      let w = img.naturalWidth || img.width;
-      let h = img.naturalHeight || img.height;
-      if (w <= maxDimension && h <= maxDimension && dataUrl.length < 800 * 1024) {
-        return resolve({ dataUrl, size: Math.round(dataUrl.length * 0.75) });
-      }
-      if (w > maxDimension || h > maxDimension) {
-        if (w > h) {
-          h = Math.round((h * maxDimension) / w);
-          w = maxDimension;
-        } else {
-          w = Math.round((w * maxDimension) / h);
-          h = maxDimension;
+      try {
+        let w = img.naturalWidth || img.width;
+        let h = img.naturalHeight || img.height;
+
+        if (w > maxDimension || h > maxDimension) {
+          if (w > h) {
+            h = Math.round((h * maxDimension) / w);
+            w = maxDimension;
+          } else {
+            w = Math.round((w * maxDimension) / h);
+            h = maxDimension;
+          }
         }
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, w);
+        canvas.height = Math.max(1, h);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return resolve({ dataUrl, size: Math.round(dataUrl.length * 0.75) });
+        ctx.drawImage(img, 0, 0, w, h);
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve({
+          dataUrl: compressedDataUrl,
+          size: Math.round(compressedDataUrl.length * 0.75),
+        });
+      } catch {
+        resolve({ dataUrl, size: Math.round(dataUrl.length * 0.75) });
       }
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.max(1, w);
-      canvas.height = Math.max(1, h);
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return resolve({ dataUrl, size: Math.round(dataUrl.length * 0.75) });
-      ctx.drawImage(img, 0, 0, w, h);
-      const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
-      resolve({
-        dataUrl: compressedDataUrl,
-        size: Math.round(compressedDataUrl.length * 0.75),
-      });
     };
     img.onerror = () => resolve({ dataUrl, size: Math.round(dataUrl.length * 0.75) });
     img.src = dataUrl;

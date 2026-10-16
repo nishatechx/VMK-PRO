@@ -42,51 +42,64 @@ export function formatBytes(bytes: number, decimals = 2): string {
 // Convert File to Base64 Data URL with automatic optimization for high-res photos
 export function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
-    // If it's a PDF or non-image, read directly as data URL
-    if (file.type === 'application/pdf' || !file.type.startsWith('image/')) {
+    // If it's a PDF, read directly as data URL without image canvas processing
+    const isExplicitPdf =
+      file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    if (isExplicitPdf) {
       const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
+      reader.onload = () => resolve((reader.result as string) || '');
       reader.onerror = (error) => reject(error);
       reader.readAsDataURL(file);
       return;
     }
 
-    // For images, optimize dimensions and compression for rapid cross-device transmission
+    // For images & camera captures (even if mobile sets empty type or application/octet-stream)
     const reader = new FileReader();
     reader.onload = (e) => {
+      const rawResult = (e.target?.result as string) || '';
+      if (!rawResult) {
+        resolve('');
+        return;
+      }
+
       const img = new Image();
       img.onload = () => {
-        const MAX_DIM = 2200; // Sharp document resolution
-        let width = img.width;
-        let height = img.height;
+        try {
+          const MAX_DIM = 1800; // Optimal 300 DPI for A4 documents, keeps payload comfortably within 350-700KB
+          let width = img.naturalWidth || img.width;
+          let height = img.naturalHeight || img.height;
 
-        if (width > MAX_DIM || height > MAX_DIM) {
-          if (width > height) {
-            height = Math.round((height * MAX_DIM) / width);
-            width = MAX_DIM;
-          } else {
-            width = Math.round((width * MAX_DIM) / height);
-            height = MAX_DIM;
+          if (width > MAX_DIM || height > MAX_DIM) {
+            if (width > height) {
+              height = Math.round((height * MAX_DIM) / width);
+              width = MAX_DIM;
+            } else {
+              width = Math.round((width * MAX_DIM) / height);
+              height = MAX_DIM;
+            }
           }
-        }
 
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          resolve(e.target?.result as string);
-          return;
-        }
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, width);
+          canvas.height = Math.max(1, height);
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(rawResult);
+            return;
+          }
 
-        ctx.drawImage(img, 0, 0, width, height);
-        const mime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
-        const quality = file.type === 'image/png' ? undefined : 0.90;
-        const optimizedDataUrl = canvas.toDataURL(mime, quality);
-        resolve(optimizedDataUrl);
+          ctx.drawImage(img, 0, 0, width, height);
+          const isPng = file.type === 'image/png' || file.name.toLowerCase().endsWith('.png');
+          const mime = isPng ? 'image/png' : 'image/jpeg';
+          const quality = isPng ? undefined : 0.85;
+          const optimizedDataUrl = canvas.toDataURL(mime, quality);
+          resolve(optimizedDataUrl);
+        } catch {
+          resolve(rawResult);
+        }
       };
-      img.onerror = () => resolve(e.target?.result as string);
-      img.src = e.target?.result as string;
+      img.onerror = () => resolve(rawResult);
+      img.src = rawResult;
     };
     reader.onerror = (error) => reject(error);
     reader.readAsDataURL(file);

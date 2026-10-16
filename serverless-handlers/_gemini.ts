@@ -26,7 +26,16 @@ export function getGeminiClient(customApiKey?: string): GoogleGenAI {
 }
 
 export async function readRequestBody(req: any): Promise<any> {
-  if (req.body && typeof req.body === 'object') return req.body;
+  if (req.body && typeof req.body === 'object') {
+    if (Buffer.isBuffer(req.body)) {
+      try {
+        return JSON.parse(req.body.toString('utf-8'));
+      } catch {
+        return {};
+      }
+    }
+    return req.body;
+  }
   if (typeof req.body === 'string') {
     try {
       return JSON.parse(req.body);

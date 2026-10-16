@@ -74,6 +74,8 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
+  const [autoUpload, setAutoUpload] = useState<boolean>(true);
+
   const cleanSessionId = String(sessionId || '').trim().toUpperCase();
 
   const loadFiles = async () => {
@@ -90,6 +92,74 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
     const interval = setInterval(loadFiles, 2000);
     return () => clearInterval(interval);
   }, [cleanSessionId]);
+
+  const uploadFilesDirectly = async (itemsToUpload: StagedFileItem[]) => {
+    if (itemsToUpload.length === 0) return;
+
+    setIsUploading(true);
+    setUploadProgress(15);
+
+    const total = itemsToUpload.length;
+    let completed = 0;
+    let failureCount = 0;
+
+    for (let i = 0; i < itemsToUpload.length; i++) {
+      const item = itemsToUpload[i];
+      try {
+        const dataUrl = item.previewUrl || (await fileToDataUrl(item.file));
+        const fileType =
+          item.file.type ||
+          (dataUrl.startsWith('data:image/')
+            ? 'image/jpeg'
+            : item.isPdf
+            ? 'application/pdf'
+            : 'application/octet-stream');
+
+        await qrUploadService.uploadFile(cleanSessionId, {
+          name: item.file.name,
+          type: fileType,
+          size: item.file.size,
+          dataUrl,
+          category: item.isPdf ? 'PDF Document' : 'Scanned Image',
+          uploadedBy: uploaderParams.uploadedBy,
+          uploaderName: uploaderParams.uploaderName,
+          uploaderRole: uploaderParams.uploaderRole,
+          district: uploaderParams.district,
+        });
+
+        completed++;
+        setUploadProgress(Math.round(((i + 1) / total) * 100));
+      } catch (err) {
+        console.error('File upload failed:', err);
+        failureCount++;
+      }
+    }
+
+    setIsUploading(false);
+    setUploadProgress(0);
+
+    // Remove uploaded items from staged queue
+    const uploadedIds = new Set(itemsToUpload.map((it) => it.id));
+    setStagedFiles((prev) => prev.filter((it) => !uploadedIds.has(it.id)));
+
+    if (failureCount === 0) {
+      setStatusMsg({
+        text: `✓ ${completed} document(s) uploaded successfully to computer!`,
+        type: 'success',
+      });
+    } else {
+      setStatusMsg({
+        text: `Uploaded ${completed} file(s), ${failureCount} failed. Please tap retry.`,
+        type: 'error',
+      });
+    }
+
+    await loadFiles();
+    const vaultSection = document.getElementById('mobile-vault-documents-section');
+    if (vaultSection) {
+      vaultSection.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
 
   const handleFilesAdded = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const inputFiles = e.target.files;
@@ -147,26 +217,32 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
       });
     }
 
+    // Reset inputs so same file or camera capture can be triggered again
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+
     if (skippedCount > 0) {
       setStatusMsg({
         text: `${skippedCount} file(s) skipped. Only PDF, JPG, PNG under 50MB allowed.`,
         type: 'error',
       });
-    } else {
-      setStatusMsg({
-        text: `✓ ${newItems.length} document(s) captured/selected! Tap "Upload to Vault" below to upload.`,
-        type: 'success',
-      });
     }
 
     if (newItems.length > 0) {
-      // Stage files and let user tap the prominent "Upload" button
-      setStagedFiles((prev) => [...prev, ...newItems]);
+      if (autoUpload) {
+        setStatusMsg({
+          text: `Uploading ${newItems.length} document(s) directly to computer...`,
+          type: 'success',
+        });
+        await uploadFilesDirectly(newItems);
+      } else {
+        setStagedFiles((prev) => [...prev, ...newItems]);
+        setStatusMsg({
+          text: `✓ ${newItems.length} document(s) ready! Tap "Upload to Vault" below.`,
+          type: 'success',
+        });
+      }
     }
-
-    // Reset inputs so same file or camera capture can be triggered again
-    if (fileInputRef.current) fileInputRef.current.value = '';
-    if (cameraInputRef.current) cameraInputRef.current.value = '';
   };
 
   const removeStagedFile = (id: string) => {
@@ -187,19 +263,26 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
       const res = await fetch(capturedDataUrl);
       const blob = await res.blob();
       const file = new File([blob], fileName, { type: 'image/jpeg' });
-      setStagedFiles((prev) => [
-        ...prev,
-        {
-          id: `scan-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-          file,
-          previewUrl: capturedDataUrl,
-          isPdf: false,
-        },
-      ]);
-      setStatusMsg({
-        text: `✓ Scanned document captured! Tap "Upload to Vault" below to finish.`,
-        type: 'success',
-      });
+      const newItem: StagedFileItem = {
+        id: `scan-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        file,
+        previewUrl: capturedDataUrl,
+        isPdf: false,
+      };
+
+      if (autoUpload) {
+        setStatusMsg({
+          text: 'Uploading scanned document directly to computer...',
+          type: 'success',
+        });
+        await uploadFilesDirectly([newItem]);
+      } else {
+        setStagedFiles((prev) => [...prev, newItem]);
+        setStatusMsg({
+          text: `✓ Scanned document captured! Tap "Upload to Vault" below to finish.`,
+          type: 'success',
+        });
+      }
     } catch {
       setStatusMsg({ text: 'Failed to process capture', type: 'error' });
     }
@@ -238,63 +321,7 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
 
   const handleUploadAll = async () => {
     if (stagedFiles.length === 0) return;
-
-    setIsUploading(true);
-    setUploadProgress(10);
-
-    const total = stagedFiles.length;
-    let completed = 0;
-    let failureCount = 0;
-
-    for (let i = 0; i < stagedFiles.length; i++) {
-      const item = stagedFiles[i];
-      try {
-        const dataUrl = item.previewUrl || (await fileToDataUrl(item.file));
-
-        const fileType = item.file.type || (dataUrl.startsWith('data:image/') ? 'image/jpeg' : (item.isPdf ? 'application/pdf' : 'application/octet-stream'));
-
-        await qrUploadService.uploadFile(cleanSessionId, {
-          name: item.file.name,
-          type: fileType,
-          size: item.file.size,
-          dataUrl,
-          category: item.isPdf ? 'PDF Document' : 'Scanned Image',
-          uploadedBy: uploaderParams.uploadedBy,
-          uploaderName: uploaderParams.uploaderName,
-          uploaderRole: uploaderParams.uploaderRole,
-          district: uploaderParams.district,
-        });
-
-        completed++;
-        setUploadProgress(Math.round(((i + 1) / total) * 100));
-      } catch {
-        failureCount++;
-      }
-    }
-
-    setIsUploading(false);
-    clearAllStaged();
-
-    if (failureCount === 0) {
-      setStatusMsg({
-        text: `${completed} file${completed > 1 ? 's' : ''} uploaded successfully to computer`,
-        type: 'success',
-      });
-    } else {
-      setStatusMsg({
-        text: `Uploaded ${completed} file(s), ${failureCount} failed`,
-        type: 'error',
-      });
-    }
-
-    await loadFiles();
-    const vaultSection = document.getElementById('mobile-vault-documents-section');
-    if (vaultSection) {
-      vaultSection.scrollIntoView({ behavior: 'smooth' });
-    }
-    setTimeout(() => {
-      setStatusMsg((prev) => (prev.type === 'success' ? { text: '', type: '' } : prev));
-    }, 4000);
+    await uploadFilesDirectly(stagedFiles);
   };
 
   const handleDelete = async (fileId: string) => {
@@ -374,6 +401,23 @@ export const MobileQrUploadView: React.FC<MobileQrUploadViewProps> = ({ sessionI
 
         {/* Upload Action Card (Google Files Material 3) */}
         <div className="bg-white border border-[#E0E2EC] rounded-3xl p-5 shadow-xs space-y-4">
+          {/* Instant Upload Toggle */}
+          <div className="flex items-center justify-between pb-2 border-b border-[#E0E2EC] text-xs">
+            <div className="flex items-center gap-1.5 text-[#1F1F1F] font-medium">
+              <Sparkles className="w-3.5 h-3.5 text-[#0B57D0]" />
+              <span>Auto-Upload to Computer</span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer" title="Auto-upload photos directly upon capture">
+              <input
+                type="checkbox"
+                checked={autoUpload}
+                onChange={(e) => setAutoUpload(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-8 h-4.5 bg-[#C4C7C5] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-[#0B57D0]"></div>
+            </label>
+          </div>
+
           {/* Action Buttons: Google Files 3-button layout */}
           <div className="grid grid-cols-3 gap-2.5">
             <button
