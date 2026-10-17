@@ -1186,8 +1186,8 @@ export async function autoCropAndOptimizeDocument(
  */
 export async function compressImageForUpload(
   dataUrl: string,
-  maxDimension = 1800,
-  quality = 0.85
+  maxDimension = 1400,
+  quality = 0.80
 ): Promise<{ dataUrl: string; size: number }> {
   if (!dataUrl) {
     return { dataUrl: '', size: 0 };

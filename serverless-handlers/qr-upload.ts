@@ -38,13 +38,13 @@ export default async function handler(req: any, res: any) {
     const rawSessionId = String(resolvedSessionId).trim();
 
     const file: QrUploadedFile = {
-      id: `doc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      id: (body?.id && String(body.id).trim()) || `doc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       sessionId: normSessionId,
       name: String(resolvedName),
       type: type || (resolvedDataUrl.startsWith('data:image/') ? 'image/jpeg' : (resolvedDataUrl.startsWith('data:application/pdf') ? 'application/pdf' : 'application/octet-stream')),
       size: Number(size) || Math.round(String(resolvedDataUrl).length * 0.75),
       dataUrl: String(resolvedDataUrl),
-      uploadedAt: new Date().toISOString(),
+      uploadedAt: body?.uploadedAt || new Date().toISOString(),
       isDownloadedToSoftware: true,
       verifiedStamp: false,
       category: category || detectDocCategory(resolvedName),
@@ -55,29 +55,45 @@ export default async function handler(req: any, res: any) {
       district: district ? String(district).trim() : undefined,
     };
 
-    // Store in session (normalized and raw)
+    // Store in session (normalized and raw) with de-duplication
     if (!sessionStore.has(normSessionId)) {
       sessionStore.set(normSessionId, []);
     }
     const sessionFiles = sessionStore.get(normSessionId)!;
-    sessionFiles.unshift(file);
-    if (sessionFiles.length > 50) sessionFiles.pop();
+    const existingSessionIdx = sessionFiles.findIndex((f) => f.id === file.id);
+    if (existingSessionIdx >= 0) {
+      sessionFiles[existingSessionIdx] = file;
+    } else {
+      sessionFiles.unshift(file);
+    }
+    if (sessionFiles.length > 100) sessionFiles.pop();
 
     if (rawSessionId !== normSessionId) {
       if (!sessionStore.has(rawSessionId)) {
         sessionStore.set(rawSessionId, []);
       }
-      sessionStore.get(rawSessionId)!.unshift(file);
+      const rawList = sessionStore.get(rawSessionId)!;
+      const existingRawIdx = rawList.findIndex((f) => f.id === file.id);
+      if (existingRawIdx >= 0) {
+        rawList[existingRawIdx] = file;
+      } else {
+        rawList.unshift(file);
+      }
     }
 
-    // Store in global vault
-    vaultStore.unshift(file);
-    if (vaultStore.length > 250) vaultStore.pop();
+    // Store in global vault with de-duplication
+    const existingVaultIdx = vaultStore.findIndex((f) => f.id === file.id);
+    if (existingVaultIdx >= 0) {
+      vaultStore[existingVaultIdx] = file;
+    } else {
+      vaultStore.unshift(file);
+    }
+    if (vaultStore.length > 300) vaultStore.pop();
 
     // Persist to disk so other lambdas / restarts see it
     persistVaultStore();
 
-    console.log(`[QR-UPLOAD] Received "${file.name}" (${file.size} bytes) for Session ${normSessionId} by ${file.uploadedBy || 'anonymous'}`);
+    console.log(`[QR-UPLOAD] Received "${file.name}" (${file.size} bytes) [ID: ${file.id}] for Session ${normSessionId} by ${file.uploadedBy || 'anonymous'}`);
 
     return res.status(200).json({ success: true, file });
   } catch (err: any) {

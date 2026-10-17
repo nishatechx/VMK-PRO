@@ -454,6 +454,7 @@ export const qrUploadService = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          id: newFile.id,
           sessionId: cleanSessionId,
           name: newFile.name,
           type: newFile.type,
@@ -465,6 +466,7 @@ export const qrUploadService = {
           uploaderName: newFile.uploaderName,
           uploaderRole: newFile.uploaderRole,
           district: newFile.district,
+          uploadedAt: newFile.uploadedAt,
         }),
       });
 
@@ -488,13 +490,33 @@ export const qrUploadService = {
     let firestoreUploadFailed = false;
     try {
       const firestoreDoc = { ...newFile };
-      if (finalDataUrl && finalDataUrl.length > 750 * 1024) {
-        // Keep document metadata in Firestore without the huge base64 payload to prevent 1MB limit error
-        firestoreDoc.dataUrl = '';
+      // Firestore document limit is 1MB (~1,048,576 bytes). Ensure base64 string is under 800KB
+      if (finalDataUrl && finalDataUrl.startsWith('data:image/') && finalDataUrl.length > 700 * 1024) {
+        try {
+          const recompressed = await compressImageForUpload(finalDataUrl, 1200, 0.70);
+          if (recompressed?.dataUrl && recompressed.dataUrl.length < finalDataUrl.length) {
+            firestoreDoc.dataUrl = recompressed.dataUrl;
+            firestoreDoc.size = recompressed.size;
+          }
+        } catch {}
       }
-      const docRef = doc(db, 'qr_uploads', newFile.id);
-      await setDoc(docRef, sanitizeForFirestore(firestoreDoc));
-      console.log(`[Firebase Firestore] Saved document ${newFile.id} to Firestore (User: ${uploadedBy}, District: ${district})`);
+      try {
+        const docRef = doc(db, 'qr_uploads', newFile.id);
+        await setDoc(docRef, sanitizeForFirestore(firestoreDoc));
+        console.log(`[Firebase Firestore] Saved document ${newFile.id} to Firestore (User: ${uploadedBy}, District: ${district})`);
+      } catch (innerErr: any) {
+        // If rejected due to document size, perform aggressive downscaling to 900px, 0.55 quality
+        if (finalDataUrl && finalDataUrl.startsWith('data:image/')) {
+          const emergency = await compressImageForUpload(finalDataUrl, 900, 0.55);
+          firestoreDoc.dataUrl = emergency.dataUrl;
+          firestoreDoc.size = emergency.size;
+          const docRef = doc(db, 'qr_uploads', newFile.id);
+          await setDoc(docRef, sanitizeForFirestore(firestoreDoc));
+          console.log(`[Firebase Firestore] Saved re-compressed document ${newFile.id} to Firestore`);
+        } else {
+          throw innerErr;
+        }
+      }
     } catch (firestoreErr) {
       firestoreUploadFailed = true;
       console.warn('[Firebase Firestore] Warning saving to Firestore:', firestoreErr);
@@ -515,6 +537,10 @@ export const qrUploadService = {
         district: newFile.district,
       });
       requestBackgroundSync();
+      // If user is online but both rejected (e.g. file too huge or server error), throw meaningful error
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+        throw new Error('Upload to both local server and Firestore failed. Please verify network and try again.');
+      }
     }
 
     return newFile;
@@ -531,116 +557,168 @@ export const qrUploadService = {
     return 'Candidate Document';
   },
 
-  // Get all files for session from Firestore or Server or LocalStorage
+  // Sync a file discovered in Firestore back to local Express server so disk & memory store keep it
+  async syncFileToServer(file: QrUploadedFile): Promise<void> {
+    try {
+      await fetch('/api/qr-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(file),
+      });
+    } catch {}
+  },
+
+  // Get all files for session from both Server API & Firestore Database (Merged & De-duplicated)
   async getFiles(sessionId: string): Promise<QrUploadedFile[]> {
     const cleanSessionId = String(sessionId || '').trim().toUpperCase();
+    const rawSessionId = String(sessionId || '').trim();
+    const fileMap = new Map<string, QrUploadedFile>();
 
-    // 1. Try Server API first for fastest real-time sync across devices
-    try {
-      const res = await fetch(`/api/qr-files?sessionId=${encodeURIComponent(cleanSessionId)}`);
-      if (res.ok) {
-        const json = await res.json();
-        if (json?.success && Array.isArray(json.files)) {
-          const serverFiles: QrUploadedFile[] = json.files.map((f: QrUploadedFile) => ({
-            ...f,
-            isDownloadedToSoftware: true,
-          }));
-          serverFiles.forEach((f) => {
-            this.saveToLocalStorage(cleanSessionId, f);
-            this.saveToSoftwareVault(f);
-          });
-          return serverFiles;
+    // 1. Fetch from LocalStorage first for instant baseline
+    const local = this.getFromLocalStorage(cleanSessionId);
+    local.forEach((f) => {
+      if (f && f.id) fileMap.set(f.id, f);
+    });
+
+    // 2. Fetch from Server API and Firebase Firestore in parallel
+    const serverPromise = (async () => {
+      try {
+        const res = await fetch(`/api/qr-files?sessionId=${encodeURIComponent(cleanSessionId)}`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json?.success && Array.isArray(json.files)) {
+            json.files.forEach((f: QrUploadedFile) => {
+              if (f && f.id) fileMap.set(f.id, { ...f, isDownloadedToSoftware: true });
+            });
+          }
         }
-      }
-    } catch {
-      // Server API unreachable
-    }
+      } catch {}
+    })();
 
-    // 2. Try Firebase Firestore
-    try {
-      const q = query(
-        collection(db, 'qr_uploads'),
-        where('sessionId', 'in', [cleanSessionId, String(sessionId).trim()])
-      );
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        const firestoreFiles: QrUploadedFile[] = [];
-        snapshot.forEach((docSnap) => {
-          firestoreFiles.push(docSnap.data() as QrUploadedFile);
-        });
-        firestoreFiles.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
-        firestoreFiles.forEach((f) => {
-          this.saveToLocalStorage(cleanSessionId, f);
-          this.saveToSoftwareVault(f);
-        });
-        return firestoreFiles;
-      }
-    } catch (err) {
-      console.warn('[Firebase] Query error:', err);
-    }
+    const firestorePromise = (async () => {
+      try {
+        const searchSessions = Array.from(new Set([cleanSessionId, rawSessionId].filter(Boolean)));
+        const q = searchSessions.length > 1
+          ? query(collection(db, 'qr_uploads'), where('sessionId', 'in', searchSessions))
+          : query(collection(db, 'qr_uploads'), where('sessionId', '==', cleanSessionId));
 
-    // Return from localStorage if server & firestore are unreachable
-    return this.getFromLocalStorage(cleanSessionId);
+        const snapPromise = getDocs(q);
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Firestore timeout')), 3500)
+        );
+        const snapshot = await Promise.race([snapPromise, timeoutPromise]);
+        if (snapshot && !snapshot.empty) {
+          snapshot.forEach((docSnap) => {
+            const f = docSnap.data() as QrUploadedFile;
+            if (f && f.id) {
+              const prev = fileMap.get(f.id);
+              if (!prev || (!prev.dataUrl && f.dataUrl)) {
+                fileMap.set(f.id, { ...f, isDownloadedToSoftware: true });
+              }
+              // Sync to server so server store has it
+              this.syncFileToServer(f).catch(() => {});
+            }
+          });
+        }
+      } catch (err) {
+        console.warn('[Firebase] Query error in getFiles:', err);
+      }
+    })();
+
+    await Promise.allSettled([serverPromise, firestorePromise]);
+
+    const result = Array.from(fileMap.values()).sort(
+      (a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
+    );
+
+    // Cache merged result
+    result.forEach((f) => {
+      this.saveToLocalStorage(cleanSessionId, f);
+      this.saveToSoftwareVault(f);
+    });
+
+    return result;
   },
 
   // Get all files stored inside the software vault across all sessions (Strictly scoped by user and district)
   async getAllVaultFilesAsync(forUser?: UserProfile | null, sessionId?: string): Promise<QrUploadedFile[]> {
     const targetUser = forUser !== undefined ? forUser : getCurrentUser();
+    const fileMap = new Map<string, QrUploadedFile>();
 
-    // 1. Query Server API with user identity and session ID
-    try {
-      const params = new URLSearchParams();
-      if (targetUser) {
-        params.set('username', targetUser.username);
-        params.set('role', targetUser.role);
-        if (targetUser.district) params.set('district', targetUser.district);
-      }
-      if (sessionId) {
-        params.set('sessionId', sessionId);
-      }
-      const res = await fetch(`/api/qr-vault?${params.toString()}`);
-      if (res.ok) {
-        const json = await res.json();
-        if (json?.success && Array.isArray(json.files)) {
-          json.files.forEach((f: QrUploadedFile) => this.saveToSoftwareVault(f));
-          return filterVaultFilesForUser(json.files, targetUser, sessionId);
+    // 1. First populate from fast in-memory vault
+    const inMem = this.getAllVaultFiles(targetUser, sessionId);
+    inMem.forEach((f) => {
+      if (f && f.id) fileMap.set(f.id, f);
+    });
+
+    // 2. Fetch from Server API and Firebase Firestore concurrently
+    const serverPromise = (async () => {
+      try {
+        const params = new URLSearchParams();
+        if (targetUser) {
+          params.set('username', targetUser.username);
+          params.set('role', targetUser.role);
+          if (targetUser.district) params.set('district', targetUser.district);
         }
+        if (sessionId) {
+          params.set('sessionId', sessionId);
+        }
+        const res = await fetch(`/api/qr-vault?${params.toString()}`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json?.success && Array.isArray(json.files)) {
+            json.files.forEach((f: QrUploadedFile) => {
+              if (f && f.id) fileMap.set(f.id, f);
+            });
+          }
+        }
+      } catch {}
+    })();
+
+    const firestorePromise = (async () => {
+      try {
+        const isSuperAdmin = targetUser?.role === 'super_admin' || targetUser?.username?.toLowerCase() === 'shrinath';
+        const isDno = targetUser?.role === 'dno' || targetUser?.username?.toLowerCase() === 'dno';
+        let q;
+        if (isSuperAdmin) {
+          q = query(collection(db, 'qr_uploads'), limit(200));
+        } else if (isDno) {
+          q = query(collection(db, 'qr_uploads'), limit(150));
+        } else {
+          q = query(collection(db, 'qr_uploads'), limit(120));
+        }
+
+        const snapPromise = getDocs(q);
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Firestore timeout')), 3500)
+        );
+        const snapshot = await Promise.race([snapPromise, timeoutPromise]);
+        if (snapshot && !snapshot.empty) {
+          snapshot.forEach((d) => {
+            const f = d.data() as QrUploadedFile;
+            if (f && f.id) {
+              const prev = fileMap.get(f.id);
+              if (!prev || (!prev.dataUrl && f.dataUrl)) {
+                fileMap.set(f.id, f);
+              }
+              // Sync discovered document to server
+              this.syncFileToServer(f).catch(() => {});
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('[Firestore] getAllVaultFilesAsync warning:', e);
       }
-    } catch {
-      // ignore
-    }
+    })();
 
-    // 2. Query Firestore with short timeout to prevent 10s offline stall
-    try {
-      const isSuperAdmin = targetUser?.role === 'super_admin' || targetUser?.username?.toLowerCase() === 'shrinath';
-      const isDno = targetUser?.role === 'dno' || targetUser?.username?.toLowerCase() === 'dno';
-      let q;
-      if (isSuperAdmin) {
-        q = query(collection(db, 'qr_uploads'), limit(150));
-      } else if (isDno) {
-        q = query(collection(db, 'qr_uploads'), limit(120));
-      } else {
-        q = query(collection(db, 'qr_uploads'), limit(100));
-      }
+    await Promise.allSettled([serverPromise, firestorePromise]);
 
-      const snapPromise = getDocs(q);
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Firestore timeout')), 2500)
-      );
-      const snapshot = await Promise.race([snapPromise, timeoutPromise]);
+    const merged = Array.from(fileMap.values()).sort(
+      (a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
+    );
 
-      if (!snapshot.empty) {
-        const list: QrUploadedFile[] = [];
-        snapshot.forEach((d) => list.push(d.data() as QrUploadedFile));
-        list.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
-        list.forEach((f) => this.saveToSoftwareVault(f));
-        return filterVaultFilesForUser(list, targetUser, sessionId);
-      }
-    } catch (e) {
-      // ignore timeout or offline
-    }
-
-    return this.getAllVaultFiles(targetUser, sessionId);
+    merged.forEach((f) => this.saveToSoftwareVault(f));
+    return filterVaultFilesForUser(merged, targetUser, sessionId);
   },
 
   // Synchronous read from local vault cache (Strictly scoped by user and district)
@@ -679,17 +757,20 @@ export const qrUploadService = {
 
   // Connect to Firebase Firestore Realtime Snapshots & Server-Sent Events for instant push
   listenFirestoreRealtime(sessionId: string, onUpdate: (file: QrUploadedFile) => void): () => void {
+    const cleanSessionId = String(sessionId || '').trim().toUpperCase();
+    const rawSessionId = String(sessionId || '').trim();
     let unsubFirestore: (() => void) | null = null;
     try {
-      const q = query(
-        collection(db, 'qr_uploads'),
-        where('sessionId', '==', sessionId)
-      );
+      const searchSessions = Array.from(new Set([cleanSessionId, rawSessionId].filter(Boolean)));
+      const q = searchSessions.length > 1
+        ? query(collection(db, 'qr_uploads'), where('sessionId', 'in', searchSessions))
+        : query(collection(db, 'qr_uploads'), where('sessionId', '==', cleanSessionId));
+
       unsubFirestore = onSnapshot(q, (snapshot) => {
         snapshot.docChanges().forEach((change) => {
           if (change.type === 'added' || change.type === 'modified') {
             const file = change.doc.data() as QrUploadedFile;
-            this.saveToLocalStorage(sessionId, file);
+            this.saveToLocalStorage(cleanSessionId, file);
             this.saveToSoftwareVault(file);
             onUpdate(file);
           }
@@ -940,13 +1021,29 @@ export const qrUploadService = {
 
   saveToSoftwareVault(file: QrUploadedFile) {
     try {
+      if (inMemoryVaultFiles.length === 0) {
+        inMemoryVaultFiles = getDefaultVaultFiles();
+      }
+      if (typeof window !== 'undefined' && !isIdbInitialized) {
+        isIdbInitialized = true;
+        idbGetAllFiles<QrUploadedFile>().then((idbFiles) => {
+          if (idbFiles.length > 0) {
+            const fileMap = new Map<string, QrUploadedFile>();
+            inMemoryVaultFiles.forEach((f) => fileMap.set(f.id, f));
+            idbFiles.forEach((f) => fileMap.set(f.id, f));
+            inMemoryVaultFiles = Array.from(fileMap.values()).sort(
+              (a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
+            );
+          }
+        }).catch(() => {});
+      }
       const existingIdx = inMemoryVaultFiles.findIndex((f) => f.id === file.id);
       if (existingIdx >= 0) {
         inMemoryVaultFiles[existingIdx] = file;
       } else {
         inMemoryVaultFiles.unshift(file);
       }
-      if (inMemoryVaultFiles.length > 250) inMemoryVaultFiles.pop();
+      if (inMemoryVaultFiles.length > 300) inMemoryVaultFiles.pop();
 
       // Persist full base64 file to high-capacity IndexedDB
       idbSaveFile(file).catch(() => {});

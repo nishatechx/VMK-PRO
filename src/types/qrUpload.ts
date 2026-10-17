@@ -65,7 +65,7 @@ export function fileToDataUrl(file: File): Promise<string> {
       const img = new Image();
       img.onload = () => {
         try {
-          const MAX_DIM = 1800; // Optimal 300 DPI for A4 documents, keeps payload comfortably within 350-700KB
+          const MAX_DIM = 1400; // Optimal resolution for A4 certificates, crisp text & fast network transfer (~200-350KB)
           let width = img.naturalWidth || img.width;
           let height = img.naturalHeight || img.height;
 
@@ -91,7 +91,7 @@ export function fileToDataUrl(file: File): Promise<string> {
           ctx.drawImage(img, 0, 0, width, height);
           const isPng = file.type === 'image/png' || file.name.toLowerCase().endsWith('.png');
           const mime = isPng ? 'image/png' : 'image/jpeg';
-          const quality = isPng ? undefined : 0.85;
+          const quality = isPng ? undefined : 0.80;
           const optimizedDataUrl = canvas.toDataURL(mime, quality);
           resolve(optimizedDataUrl);
         } catch {

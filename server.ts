@@ -1171,13 +1171,13 @@ async function startServer() {
       const normSessionId = String(resolvedSessionId).trim().toUpperCase();
 
       const file: QrUploadedFile = {
-        id: `doc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        id: (body.id && String(body.id).trim()) || `doc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         sessionId: normSessionId,
         name: String(resolvedName),
         type: type || (resolvedDataUrl.startsWith('data:image/') ? 'image/jpeg' : (resolvedDataUrl.startsWith('data:application/pdf') ? 'application/pdf' : 'application/octet-stream')),
         size: Number(size) || Math.round(String(resolvedDataUrl).length * 0.75),
         dataUrl: String(resolvedDataUrl),
-        uploadedAt: new Date().toISOString(),
+        uploadedAt: body.uploadedAt || new Date().toISOString(),
         isDownloadedToSoftware: true,
         verifiedStamp: false,
         category: category || detectDocCategory(resolvedName),
@@ -1193,24 +1193,40 @@ async function startServer() {
         sessionStore.set(normSessionId, []);
       }
       const sessionFiles = sessionStore.get(normSessionId)!;
-      sessionFiles.unshift(file);
-      if (sessionFiles.length > 50) sessionFiles.pop();
+      const existingSessionIdx = sessionFiles.findIndex((f) => f.id === file.id);
+      if (existingSessionIdx >= 0) {
+        sessionFiles[existingSessionIdx] = file;
+      } else {
+        sessionFiles.unshift(file);
+      }
+      if (sessionFiles.length > 100) sessionFiles.pop();
 
       const rawSession = String(resolvedSessionId).trim();
       if (rawSession !== normSessionId) {
         if (!sessionStore.has(rawSession)) sessionStore.set(rawSession, []);
-        sessionStore.get(rawSession)!.unshift(file);
+        const rawList = sessionStore.get(rawSession)!;
+        const existingRawIdx = rawList.findIndex((f) => f.id === file.id);
+        if (existingRawIdx >= 0) {
+          rawList[existingRawIdx] = file;
+        } else {
+          rawList.unshift(file);
+        }
       }
 
-      // Store in global vault and persist to disk
-      vaultStore.unshift(file);
-      if (vaultStore.length > 250) vaultStore.pop();
+      // Store in global vault with de-duplication and persist to disk
+      const existingVaultIdx = vaultStore.findIndex((f) => f.id === file.id);
+      if (existingVaultIdx >= 0) {
+        vaultStore[existingVaultIdx] = file;
+      } else {
+        vaultStore.unshift(file);
+      }
+      if (vaultStore.length > 300) vaultStore.pop();
       saveStoredVaultFiles(vaultStore);
 
       // Realtime push to any listening desktop clients
       broadcastToFileSubscribers(normSessionId, file);
 
-      console.log(`[QR-UPLOAD] Received "${file.name}" (${file.size} bytes) for Session ${normSessionId} by ${file.uploadedBy || 'anonymous'} [${file.district || 'Unassigned'}]`);
+      console.log(`[QR-UPLOAD] Received "${file.name}" (${file.size} bytes) [ID: ${file.id}] for Session ${normSessionId} by ${file.uploadedBy || 'anonymous'} [${file.district || 'Unassigned'}]`);
 
       return res.status(200).json({ success: true, file });
     } catch (err: any) {
